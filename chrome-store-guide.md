@@ -170,11 +170,11 @@ BBG 내부용이면 전체 공개할 필요 없음:
 
 ## 체크리스트
 
-- [ ] 아이콘 만들기 (16/48/128 PNG)
-- [ ] Client Web 배포 (Vercel 등)
-- [ ] manifest.json 수정 (localhost 제거, 아이콘 추가, 배포 URL)
-- [ ] 개인정보 처리방침 페이지 만들기 (간단한 1페이지면 충분)
-- [ ] 개발자 계정 등록 ($5)
-- [ ] 빌드 → ZIP → 업로드
+- [x] 아이콘 만들기 → `syncbridge-extension/public/icons/` (16/48/128 PNG)
+- [x] Client Web 배포 → https://client-web-zeta.vercel.app
+- [x] manifest.json 수정 → localhost 제거, 아이콘 추가, 배포 URL, version 1.0.0, 영문 description
+- [x] 개인정보 처리방침 페이지 → https://client-web-zeta.vercel.app/privacy
+- [ ] 개발자 계정 등록 ($5) — https://chrome.google.com/webstore/devconsole
+- [ ] 빌드 → ZIP → 업로드 (`cd syncbridge-extension && npm run build && cd dist && zip -r ../syncbridge-v1.0.0.zip .`)
 - [ ] 스토어 정보 입력 + 스크린샷
 - [ ] 심사 제출

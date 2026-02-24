@@ -27,3 +27,6 @@ out/
 
 # Claude
 .claude/
+
+# Build artifacts
+*.zip

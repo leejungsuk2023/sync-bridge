@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+}
 
 // 요청자가 bbg_admin인지 확인
 async function verifyAdmin(req: NextRequest) {
@@ -12,10 +14,10 @@ async function verifyAdmin(req: NextRequest) {
   if (!authHeader?.startsWith('Bearer ')) return false;
 
   const token = authHeader.replace('Bearer ', '');
-  const { data: { user } } = await supabaseAdmin.auth.getUser(token);
+  const { data: { user } } = await getSupabaseAdmin().auth.getUser(token);
   if (!user) return false;
 
-  const { data: profile } = await supabaseAdmin
+  const { data: profile } = await getSupabaseAdmin()
     .from('profiles')
     .select('role')
     .eq('id', user.id)
@@ -30,7 +32,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
   }
 
-  const { data: profiles } = await supabaseAdmin
+  const { data: profiles } = await getSupabaseAdmin()
     .from('profiles')
     .select('id, email, display_name, role, client_id, created_at')
     .order('created_at', { ascending: false });
@@ -60,7 +62,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 1. auth.users 생성
-  const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+  const { data: authData, error: authError } = await getSupabaseAdmin().auth.admin.createUser({
     email,
     password,
     email_confirm: true,
@@ -73,7 +75,7 @@ export async function POST(req: NextRequest) {
   const userId = authData.user.id;
 
   // 2. profiles 생성
-  const { error: profileError } = await supabaseAdmin.from('profiles').insert({
+  const { error: profileError } = await getSupabaseAdmin().from('profiles').insert({
     id: userId,
     email,
     display_name: displayName || email.split('@')[0],
@@ -83,7 +85,7 @@ export async function POST(req: NextRequest) {
 
   if (profileError) {
     // 롤백: auth user 삭제
-    await supabaseAdmin.auth.admin.deleteUser(userId);
+    await getSupabaseAdmin().auth.admin.deleteUser(userId);
     return NextResponse.json({ error: profileError.message }, { status: 400 });
   }
 
@@ -103,7 +105,7 @@ export async function DELETE(req: NextRequest) {
   }
 
   // bbg_admin 삭제 방지
-  const { data: profile } = await supabaseAdmin
+  const { data: profile } = await getSupabaseAdmin()
     .from('profiles')
     .select('role')
     .eq('id', userId)
@@ -113,8 +115,8 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: '관리자 계정은 삭제할 수 없습니다.' }, { status: 400 });
   }
 
-  await supabaseAdmin.from('profiles').delete().eq('id', userId);
-  await supabaseAdmin.auth.admin.deleteUser(userId);
+  await getSupabaseAdmin().from('profiles').delete().eq('id', userId);
+  await getSupabaseAdmin().auth.admin.deleteUser(userId);
 
   return NextResponse.json({ success: true });
 }

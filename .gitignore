@@ -1,0 +1,29 @@
+# Env (never commit secrets)
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.production.local
+
+# Supabase local
+supabase/.branches
+supabase/.temp
+
+# Logs / OS
+*.log
+.DS_Store
+
+# Dependencies
+node_modules/
+
+# Build output
+.next/
+dist/
+out/
+
+# IDE
+.vscode/
+.idea/
+
+# Claude
+.claude/

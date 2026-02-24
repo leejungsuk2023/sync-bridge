@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "SyncBridge",
+  "version": "0.1.0",
+  "description": "CS 업무 효율화를 위한 번역 및 템플릿 지원 도구",
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "SyncBridge"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.facebook.com/*",
+        "*://*.messenger.com/*",
+        "*://*.line.me/*",
+        "*://*.instagram.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "storage",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://ucpmfmwaavwrqtvrwaic.supabase.co/*",
+    "http://localhost:3000/*"
+  ]
+}

@@ -12,15 +12,13 @@ export default function TaskList({ workers, clientId, userId }: { workers: any[]
 
   useEffect(() => {
     const fetchTasks = async () => {
-      let query = supabase
-        .from('tasks')
-        .select('*, profiles!tasks_assignee_id_fkey(email, display_name)')
-        .order('created_at', { ascending: false });
-      if (clientId) {
-        query = query.eq('client_id', clientId);
-      }
-      const { data } = await query.limit(20);
-      setTasks(data || []);
+      const session = (await supabase.auth.getSession()).data.session;
+      const params = clientId ? `?client_id=${clientId}` : '';
+      const res = await fetch(`/api/tasks${params}`, {
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      const data = await res.json();
+      setTasks(data.tasks || []);
       setLoading(false);
     };
 
@@ -40,7 +38,15 @@ export default function TaskList({ workers, clientId, userId }: { workers: any[]
   const [ratingValue, setRatingValue] = useState<number | null>(null);
 
   const submitRating = async (taskId: string, rating: number) => {
-    await supabase.from('tasks').update({ rating, rated_by: userId, rated_at: new Date().toISOString() }).eq('id', taskId);
+    const session = (await supabase.auth.getSession()).data.session;
+    await fetch('/api/tasks', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({ id: taskId, rating, rated_by: userId, rated_at: new Date().toISOString() }),
+    });
     setRatingTaskId(null);
     setRatingValue(null);
   };

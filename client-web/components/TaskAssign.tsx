@@ -105,10 +105,25 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
     };
     if (dueDate) insertData.due_date = new Date(dueDate).toISOString();
 
-    const { error: insertError } = await supabase.from('tasks').insert(insertData);
-    setLoading(false);
-    if (insertError) {
-      setError(insertError.message);
+    try {
+      const session = (await supabase.auth.getSession()).data.session;
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify(insertData),
+      });
+      const result = await res.json();
+      setLoading(false);
+      if (!res.ok) {
+        setError(result.error || '업무 할당 실패');
+        return;
+      }
+    } catch (err: any) {
+      setLoading(false);
+      setError(err.message);
       return;
     }
     setContent('');

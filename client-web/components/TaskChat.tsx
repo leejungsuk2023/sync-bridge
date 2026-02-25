@@ -54,28 +54,29 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
     const original = input.trim();
     setInput('');
 
-    let contentTh = '';
-    try {
-      const res = await fetch('/api/translate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: original, targetLang: 'th' }),
-      });
-      if (res.ok) {
-        const d = await res.json();
-        contentTh = d.translated || '';
-      }
-    } catch { /* 번역 실패해도 전송 */ }
-
-    await supabase.from('messages').insert({
+    // 1. 메시지 즉시 전송 (번역 없이)
+    const { data: inserted } = await supabase.from('messages').insert({
       task_id: taskId,
       sender_id: userId,
       content: original,
       content_ko: original,
-      content_th: contentTh || original,
+      content_th: original,
       sender_lang: 'ko',
-    });
+    }).select('id').single();
     setSending(false);
+
+    // 2. 번역은 백그라운드에서 처리 후 업데이트
+    if (inserted?.id) {
+      fetch('/api/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: original, targetLang: 'th' }),
+      }).then(res => res.ok ? res.json() : null).then(d => {
+        if (d?.translated) {
+          supabase.from('messages').update({ content_th: d.translated }).eq('id', inserted.id);
+        }
+      }).catch(() => {});
+    }
   };
 
   return (

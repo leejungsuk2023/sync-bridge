@@ -12,7 +12,18 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    supabase.from('tasks').select('content, content_th').eq('id', taskId).single().then(({ data }) => setTask(data));
+    const fetchTask = async () => {
+      const session = (await supabase.auth.getSession()).data.session;
+      const res = await fetch(`/api/tasks?id=${taskId}`, {
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const found = (data.tasks || []).find((t: any) => t.id === taskId);
+        if (found) setTask(found);
+      }
+    };
+    fetchTask();
   }, [taskId]);
 
   const fetchMessages = async () => {
@@ -110,7 +121,7 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), send())}
+          onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && (e.preventDefault(), send())}
           placeholder="한국어로 메시지 입력..."
           className="flex-1 h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-shadow"
         />

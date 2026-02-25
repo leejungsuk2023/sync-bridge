@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const clientId = searchParams.get('client_id');
+  const taskId = searchParams.get('id');
 
   let query = getSupabaseAdmin()
     .from('tasks')
@@ -42,7 +43,9 @@ export async function GET(req: NextRequest) {
     .order('created_at', { ascending: false })
     .limit(20);
 
-  if (clientId) {
+  if (taskId) {
+    query = query.eq('id', taskId);
+  } else if (clientId) {
     query = query.eq('client_id', clientId);
   } else if (profile.role !== 'bbg_admin' && profile.client_id) {
     query = query.eq('client_id', profile.client_id);

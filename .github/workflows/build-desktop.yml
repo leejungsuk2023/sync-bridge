@@ -5,15 +5,18 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
       matrix:
         include:
           - os: windows-latest
-            build_cmd: npm run build:win
+            build_cmd: npm run build:win -- --publish never
           - os: macos-latest
-            build_cmd: npm run build:mac
+            build_cmd: npm run build:mac -- --publish never
 
     runs-on: ${{ matrix.os }}
 
@@ -46,6 +49,8 @@ jobs:
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: syncbridge-desktop/release/*.{exe,dmg}
+          files: |
+            syncbridge-desktop/release/*.exe
+            syncbridge-desktop/release/*.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

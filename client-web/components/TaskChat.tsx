@@ -9,7 +9,7 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [task, setTask] = useState<any>(null);
-  const endRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchTask = async () => {
@@ -46,7 +46,11 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
     return () => { ch.unsubscribe(); };
   }, [taskId]);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  useEffect(() => {
+    if (messagesRef.current) {
+      messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+    }
+  }, [messages]);
 
   const send = async () => {
     if (!input.trim()) return;
@@ -93,7 +97,7 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 bg-slate-50 space-y-3">
+      <div ref={messagesRef} className="flex-1 overflow-y-auto p-4 bg-slate-50 space-y-3">
         {messages.length === 0 && (
           <div className="flex items-center justify-center h-full">
             <p className="text-sm text-slate-500">메시지가 없습니다</p>
@@ -114,7 +118,6 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
             </div>
           );
         })}
-        <div ref={endRef} />
       </div>
 
       {/* Input */}

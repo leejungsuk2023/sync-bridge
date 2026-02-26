@@ -36,12 +36,18 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const clientId = searchParams.get('client_id');
   const taskId = searchParams.get('id');
+  const assigneeId = searchParams.get('assignee_id');
+  const month = searchParams.get('month'); // format: 2026-03
 
   let query = getSupabaseAdmin()
     .from('tasks')
     .select('*')
-    .order('created_at', { ascending: false })
-    .limit(20);
+    .order('created_at', { ascending: false });
+
+  // month 필터가 있으면 limit 제거 (캘린더용), 없으면 20개 제한
+  if (!month) {
+    query = query.limit(20);
+  }
 
   if (taskId) {
     query = query.eq('id', taskId);
@@ -49,6 +55,17 @@ export async function GET(req: NextRequest) {
     query = query.eq('client_id', clientId);
   } else if (profile.role !== 'bbg_admin' && profile.client_id) {
     query = query.eq('client_id', profile.client_id);
+  }
+
+  if (assigneeId) {
+    query = query.eq('assignee_id', assigneeId);
+  }
+
+  if (month) {
+    const start = `${month}-01T00:00:00.000Z`;
+    const [y, m] = month.split('-').map(Number);
+    const end = new Date(y, m, 1).toISOString(); // 다음달 1일
+    query = query.gte('created_at', start).lt('created_at', end);
   }
 
   const { data: tasks, error } = await query;

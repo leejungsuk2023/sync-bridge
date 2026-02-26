@@ -7,6 +7,7 @@ import WorkerStatus from './WorkerStatus';
 import TaskAssign from './TaskAssign';
 import TaskList from './TaskList';
 import TimeReport from './TimeReport';
+import TaskCalendar from './TaskCalendar';
 import TaskPresetManager from './TaskPresetManager';
 import UserManager from './UserManager';
 
@@ -96,6 +97,7 @@ export default function Dashboard({ user }: { user: any }) {
         {profile?.role === 'bbg_admin' && (
           <TaskPresetManager profile={profile} clients={clients} />
         )}
+        <TaskCalendar workers={workers} clientId={profile?.client_id} />
         <TimeReport workers={workers} />
         {profile?.role === 'bbg_admin' && (
           <UserManager clients={clients} />

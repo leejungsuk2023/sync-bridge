@@ -7,7 +7,6 @@ import WorkerStatus from './WorkerStatus';
 import TaskAssign from './TaskAssign';
 import TaskList from './TaskList';
 import TimeReport from './TimeReport';
-import QuickReplyManager from './QuickReplyManager';
 import TaskPresetManager from './TaskPresetManager';
 import UserManager from './UserManager';
 
@@ -97,7 +96,6 @@ export default function Dashboard({ user }: { user: any }) {
         {profile?.role === 'bbg_admin' && (
           <TaskPresetManager profile={profile} clients={clients} />
         )}
-        <QuickReplyManager profile={profile} clients={clients} />
         <TimeReport workers={workers} />
         {profile?.role === 'bbg_admin' && (
           <UserManager clients={clients} />

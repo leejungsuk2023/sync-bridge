@@ -33,7 +33,6 @@ export default function App() {
   const [timeLogError, setTimeLogError] = useState('');
   const [tasks, setTasks] = useState([]);
   const [tasksLoading, setTasksLoading] = useState(false);
-  const [templates, setTemplates] = useState([]);
   const [avgRating, setAvgRating] = useState(null);
   const [toast, setToast] = useState(null);
   const [expandedTaskId, setExpandedTaskId] = useState(null);
@@ -205,19 +204,6 @@ export default function App() {
     return () => channel.unsubscribe();
   }, [user, fetchTasks]);
 
-  const fetchTemplates = useCallback(async () => {
-    const { data } = await supabase
-      .from('quick_replies')
-      .select('id, title_th, title_ko, body_th, body_ko')
-      .order('display_order', { ascending: true })
-      .order('created_at', { ascending: true });
-    setTemplates((data || []).map((t) => ({ ...t, title: t.title_th || t.title_ko, body: t.body_th || t.body_ko })));
-  }, []);
-
-  useEffect(() => {
-    if (!user) return;
-    fetchTemplates();
-  }, [user, fetchTemplates]);
 
   const fetchAvgRating = useCallback(async () => {
     if (!user) return;
@@ -524,7 +510,6 @@ export default function App() {
           { key: 'tasks', label: 'งาน' },
           { key: 'chat', label: 'แชท' },
           { key: 'translate', label: 'แปล / AI' },
-          { key: 'templates', label: 'เทมเพลต' },
         ].map((tab) => (
           <button key={tab.key} type="button" onClick={() => setActiveTab(tab.key)}
             className={`flex-1 py-2.5 text-xs font-medium transition-colors ${activeTab === tab.key ? 'text-emerald-600 border-b-2 border-emerald-500' : 'text-slate-500 hover:text-slate-700'}`}>
@@ -738,27 +723,6 @@ export default function App() {
           </section>
         )}
 
-        {activeTab === 'templates' && (
-          <section className="px-4 py-4">
-            <p className="text-sm font-medium text-slate-700 mb-3">เทมเพลตตอบด่วน (퀵 리플라이 템플릿)</p>
-            {templates.length === 0 ? <p className="text-sm text-slate-500">등록된 템플릿이 없습니다. 관리자에게 요청하세요.</p> : (
-            <ul className="space-y-2">
-              {templates.map((item) => (
-                <li key={item.id} className="flex items-start justify-between gap-2 p-3 rounded-lg border border-slate-200 bg-white hover:border-slate-300">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-slate-800">{item.title}</p>
-                    <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{item.body}</p>
-                  </div>
-                  <button type="button" onClick={() => copyToClipboard(item.body)}
-                    className="shrink-0 py-1.5 px-2.5 rounded-md bg-slate-100 text-slate-600 text-xs font-medium hover:bg-slate-200">
-                    คัดลอก (복사)
-                  </button>
-                </li>
-              ))}
-            </ul>
-            )}
-          </section>
-        )}
       </div>
 
       <div className="shrink-0 px-4 py-2 border-t border-slate-200 flex justify-between items-center bg-white">

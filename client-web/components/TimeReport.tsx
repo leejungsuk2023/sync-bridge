@@ -42,7 +42,7 @@ export default function TimeReport({ workers }: { workers: any[] }) {
   }, [workers]);
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+    <div className="bg-gradient-to-r from-cyan-50/70 to-white rounded-xl shadow-sm border border-cyan-100 border-l-4 border-l-cyan-400 p-6">
       <h2 className="text-lg font-semibold text-slate-900 mb-6">오늘 근무 리포트</h2>
       {loading ? (
         <p className="text-center text-slate-500 py-12">불러오는 중...</p>

@@ -114,7 +114,7 @@ export default function TaskList({ workers, clientId, userId }: { workers: any[]
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+      <div className="bg-gradient-to-r from-amber-50/70 to-white rounded-xl shadow-sm border border-amber-100 border-l-4 border-l-amber-400 p-6">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold text-slate-900">업무 목록</h2>
           {doneTasks.length > 0 && (
@@ -132,7 +132,7 @@ export default function TaskList({ workers, clientId, userId }: { workers: any[]
         ) : pendingTasks.length === 0 && !showDone ? (
           <p className="text-center text-slate-500 py-12">진행 중인 업무가 없습니다.</p>
         ) : (
-          <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
+          <div className="space-y-4 max-h-[800px] overflow-y-auto pr-2">
             {[...pendingTasks, ...(showDone ? doneTasks : [])].map((task) => (
               <div key={task.id} className="border border-slate-200 rounded-lg p-4 space-y-3">
                 {/* Content + Status + Chat */}
@@ -200,7 +200,7 @@ export default function TaskList({ workers, clientId, userId }: { workers: any[]
                         {isOverdue ? (
                           <span className="text-red-600 font-medium">⚠ 기한초과</span>
                         ) : (
-                          <span>📅 마감 {due.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })} {due.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</span>
+                          <span>📅 마감 {due.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}</span>
                         )}
                       </>
                     );

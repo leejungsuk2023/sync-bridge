@@ -587,13 +587,12 @@ export default function App() {
                         {t.due_date && (() => {
                           const due = new Date(t.due_date);
                           const now = new Date();
+                          now.setHours(0, 0, 0, 0);
                           const isOverdue = t.status === 'pending' && due < now;
-                          const isSoon = t.status === 'pending' && !isOverdue && (due - now) < 3 * 60 * 60 * 1000;
                           return (
-                            <p className={`text-xs mt-1 font-medium ${isOverdue ? 'text-red-600' : isSoon ? 'text-amber-600' : 'text-slate-500'}`}>
+                            <p className={`text-xs mt-1 font-medium ${isOverdue ? 'text-red-600' : 'text-slate-500'}`}>
                               {isOverdue ? '⚠ เลยกำหนด (기한 초과)' : '📅 กำหนดส่ง (마감)'}:{' '}
-                              {due.toLocaleDateString('th-TH', { month: 'short', day: 'numeric' })}{' '}
-                              {due.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}
+                              {due.toLocaleDateString('th-TH', { month: 'short', day: 'numeric' })}
                             </p>
                           );
                         })()}

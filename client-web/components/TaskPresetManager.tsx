@@ -89,7 +89,7 @@ export default function TaskPresetManager({ profile, clients }: { profile: any; 
   if (loading) return <p className="text-sm text-slate-500">로딩 중...</p>;
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+    <div className="bg-gradient-to-r from-rose-50/70 to-white rounded-xl shadow-sm border border-rose-100 border-l-4 border-l-rose-400 p-6">
       <div className="mb-6">
         <h2 className="text-lg font-semibold text-slate-900">업무 프리셋 관리</h2>
         <p className="text-xs text-slate-500 mt-1">자주 사용하는 업무 지시를 프리셋으로 등록하면, 병원이 업무 배정 시 선택만으로 바로 할당할 수 있습니다.</p>

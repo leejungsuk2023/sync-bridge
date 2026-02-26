@@ -90,10 +90,8 @@ export default function Dashboard({ user }: { user: any }) {
       {/* Main */}
       <main className="max-w-[1440px] mx-auto p-6 space-y-6">
         <WorkerStatus workers={workers} />
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <TaskAssign workers={workers} clientId={profile?.client_id} />
-          <TaskList workers={workers} clientId={profile?.client_id} userId={user.id} />
-        </div>
+        <TaskAssign workers={workers} clientId={profile?.client_id} />
+        <TaskList workers={workers} clientId={profile?.client_id} userId={user.id} />
         {profile?.role === 'bbg_admin' && (
           <TaskPresetManager profile={profile} clients={clients} />
         )}

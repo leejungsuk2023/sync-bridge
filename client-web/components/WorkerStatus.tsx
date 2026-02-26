@@ -88,7 +88,7 @@ export default function WorkerStatus({ workers }: { workers: any[] }) {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+    <div className="bg-gradient-to-r from-blue-50/70 to-white rounded-xl shadow-sm border border-blue-100 border-l-4 border-l-blue-400 p-6">
       <h2 className="text-lg font-semibold text-slate-900 mb-6">실시간 직원 상태</h2>
       {workers.length === 0 ? (
         <p className="text-center text-slate-500 py-12">할당된 직원이 없습니다.</p>

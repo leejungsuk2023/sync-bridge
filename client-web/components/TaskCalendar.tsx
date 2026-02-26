@@ -73,7 +73,7 @@ export default function TaskCalendar({ workers, clientId }: { workers: any[]; cl
   const totalDone = tasks.filter(t => t.status === 'done').length;
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+    <div className="bg-gradient-to-r from-violet-50/70 to-white rounded-xl shadow-sm border border-violet-100 border-l-4 border-l-violet-400 p-6">
       <h2 className="text-lg font-semibold text-slate-900 mb-6">직원별 업무 현황</h2>
 
       {/* 직원 선택 + 월 이동 */}

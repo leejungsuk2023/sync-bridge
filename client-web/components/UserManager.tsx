@@ -126,7 +126,7 @@ export default function UserManager({ clients }: { clients: any[] }) {
   if (loading) return <p className="text-sm text-slate-500">로딩 중...</p>;
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+    <div className="bg-gradient-to-r from-slate-100/70 to-white rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-slate-400 p-6">
       <div className="mb-6">
         <h2 className="text-lg font-semibold text-slate-900">계정 관리</h2>
         <p className="text-xs text-slate-500 mt-1">병원(client) 또는 직원(worker) 계정을 생성하고 관리합니다.</p>

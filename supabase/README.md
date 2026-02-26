@@ -9,47 +9,17 @@
 | 순서 | 파일 | 내용 |
 |------|------|------|
 | 1 | `schema.sql` | 핵심 테이블 (clients, profiles, time_logs, tasks) + RLS |
-| 2 | 아래 messages SQL | 채팅 테이블 |
-| 3 | 아래 content_th SQL | tasks 태국어 번역 컬럼 |
-| 4 | 아래 due_date SQL | tasks 마감일 컬럼 |
-| 5 | `quick_replies.sql` | 자동답변(퀵 리플라이) 테이블 |
-| 6 | `task_presets.sql` | 업무 프리셋 테이블 + RLS |
-| 7 | `task_rating.sql` | 업무 품질 평가 (1~5점) 컬럼 |
-| 8 | `worker_propose_task.sql` | Worker 업무 제안 (`source` 컬럼 + Worker INSERT RLS) |
-| 9 | `whisper_message.sql` | Whisper 본사 지시 (`is_whisper` 컬럼 + client 필터링 RLS) |
-| 10 | `fix_rls_policies.sql` | messages UPDATE 정책 + profiles 동료 조회 정책 |
+| 2 | `messages.sql` | 채팅 메시지 테이블 + RLS + Realtime |
+| 3 | `tasks_extra_columns.sql` | tasks 추가 컬럼 (content_th 번역, due_date 마감일) |
+| 4 | `quick_replies.sql` | 자동답변(퀵 리플라이) 테이블 |
+| 5 | `task_presets.sql` | 업무 프리셋 테이블 + RLS |
+| 6 | `task_rating.sql` | 업무 품질 평가 (1~5점) 컬럼 |
+| 7 | `worker_propose_task.sql` | Worker 업무 제안 (`source` 컬럼 + Worker INSERT RLS) |
+| 8 | `whisper_message.sql` | Whisper 본사 지시 (`is_whisper` 컬럼 + client 필터링 RLS) |
+| 9 | `fix_rls_policies.sql` | messages UPDATE 정책 + profiles 동료 조회 정책 |
 
 이미 테이블이 있으면 `IF NOT EXISTS` 덕분에 에러 없이 넘어갑니다.
 정책만 다시 넣고 싶다면 기존 `CREATE POLICY`는 제거한 뒤 필요한 것만 실행하세요.
-
-**messages 테이블 (채팅용):**
-```sql
-CREATE TABLE IF NOT EXISTS public.messages (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  task_id uuid NOT NULL REFERENCES public.tasks(id) ON DELETE CASCADE,
-  sender_id uuid NOT NULL REFERENCES auth.users(id),
-  content text NOT NULL,
-  content_ko text,
-  content_th text,
-  sender_lang text NOT NULL DEFAULT 'th',
-  created_at timestamptz DEFAULT now()
-);
-ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "messages_select_authenticated" ON public.messages FOR SELECT TO authenticated USING (true);
-CREATE POLICY "messages_insert_authenticated" ON public.messages FOR INSERT TO authenticated WITH CHECK (true);
-CREATE INDEX IF NOT EXISTS idx_messages_task_id ON public.messages(task_id);
-ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
-```
-
-**content_th 컬럼 (번역용):**
-```sql
-ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS content_th text;
-```
-
-**due_date 컬럼 (마감일):**
-```sql
-ALTER TABLE public.tasks ADD COLUMN IF NOT EXISTS due_date date;
-```
 
 ## 2. Realtime
 

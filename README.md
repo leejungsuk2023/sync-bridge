@@ -69,6 +69,8 @@ g sync/
 │
 └── supabase/
     ├── schema.sql              # clients, profiles, time_logs, tasks + RLS
+    ├── messages.sql            # 채팅 메시지 테이블 + RLS + Realtime
+    ├── tasks_extra_columns.sql # tasks 추가 컬럼 (content_th, due_date)
     ├── quick_replies.sql       # 자동답변 테이블
     ├── task_presets.sql        # 업무 프리셋 테이블 + RLS
     ├── task_rating.sql         # 업무 품질 평가 (1~5점)
@@ -88,8 +90,8 @@ g sync/
 1. [Supabase Dashboard](https://supabase.com/dashboard) → 프로젝트 생성
 2. **SQL Editor**에서 아래 순서로 실행:
    1. `supabase/schema.sql` — 핵심 테이블 (clients, profiles, time_logs, tasks)
-   2. `supabase/README.md` 안의 messages SQL — 채팅 테이블
-   3. `supabase/README.md` 안의 content_th SQL — 태국어 번역 컬럼
+   2. `supabase/messages.sql` — 채팅 메시지 테이블
+   3. `supabase/tasks_extra_columns.sql` — tasks 추가 컬럼 (content_th, due_date)
    4. `supabase/quick_replies.sql` — 자동답변
    5. `supabase/task_presets.sql` — 업무 프리셋
    6. `supabase/task_rating.sql` — 업무 품질 평가

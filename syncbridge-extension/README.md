@@ -2,6 +2,8 @@
 
 원격 근무자(태국 직원)용 CS 업무/근태 지원 크롬 확장 프로그램입니다.
 
+> **참고:** 데스크톱 앱(`syncbridge-desktop/`)이 별도로 존재합니다. 이 확장프로그램은 Chrome 브라우저 내에서 동작하는 버전입니다.
+
 ## 기술 스택
 
 - React 18 (Vite)
@@ -25,7 +27,7 @@ npm run build
 
 ## 환경 변수
 
-`.env.local`에 다음 설정 (`.env.example` 참고):
+`.env.local`에 다음 설정:
 
 ```
 VITE_SUPABASE_URL=https://xxx.supabase.co
@@ -46,10 +48,10 @@ VITE_WEB_URL=http://localhost:3000   # Client Web URL (번역/AI API)
 
 | 탭 | 기능 |
 |------|------|
-| **งาน** (업무) | 담당 태스크 목록, 완료 처리, **업무 제안(Propose Task)** |
-| **แชท** (채팅) | 업무별 채팅. 태국어 입력 → 한국어 자동 번역 후 클라이언트에 전달 |
-| **แปล** (번역) | 태국어 → 한국어 번역 헬퍼 |
-| **เทมเพลต** (템플릿) | DB에서 로드한 퀵 리플라이 복사 |
+| **업무** | 담당 태스크 목록, 마감일 표시(색상 코딩), 완료 처리, **업무 제안(Propose Task)** |
+| **채팅** | 업무별 채팅. 태국어 입력 → 한국어 자동 번역 후 클라이언트에 전달 |
+| **번역** | 태국어 → 한국어 번역 헬퍼 |
+| **템플릿** | DB에서 로드한 퀵 리플라이 복사 |
 
 ### 업무 제안 (Propose Task)
 
@@ -84,15 +86,9 @@ VITE_WEB_URL=http://localhost:3000   # Client Web URL (번역/AI API)
 
 ## 파일 구조
 
-| 파일 | 역할 | 빌드 크기 |
-|------|------|-----------|
-| `src/App.jsx` | 팝업 메인 UI (로그인, 상태, 업무, 채팅, 번역, 템플릿, 업무 제안) | 338 KB (React+Supabase 포함) |
-| `src/content.js` | Activity Ping + AI 드래그 어시스트 | 7 KB |
-| `src/background.js` | 서비스 워커 (유휴 감지, 배지, AI 중계) | 2 KB |
-| `src/lib/supabase.js` | Supabase 클라이언트 + `proposeTask` 헬퍼 | (번들에 포함) |
-
-## 테스트 팁
-
-- Supabase Dashboard → Authentication → Providers에서 **이메일 확인 비활성화**하면 회원가입 후 바로 로그인 가능
-- 로그인 후 출근/자리비움/퇴근을 바꿀 때마다 Table Editor → `time_logs`에서 행이 쌓이는지 확인
-- 업무 제안 테스트: Worker 계정 로그인 → 업무 탭 → "+ เสนองาน" → 내용 입력 → 제출 → `tasks` 테이블에 `source: 'worker_proposed'` 확인
+| 파일 | 역할 |
+|------|------|
+| `src/App.jsx` | 팝업 메인 UI (로그인, 상태, 업무, 채팅, 번역, 템플릿, 업무 제안) |
+| `src/content.js` | Activity Ping + AI 드래그 어시스트 |
+| `src/background.js` | 서비스 워커 (유휴 감지, 배지, AI 중계) |
+| `src/lib/supabase.js` | Supabase 클라이언트 + `proposeTask` 헬퍼 |

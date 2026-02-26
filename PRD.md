@@ -15,9 +15,12 @@
 | 구분 | 기술 | 역할 |
 |------|------|------|
 | **Client Web** | Next.js 14 (App Router), Tailwind CSS, lucide-react | 고객사·BBG 관리자용. 업무 지시, 실시간 근태 대시보드, 관제 모니터링. |
+| **Desktop App** | Electron + React 18 (Vite), Tailwind CSS | 태국 직원용 데스크톱 앱. 업무 수신, 채팅, 전체 톡방, 번역. macOS/Windows. |
 | **Worker Extension** | Chrome Extension V3 (React + Vite, Tailwind CSS) | 태국 직원용. 브라우저 팝업. 실시간 업무 수신, 채팅, 번역, AI 어시스트. |
 | **Backend & DB** | Supabase (PostgreSQL, Auth, Realtime, RLS) | 데이터 저장, 인증/권한, 실시간 동기화, 행 수준 보안. |
 | **번역/AI** | Google Gemini API (gemini-2.5-flash) | 한↔태 번역, AI 상담 어시스턴트 (의도 파악 + 추천 답변). |
+| **CI/CD** | GitHub Actions + electron-builder | Desktop App 자동 빌드/릴리즈 (macOS + Windows). |
+| **Web 배포** | Vercel | Client Web 배포 (`vercel --prod`). |
 
 ---
 
@@ -28,17 +31,19 @@
 | 기능 | 상태 | 설명 |
 |------|------|------|
 | 인증 | ✅ | Supabase Auth (이메일/비밀번호), 역할 기반 접근 제어 |
-| bbg_admin 자동 리다이렉트 | ✅ | admin 로그인 시 `/admin/monitoring`으로 자동 이동 |
 | 직원 상태 모니터링 | ✅ | 실시간 온라인/자리비움/오프라인, 좌측 액센트 보더, 평균 평점 |
-| 업무 할당 | ✅ | 담당자 선택, 프리셋 자동 채우기, 마감일 설정, 한→태 자동 번역 |
+| 전체 톡방 | ✅ | 클라이언트↔직원 그룹 채팅, 접기/펼치기, 발신자 이름, 실시간 수신 |
+| 업무 할당 | ✅ | 담당자 선택, 프리셋 자동 채우기, 마감일 설정(날짜만), 한→태 자동 번역 |
 | 업무 프리셋 | ✅ | bbg_admin이 자주 쓰는 업무 지시를 프리셋으로 등록, 병원별/전체 공용 |
 | 업무 목록 | ✅ | 실시간 조회, 상태 배지, 인라인 채팅, 기한초과 경고 |
+| 업무 캘린더 | ✅ | 월별 업무 현황 달력, 날짜별 업무 수 표시 |
 | 업무 품질 평가 | ✅ | 완료 업무에 1~5점 별점 평가 (Star 아이콘, 호버 인터랙션) |
-| 채팅 | ✅ | 업무별 1:1 채팅, 버블 UI, 한→태 자동 번역 |
+| 채팅 | ✅ | 업무별 1:1 채팅, 즉시 전송 + 백그라운드 번역, 실시간 업데이트 |
 | 자동답변 관리 | ✅ | 퀵 리플라이 CRUD, 한→태 자동 번역, 병원별/전체 공용 |
 | 근무 리포트 | ✅ | 일간 근태 요약 테이블, 출근율 프로그레스 바, 색상 코딩 |
 | 계정 관리 | ✅ | bbg_admin 전용, 병원/직원 계정 생성·삭제 (service_role API) |
 | AI 어시스트 API | ✅ | 환자 메시지 → 한국어 번역 + 의도 파악 + 추천 답변 3개 |
+| 섹션 색상 구분 | ✅ | 각 섹션별 그라데이션 배경 + 좌측 컬러 보더로 시각적 구분 |
 
 ### 3.2 Client Web — God Mode 관제 (`/admin/monitoring`)
 
@@ -51,10 +56,23 @@
 | 이중 SLA | ✅ | 메시지 SLA(5분/15분) + 업무 나이 SLA(1시간/3시간) 신호등 |
 | 마감일 표시 | ✅ | 업무별 마감일 + 기한초과 경고 |
 | 2-패널 레이아웃 | ✅ | 좌측: 업무 리스트(긴급순 정렬) / 우측: 상세 + 실시간 채팅 |
-| Whisper 메시지 | ✅ | 보라색 버블 + 🔒 라벨, RLS로 client에게 숨김 |
+| Whisper 메시지 | ✅ | 보라색 버블 + 잠금 라벨, RLS로 client에게 숨김 |
 | Realtime | ✅ | tasks/messages/time_logs 변경 시 자동 갱신 (30초 주기) |
 
-### 3.3 Worker Extension
+### 3.3 Desktop App (태국 직원용)
+
+| 기능 | 상태 | 설명 |
+|------|------|------|
+| 출퇴근 토글 | ✅ | 출근/자리비움/퇴근 상태 변경 → time_logs 기록 |
+| 업무 수신 | ✅ | 담당 태스크 실시간 조회, 마감일 색상 코딩(빨강=초과, 회색=여유) |
+| 업무 완료 처리 | ✅ | 완료 클릭 → Client Web 실시간 반영 |
+| 전체 톡방 | ✅ | 클라이언트↔직원 그룹 채팅, 발신자 이름 표시 |
+| 업무별 채팅 | ✅ | 태국어 입력 → 한국어 백그라운드 번역, 실시간 수신 |
+| 번역 헬퍼 | ✅ | 태국어 → 한국어 즉석 번역 |
+| 자동 빌드 | ✅ | GitHub Actions + electron-builder (macOS/Windows) |
+| 자동 업데이트 | ✅ | electron-updater로 신규 버전 자동 감지/설치 |
+
+### 3.4 Worker Extension (Chrome)
 
 | 기능 | 상태 | 설명 |
 |------|------|------|
@@ -69,14 +87,14 @@
 | Activity Ping | ✅ | 10분 무활동 시 자동 "자리 비움" |
 | 알림 배지 | ✅ | 새 업무 수신 시 아이콘 배지 |
 
-### 3.4 데이터베이스 (Supabase)
+### 3.5 데이터베이스 (Supabase)
 
 | 테이블 | 용도 |
 |--------|------|
 | `clients` | 고객사(병원) 정보 |
 | `profiles` | 사용자 프로필 (role, client_id, display_name) |
 | `time_logs` | 근태 기록 (worker_id, status, created_at) |
-| `tasks` | 업무 (content, content_th, assignee_id, due_date, rating, status) |
+| `tasks` | 업무 (content, content_th, assignee_id, due_date, rating, source, status) |
 | `messages` | 업무별 채팅 (content_ko, content_th, is_whisper, sender_lang) |
 | `quick_replies` | 자동답변 템플릿 (title/body × ko/th, client_id) |
 | `task_presets` | 업무 프리셋 (title/content × ko/th, client_id) |
@@ -85,6 +103,24 @@
 - bbg_admin: 전체 CRUD
 - client: 자사 데이터만 조회, Whisper 메시지 CASE 표현식으로 필터링
 - worker: 본인 업무/채팅, 템플릿 읽기, time_logs 기록
+- messages: 발신자만 UPDATE 가능 (번역 결과 저장)
+- profiles: 같은 client_id 소속끼리 조회 가능 (그룹 채팅 발신자 이름)
+
+### 3.6 번역 패턴
+
+모든 채팅(Client Web, Desktop App, Extension)에서 동일한 패턴:
+
+1. 메시지를 원본 텍스트로 즉시 DB에 저장 (content_ko, content_th 모두 원본)
+2. 백그라운드에서 Gemini API로 번역 요청
+3. 번역 완료 시 해당 메시지의 번역 컬럼만 UPDATE
+4. Realtime 구독(`event: '*'`)으로 UPDATE 이벤트도 수신하여 UI 즉시 반영
+
+### 3.7 전체 톡방 (General Chat)
+
+- `messages.task_id`가 NOT NULL이므로, `content = '__GENERAL_CHAT__'`인 더미 task를 client_id별로 생성
+- API: `GET /api/tasks?general_chat=true&client_id=xxx` → 조회/자동 생성
+- 일반 업무 목록/캘린더에서 `.neq('content', '__GENERAL_CHAT__')` 필터로 숨김
+- Client Web + Desktop App 모두 지원
 
 ---
 
@@ -92,12 +128,11 @@
 
 Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 
-- **Primary:** emerald-600 (#059669)
-- **카드:** rounded-xl, shadow-sm, border-slate-100
-- **아이콘:** lucide-react (Star, MessageCircle, Send, X, Pencil, Trash2, Link, Loader2)
+- **카드:** rounded-xl, shadow-sm, border
+- **아이콘:** lucide-react
 - **배지:** rounded-full pill (purple=관리자, blue=병원, emerald=직원)
-- **테이블:** 호버 효과, 프로그레스 바, 색상 코딩
 - **로그인:** 그라데이션 배경 (slate-50 → emerald-50), 센터 카드 shadow-lg
+- **섹션 색상:** 각 섹션별 그라데이션 배경(`from-{color}-50/70 to-white`) + 좌측 컬러 보더(`border-l-4 border-l-{color}-400`)
 
 ---
 
@@ -106,12 +141,26 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | role | 접근 범위 |
 |------|-----------|
 | `bbg_admin` | 모든 기능 + God Mode + 프리셋 관리 + 계정 관리 + Whisper 전송 |
-| `client` | 자사 직원/업무/자동답변, 프리셋 사용(조회만), Whisper 볼 수 없음 |
-| `worker` | 본인 업무/채팅, 업무 제안, 템플릿 읽기, time_logs 기록 |
+| `client` | 자사 직원/업무/자동답변, 프리셋 사용(조회만), 전체 톡방 참여, Whisper 볼 수 없음 |
+| `worker` | 본인 업무/채팅, 업무 제안, 전체 톡방 참여, 템플릿 읽기, time_logs 기록 |
 
 ---
 
-## 6. 리스크 및 방어 로직
+## 6. API 엔드포인트
+
+| 경로 | 메서드 | 역할 |
+|------|--------|------|
+| `/api/tasks` | GET | 업무 목록 조회, 전체 톡방 조회/생성 (`?general_chat=true`) |
+| `/api/tasks` | POST | 업무 생성 (client, bbg_admin) |
+| `/api/tasks` | PATCH | 업무 수정 (상태 변경, 평가 등) |
+| `/api/tasks` | DELETE | 업무 삭제 + 연결 메시지 삭제 |
+| `/api/translate` | POST | 한↔태 양방향 번역 (Gemini API) |
+| `/api/ai-assist` | POST | AI 상담 어시스턴트 (의도 파악 + 추천 답변) |
+| `/api/admin/users` | POST/DELETE | 계정 생성/삭제 (bbg_admin, service_role) |
+
+---
+
+## 7. 리스크 및 방어 로직
 
 | 리스크 | 방어 |
 |--------|------|
@@ -119,10 +168,11 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | 근태 어뷰징 | Activity Ping (10분 무활동 → 자리비움), 향후 키보드/마우스 이벤트 감지 확장 가능 |
 | service_role 키 노출 | 서버사이드 API Route에서만 사용, 클라이언트 코드에 미노출 |
 | Whisper 정보 유출 | RLS CASE 표현식으로 client 역할에게 is_whisper=true 메시지 필터링 |
+| 번역 실패 | 즉시 전송 패턴으로 원본은 항상 표시, 번역은 백그라운드에서 재시도 |
 
 ---
 
-## 7. 향후 로드맵
+## 8. 향후 로드맵
 
 | 우선순위 | 항목 | 설명 |
 |----------|------|------|
@@ -135,4 +185,16 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 
 ---
 
-**문서 버전:** 2.1 · Gemini API 전환 반영
+## 9. 릴리즈 이력
+
+### Desktop App
+| 버전 | 내용 |
+|------|------|
+| v1.0.0 | 초기 릴리즈 (업무, 채팅, 번역) |
+| v1.1.0 | 마감일 날짜만 표시 (시간 제거) |
+| v1.2.0 | 전체 톡방 추가 |
+| v1.2.1 | 번역 수정 (즉시 전송 + 백그라운드 번역, Realtime UPDATE 수신) |
+
+---
+
+**문서 버전:** 3.0 · Desktop App + 전체 톡방 + 번역 패턴 + RLS 수정 반영

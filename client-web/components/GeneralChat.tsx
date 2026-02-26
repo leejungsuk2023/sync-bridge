@@ -65,7 +65,7 @@ export default function GeneralChat({ userId, clientId }: { userId: string; clie
     fetchMessages();
     const ch = supabase
       .channel('general_chat_' + chatTaskId)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `task_id=eq.${chatTaskId}` }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `task_id=eq.${chatTaskId}` }, () => {
         fetchMessages();
       })
       .subscribe();

@@ -284,7 +284,7 @@ export default function App() {
     if (!chatTaskId) return;
     const ch = supabase
       .channel('msg_' + chatTaskId)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `task_id=eq.${chatTaskId}` }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `task_id=eq.${chatTaskId}` }, () => {
         fetchMessages(chatTaskId);
       })
       .subscribe();
@@ -299,28 +299,29 @@ export default function App() {
     const original = msgInput.trim();
     setMsgInput('');
 
-    let contentKo = '';
-    try {
-      const res = await fetch(`${WEB_URL}/api/translate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: original, targetLang: 'ko' }),
-      });
-      if (res.ok) {
-        const d = await res.json();
-        contentKo = d.translated || '';
-      }
-    } catch { /* 번역 실패해도 메시지는 보냄 */ }
-
-    await supabase.from('messages').insert({
+    // 1. 메시지 즉시 전송 (번역 없이)
+    const { data: inserted } = await supabase.from('messages').insert({
       task_id: chatTaskId,
       sender_id: user.id,
       content: original,
       content_th: original,
-      content_ko: contentKo || original,
+      content_ko: original,
       sender_lang: 'th',
-    });
+    }).select('id').single();
     setMsgSending(false);
+
+    // 2. 백그라운드 번역 후 업데이트
+    if (inserted?.id) {
+      fetch(`${WEB_URL}/api/translate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: original, targetLang: 'ko' }),
+      }).then(res => res.ok ? res.json() : null).then(d => {
+        if (d?.translated) {
+          supabase.from('messages').update({ content_ko: d.translated }).eq('id', inserted.id);
+        }
+      }).catch(() => {});
+    }
   };
 
   // ── 전체 톡방 ──

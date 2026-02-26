@@ -39,7 +39,7 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
     fetchMessages();
     const ch = supabase
       .channel('chat_' + taskId)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `task_id=eq.${taskId}` }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `task_id=eq.${taskId}` }, () => {
         fetchMessages();
       })
       .subscribe();

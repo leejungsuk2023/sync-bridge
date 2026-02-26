@@ -117,6 +117,35 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(data);
 }
 
+// DELETE: 완료된 업무 삭제
+export async function DELETE(req: NextRequest) {
+  const profile = await verifyUser(req);
+  if (!profile) {
+    return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
+  }
+
+  if (!['client', 'bbg_admin'].includes(profile.role)) {
+    return NextResponse.json({ error: '삭제 권한이 없습니다.' }, { status: 403 });
+  }
+
+  const { searchParams } = new URL(req.url);
+  const taskId = searchParams.get('id');
+
+  if (!taskId) {
+    return NextResponse.json({ error: '업무 ID가 필요합니다.' }, { status: 400 });
+  }
+
+  // 연결된 messages 먼저 삭제
+  await getSupabaseAdmin().from('messages').delete().eq('task_id', taskId);
+
+  const { error } = await getSupabaseAdmin().from('tasks').delete().eq('id', taskId);
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  return NextResponse.json({ success: true });
+}
+
 // PATCH: 업무 수정 (평가 등)
 export async function PATCH(req: NextRequest) {
   const profile = await verifyUser(req);

@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Star, MessageCircle } from 'lucide-react';
+import { Star, MessageCircle, Trash2 } from 'lucide-react';
 import TaskChat from './TaskChat';
 
 export default function TaskList({ workers, clientId, userId }: { workers: any[]; clientId?: string; userId: string }) {
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [chatTaskId, setChatTaskId] = useState<string | null>(null);
+  const [showDone, setShowDone] = useState(false);
 
   useEffect(() => {
     const fetchTasks = async () => {
@@ -50,6 +51,19 @@ export default function TaskList({ workers, clientId, userId }: { workers: any[]
     setRatingTaskId(null);
     setRatingValue(null);
   };
+
+  const deleteTask = async (taskId: string) => {
+    if (!confirm('이 업무를 삭제하시겠습니까? 채팅 내역도 함께 삭제됩니다.')) return;
+    const session = (await supabase.auth.getSession()).data.session;
+    await fetch(`/api/tasks?id=${taskId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${session?.access_token}` },
+    });
+    setTasks(prev => prev.filter(t => t.id !== taskId));
+  };
+
+  const pendingTasks = tasks.filter(t => t.status !== 'done');
+  const doneTasks = tasks.filter(t => t.status === 'done');
 
   const Stars = ({ task }: { task: any }) => {
     if (task.status !== 'done') return null;
@@ -101,14 +115,25 @@ export default function TaskList({ workers, clientId, userId }: { workers: any[]
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
-        <h2 className="text-lg font-semibold text-slate-900 mb-6">업무 목록</h2>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-lg font-semibold text-slate-900">업무 목록</h2>
+          {doneTasks.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowDone(!showDone)}
+              className="text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors"
+            >
+              완료 {doneTasks.length}건 {showDone ? '숨기기' : '보기'}
+            </button>
+          )}
+        </div>
         {loading ? (
           <p className="text-center text-slate-500 py-12">불러오는 중...</p>
-        ) : tasks.length === 0 ? (
-          <p className="text-center text-slate-500 py-12">할당된 업무가 없습니다.</p>
+        ) : pendingTasks.length === 0 && !showDone ? (
+          <p className="text-center text-slate-500 py-12">진행 중인 업무가 없습니다.</p>
         ) : (
           <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
-            {tasks.map((task) => (
+            {[...pendingTasks, ...(showDone ? doneTasks : [])].map((task) => (
               <div key={task.id} className="border border-slate-200 rounded-lg p-4 space-y-3">
                 {/* Content + Status + Chat */}
                 <div className="flex items-start justify-between gap-3">
@@ -131,6 +156,15 @@ export default function TaskList({ workers, clientId, userId }: { workers: any[]
                       <MessageCircle className="w-3 h-3" />
                       채팅
                     </button>
+                    {task.status === 'done' && (
+                      <button
+                        type="button"
+                        onClick={() => deleteTask(task.id)}
+                        className="inline-flex items-center h-7 px-2 rounded-md text-xs text-red-500 border border-red-200 hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
                 </div>
 

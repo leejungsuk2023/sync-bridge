@@ -38,10 +38,50 @@ export async function GET(req: NextRequest) {
   const taskId = searchParams.get('id');
   const assigneeId = searchParams.get('assignee_id');
   const month = searchParams.get('month'); // format: 2026-03
+  const generalChat = searchParams.get('general_chat');
+
+  // 전체 톡방 조회/생성
+  if (generalChat === 'true') {
+    const gcClientId = clientId || profile.client_id;
+    if (!gcClientId) {
+      return NextResponse.json({ error: 'client_id가 필요합니다.' }, { status: 400 });
+    }
+
+    // 기존 전체 채팅방 task 조회
+    const { data: existing } = await getSupabaseAdmin()
+      .from('tasks')
+      .select('*')
+      .eq('client_id', gcClientId)
+      .eq('content', '__GENERAL_CHAT__')
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      return NextResponse.json({ task: existing[0] });
+    }
+
+    // 없으면 생성
+    const { data: created, error: createErr } = await getSupabaseAdmin()
+      .from('tasks')
+      .insert({
+        client_id: gcClientId,
+        assignee_id: profile.id,
+        content: '__GENERAL_CHAT__',
+        content_th: '__GENERAL_CHAT__',
+        status: 'pending',
+      })
+      .select()
+      .single();
+
+    if (createErr) {
+      return NextResponse.json({ error: createErr.message }, { status: 400 });
+    }
+    return NextResponse.json({ task: created });
+  }
 
   let query = getSupabaseAdmin()
     .from('tasks')
     .select('*')
+    .neq('content', '__GENERAL_CHAT__')
     .order('created_at', { ascending: false });
 
   // month 필터가 있으면 limit 제거 (캘린더용), 없으면 20개 제한

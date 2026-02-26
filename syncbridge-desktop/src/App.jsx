@@ -43,6 +43,9 @@ export default function App() {
   const [msgInput, setMsgInput] = useState('');
   const [msgSending, setMsgSending] = useState(false);
   const chatEndRef = useRef(null);
+  const [isGeneralChat, setIsGeneralChat] = useState(false);
+  const [generalChatTaskId, setGeneralChatTaskId] = useState(null);
+  const [chatProfiles, setChatProfiles] = useState({});
 
   // 업무 제안
   const [showProposeForm, setShowProposeForm] = useState(false);
@@ -320,6 +323,50 @@ export default function App() {
     setMsgSending(false);
   };
 
+  // ── 전체 톡방 ──
+  useEffect(() => {
+    if (!user) return;
+    const initGeneralChat = async () => {
+      try {
+        const { data: profile } = await supabase.from('profiles').select('client_id').eq('id', user.id).single();
+        if (!profile?.client_id) return;
+        const session = (await supabase.auth.getSession()).data.session;
+        const res = await fetch(`${WEB_URL}/api/tasks?general_chat=true&client_id=${profile.client_id}`, {
+          headers: { Authorization: `Bearer ${session?.access_token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.task?.id) setGeneralChatTaskId(data.task.id);
+        }
+      } catch {}
+    };
+    initGeneralChat();
+  }, [user]);
+
+  const openGeneralChat = () => {
+    if (!generalChatTaskId) return;
+    setIsGeneralChat(true);
+    setChatTaskId(generalChatTaskId);
+    fetchMessages(generalChatTaskId);
+  };
+
+  // 그룹채팅 프로필 로드
+  useEffect(() => {
+    if (!isGeneralChat || messages.length === 0) return;
+    const senderIds = [...new Set(messages.map(m => m.sender_id))];
+    const unknown = senderIds.filter(id => !chatProfiles[id]);
+    if (unknown.length === 0) return;
+    supabase.from('profiles').select('id, display_name, email').in('id', unknown).then(({ data }) => {
+      if (data) {
+        setChatProfiles(prev => {
+          const next = { ...prev };
+          data.forEach(p => { next[p.id] = p.display_name || p.email?.split('@')[0] || '?'; });
+          return next;
+        });
+      }
+    });
+  }, [messages, isGeneralChat]);
+
   // ── 번역 헬퍼 ──
   const handleTranslate = async () => {
     if (!thaiInput.trim()) return;
@@ -437,11 +484,13 @@ export default function App() {
     const chatTask = tasks.find((t) => t.id === chatTaskId);
     return (
       <div className="flex flex-col h-screen bg-slate-50">
-        <header className="shrink-0 flex items-center gap-2 px-4 py-3 border-b border-slate-200 bg-white">
-          <button type="button" onClick={() => { setChatTaskId(null); setActiveTab('chat'); }} className="text-sm text-slate-500 hover:text-slate-700">← ย้อนกลับ</button>
-          <span className="text-sm font-semibold text-slate-700 truncate flex-1">แชท (채팅)</span>
+        <header className={`shrink-0 flex items-center gap-2 px-4 py-3 border-b bg-white ${isGeneralChat ? 'border-indigo-200' : 'border-slate-200'}`}>
+          <button type="button" onClick={() => { setChatTaskId(null); setIsGeneralChat(false); setActiveTab('chat'); }} className="text-sm text-slate-500 hover:text-slate-700">← ย้อนกลับ</button>
+          <span className={`text-sm font-semibold truncate flex-1 ${isGeneralChat ? 'text-indigo-700' : 'text-slate-700'}`}>
+            {isGeneralChat ? '💬 ห้องแชททั่วไป (전체 톡방)' : 'แชท (채팅)'}
+          </span>
         </header>
-        {chatTask && (
+        {!isGeneralChat && chatTask && (
           <div className="shrink-0 px-4 py-2 bg-emerald-50 border-b border-emerald-100">
             <p className="text-xs text-emerald-700 font-medium">งาน: {chatTask.content_th || chatTask.content}</p>
           </div>
@@ -450,11 +499,19 @@ export default function App() {
           {messages.length === 0 && <p className="text-xs text-slate-400 text-center mt-8">ยังไม่มีข้อความ</p>}
           {messages.map((m) => {
             const isMine = m.sender_id === user.id;
+            const senderName = chatProfiles[m.sender_id] || '';
             return (
-              <div key={m.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[80%] rounded-lg px-3 py-2 ${isMine ? 'bg-emerald-500 text-white' : 'bg-white border border-slate-200 text-slate-800'}`}>
+              <div key={m.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
+                {isGeneralChat && !isMine && senderName && (
+                  <span className="text-[10px] font-medium text-indigo-600 mb-0.5 ml-1">{senderName}</span>
+                )}
+                <div className={`max-w-[80%] rounded-lg px-3 py-2 ${
+                  isMine
+                    ? (isGeneralChat ? 'bg-indigo-500 text-white' : 'bg-emerald-500 text-white')
+                    : 'bg-white border border-slate-200 text-slate-800'
+                }`}>
                   <p className="text-sm">{m.content_th || m.content}</p>
-                  <p className={`text-[10px] mt-1 ${isMine ? 'text-emerald-200' : 'text-slate-300'}`}>
+                  <p className={`text-[10px] mt-1 ${isMine ? (isGeneralChat ? 'text-indigo-200' : 'text-emerald-200') : 'text-slate-300'}`}>
                     {new Date(m.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
@@ -615,6 +672,18 @@ export default function App() {
 
         {activeTab === 'chat' && (
           <section className="px-4 py-4">
+            {/* 전체 톡방 버튼 */}
+            {generalChatTaskId && (
+              <button type="button" onClick={openGeneralChat}
+                className="w-full mb-4 p-3 rounded-lg border-2 border-indigo-300 bg-indigo-50 hover:bg-indigo-100 transition-colors flex items-center gap-3">
+                <span className="text-xl">💬</span>
+                <div className="text-left">
+                  <p className="text-sm font-semibold text-indigo-700">ห้องแชททั่วไป (전체 톡방)</p>
+                  <p className="text-xs text-indigo-500">แชทกับทุกคนในทีม</p>
+                </div>
+                <span className="ml-auto text-xs text-indigo-400 font-medium">เปิด →</span>
+              </button>
+            )}
             <p className="text-sm font-medium text-slate-700 mb-3">เลือกงานเพื่อแชท (채팅할 업무 선택)</p>
             {tasks.length === 0 ? (
               <p className="text-sm text-slate-500">ยังไม่มีงาน</p>

@@ -226,11 +226,15 @@ export default function GeneralChat({ userId, clientId }: { userId: string; clie
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: original, targetLang: 'th' }),
-      }).then(res => res.ok ? res.json() : null).then(d => {
+      }).then(res => {
+        if (!res.ok) { console.error('[GeneralChat] translate API error:', res.status); return null; }
+        return res.json();
+      }).then(d => {
         if (d?.translated) {
-          supabase.from('messages').update({ content_th: d.translated }).eq('id', inserted.id);
+          supabase.from('messages').update({ content_th: d.translated }).eq('id', inserted.id)
+            .then(({ error }) => { if (error) console.error('[GeneralChat] update error:', error.message); });
         }
-      }).catch(() => {});
+      }).catch(err => console.error('[GeneralChat] translate fetch error:', err));
     }
   };
 

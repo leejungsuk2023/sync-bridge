@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, proposeTask } from './lib/supabase';
-import { storage, sendMessage as platformSendMessage } from './lib/platform';
+import { storage, sendMessage as platformSendMessage, showNotification as platformNotify } from './lib/platform';
 
 const WEB_URL = import.meta.env.VITE_WEB_URL || 'http://localhost:3000';
 
@@ -43,9 +43,16 @@ export default function App() {
   const [msgInput, setMsgInput] = useState('');
   const [msgSending, setMsgSending] = useState(false);
   const chatEndRef = useRef(null);
+  const chatFileRef = useRef(null);
   const [isGeneralChat, setIsGeneralChat] = useState(false);
   const [generalChatTaskId, setGeneralChatTaskId] = useState(null);
   const [chatProfiles, setChatProfiles] = useState({});
+  const [fileUploading, setFileUploading] = useState(false);
+  const [previewImg, setPreviewImg] = useState(null);
+  const [allMembers, setAllMembers] = useState([]);
+  const [showMentions, setShowMentions] = useState(false);
+  const [mentionFilter, setMentionFilter] = useState('');
+  const chatInputRef = useRef(null);
 
   // 업무 제안
   const [showProposeForm, setShowProposeForm] = useState(false);
@@ -296,7 +303,9 @@ export default function App() {
   const sendChatMessage = async () => {
     if (!msgInput.trim() || !chatTaskId || !user) return;
     setMsgSending(true);
+    setShowMentions(false);
     const original = msgInput.trim();
+    const mentionedIds = parseMentions(original);
     setMsgInput('');
 
     // 1. 메시지 즉시 전송 (번역 없이)
@@ -307,6 +316,7 @@ export default function App() {
       content_th: original,
       content_ko: original,
       sender_lang: 'th',
+      mentions: mentionedIds,
     }).select('id').single();
     setMsgSending(false);
 
@@ -323,6 +333,141 @@ export default function App() {
       }).catch(() => {});
     }
   };
+
+  // ── 멘션 멤버 로드 ──
+  useEffect(() => {
+    if (!user) return;
+    const loadMembers = async () => {
+      const { data: profile } = await supabase.from('profiles').select('client_id').eq('id', user.id).single();
+      if (!profile?.client_id) return;
+      const { data } = await supabase.from('profiles').select('id, display_name, email').eq('client_id', profile.client_id);
+      if (data) setAllMembers(data.map(p => ({ id: p.id, display_name: p.display_name || p.email?.split('@')[0] || '?' })));
+    };
+    loadMembers();
+  }, [user]);
+
+  // ── @멘션 핸들러 ──
+  const handleMsgInputChange = (e) => {
+    const value = e.target.value;
+    setMsgInput(value);
+    const cursor = e.target.selectionStart || value.length;
+    const before = value.substring(0, cursor);
+    const match = before.match(/@([^\s]*)$/);
+    if (match) { setMentionFilter(match[1].toLowerCase()); setShowMentions(true); }
+    else { setShowMentions(false); }
+  };
+
+  const filteredMentions = allMembers
+    .filter(m => m.id !== user?.id)
+    .filter(m => m.display_name.toLowerCase().includes(mentionFilter));
+
+  const selectMention = (member) => {
+    const el = chatInputRef.current;
+    if (!el) return;
+    const cursor = el.selectionStart || msgInput.length;
+    const before = msgInput.substring(0, cursor);
+    const after = msgInput.substring(cursor);
+    const match = before.match(/@([^\s]*)$/);
+    if (!match) return;
+    const beforeAt = before.substring(0, match.index);
+    const newText = `${beforeAt}@${member.display_name} ${after}`;
+    const newCursor = beforeAt.length + member.display_name.length + 2;
+    setMsgInput(newText);
+    setShowMentions(false);
+    setTimeout(() => { el.focus(); el.setSelectionRange(newCursor, newCursor); }, 0);
+  };
+
+  const parseMentions = (text) => {
+    const ids = [];
+    const regex = /@(\S+)/g;
+    let m;
+    while ((m = regex.exec(text)) !== null) {
+      const member = allMembers.find(mb => mb.display_name === m[1]);
+      if (member) ids.push(member.id);
+    }
+    return [...new Set(ids)];
+  };
+
+  const renderMsgContent = (text) => {
+    if (!text) return null;
+    const parts = text.split(/(@\S+)/g);
+    return parts.map((part, i) =>
+      part.startsWith('@')
+        ? <span key={i} className="font-bold text-yellow-200">{part}</span>
+        : part
+    );
+  };
+
+  const renderMsgContentOther = (text) => {
+    if (!text) return null;
+    const parts = text.split(/(@\S+)/g);
+    return parts.map((part, i) =>
+      part.startsWith('@')
+        ? <span key={i} className="font-bold text-indigo-600">{part}</span>
+        : part
+    );
+  };
+
+  // ── 푸시 알림 (전역 메시지 구독) ──
+  useEffect(() => {
+    if (!user) return;
+    const ch = supabase
+      .channel('global_notifications')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+        const msg = payload.new;
+        if (!msg || msg.sender_id === user.id) return;
+        // 현재 보고 있는 채팅이면 알림 스킵 (단, 멘션이면 알림)
+        const isMentioned = msg.mentions?.includes?.(user.id);
+        if (msg.task_id === chatTaskId && document.hasFocus() && !isMentioned) return;
+        // 내 업무 또는 전체 톡방 메시지만
+        const myTaskIds = [generalChatTaskId, ...tasks.map(t => t.id)].filter(Boolean);
+        if (!myTaskIds.includes(msg.task_id)) return;
+        const senderName = chatProfiles[msg.sender_id] || allMembers.find(m => m.id === msg.sender_id)?.display_name || '';
+        const isGeneral = msg.task_id === generalChatTaskId;
+        const title = isMentioned
+          ? `🔔 ${senderName} กล่าวถึงคุณ`
+          : isGeneral ? '💬 ห้องแชททั่วไป' : '💬 ข้อความใหม่';
+        const body = `${senderName}: ${(msg.content_th || msg.content || '').substring(0, 80)}`;
+        platformNotify({ title, body });
+      })
+      .subscribe();
+    return () => ch.unsubscribe();
+  }, [user, chatTaskId, generalChatTaskId, tasks, chatProfiles, allMembers]);
+
+  // ── 파일 업로드 ──
+  const handleChatFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !chatTaskId || !user) return;
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('ไฟล์ต้องไม่เกิน 10MB');
+      return;
+    }
+    setFileUploading(true);
+    const ext = file.name.split('.').pop();
+    const path = `${chatTaskId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error } = await supabase.storage.from('chat-files').upload(path, file);
+    if (error) {
+      showToast('อัพโหลดไม่สำเร็จ');
+      setFileUploading(false);
+      return;
+    }
+    const { data: urlData } = supabase.storage.from('chat-files').getPublicUrl(path);
+    await supabase.from('messages').insert({
+      task_id: chatTaskId,
+      sender_id: user.id,
+      content: `📎 ${file.name}`,
+      content_th: `📎 ${file.name}`,
+      content_ko: `📎 ${file.name}`,
+      sender_lang: 'th',
+      file_url: urlData.publicUrl,
+      file_name: file.name,
+      file_type: file.type,
+    });
+    setFileUploading(false);
+    if (chatFileRef.current) chatFileRef.current.value = '';
+  };
+
+  const isImgType = (t) => t?.startsWith('image/');
 
   // ── 전체 톡방 ──
   useEffect(() => {
@@ -511,7 +656,21 @@ export default function App() {
                     ? (isGeneralChat ? 'bg-indigo-500 text-white' : 'bg-emerald-500 text-white')
                     : 'bg-white border border-slate-200 text-slate-800'
                 }`}>
-                  <p className="text-sm">{m.content_th || m.content}</p>
+                  {m.file_url ? (
+                    isImgType(m.file_type) ? (
+                      <div>
+                        <img src={m.file_url} alt={m.file_name} className="max-w-full max-h-40 rounded cursor-pointer" onClick={() => setPreviewImg(m.file_url)} />
+                        <p className="text-xs mt-1 opacity-70">{m.file_name}</p>
+                      </div>
+                    ) : (
+                      <a href={m.file_url} target="_blank" rel="noopener noreferrer"
+                        className={`flex items-center gap-1.5 text-sm underline ${isMine ? 'text-white' : 'text-blue-600'}`}>
+                        📄 {m.file_name}
+                      </a>
+                    )
+                  ) : (
+                    <p className="text-sm">{isMine ? renderMsgContent(m.content_th || m.content) : renderMsgContentOther(m.content_th || m.content)}</p>
+                  )}
                   <p className={`text-[10px] mt-1 ${isMine ? (isGeneralChat ? 'text-indigo-200' : 'text-emerald-200') : 'text-slate-300'}`}>
                     {new Date(m.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}
                   </p>
@@ -522,18 +681,51 @@ export default function App() {
           <div ref={chatEndRef} />
         </div>
         <div className="shrink-0 px-4 py-3 border-t border-slate-200 bg-white flex gap-2">
-          <input
-            value={msgInput}
-            onChange={(e) => setMsgInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), sendChatMessage())}
-            placeholder="พิมพ์ข้อความภาษาไทย..."
-            className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400 outline-none"
-          />
+          <input ref={chatFileRef} type="file" className="hidden" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip" onChange={handleChatFile} />
+          <button type="button" onClick={() => chatFileRef.current?.click()} disabled={fileUploading}
+            className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:text-emerald-500 hover:border-emerald-300 disabled:opacity-50">
+            {fileUploading ? <span className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" /> : '📎'}
+          </button>
+          <div className="relative flex-1">
+            {showMentions && filteredMentions.length > 0 && (
+              <div className="absolute bottom-full mb-1 left-0 right-0 bg-white border border-emerald-200 rounded-lg shadow-lg max-h-36 overflow-y-auto z-20">
+                {filteredMentions.slice(0, 5).map((m) => (
+                  <button key={m.id} type="button"
+                    onMouseDown={(e) => { e.preventDefault(); selectMention(m); }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-emerald-50 flex items-center gap-2">
+                    <span className="font-medium text-slate-700">{m.display_name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <input
+              ref={chatInputRef}
+              value={msgInput}
+              onChange={handleMsgInputChange}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') { setShowMentions(false); return; }
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
+              }}
+              onBlur={() => setTimeout(() => setShowMentions(false), 200)}
+              placeholder="พิมพ์ข้อความ... (@กล่าวถึง)"
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400 outline-none"
+            />
+          </div>
           <button type="button" onClick={sendChatMessage} disabled={msgSending || !msgInput.trim()}
             className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-medium hover:bg-emerald-600 disabled:opacity-50">
             {msgSending ? '...' : 'ส่ง'}
           </button>
         </div>
+        {/* Image Preview */}
+        {previewImg && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setPreviewImg(null)}>
+            <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+              <button type="button" onClick={() => setPreviewImg(null)}
+                className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-white shadow-lg flex items-center justify-center text-slate-600 hover:text-slate-900 z-10">✕</button>
+              <img src={previewImg} alt="" className="max-w-full max-h-[85vh] rounded-lg shadow-2xl" />
+            </div>
+          </div>
+        )}
         {toast && <div className="fixed bottom-16 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium shadow-lg toast-in">{toast}</div>}
       </div>
     );

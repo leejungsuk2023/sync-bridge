@@ -6,4 +6,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   storageRemove: (keys) => ipcRenderer.invoke('storage:remove', keys),
   sendMessage: (msg) => ipcRenderer.invoke('ipc:message', msg),
   getVersion: () => ipcRenderer.invoke('app:version'),
+  showNotification: (data) => ipcRenderer.invoke('show-notification', data),
 });

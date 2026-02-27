@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, powerMonitor } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, powerMonitor, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const Store = require('electron-store');
@@ -65,6 +65,19 @@ ipcMain.handle('ipc:message', (_event, msg) => {
 });
 
 ipcMain.handle('app:version', () => app.getVersion());
+
+ipcMain.handle('show-notification', (_event, { title, body }) => {
+  if (Notification.isSupported()) {
+    const notif = new Notification({ title, body });
+    notif.on('click', () => {
+      if (mainWindow) {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    });
+    notif.show();
+  }
+});
 
 // ── Idle Detection (replaces content.js activity + background.js idle timer) ──
 const IDLE_THRESHOLD_SECONDS = 600; // 10 minutes

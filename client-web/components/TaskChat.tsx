@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { X, Send } from 'lucide-react';
+import { X, Send, Paperclip, FileText, Download } from 'lucide-react';
 
 export default function TaskChat({ taskId, userId, onClose }: { taskId: string; userId: string; onClose: () => void }) {
   const [messages, setMessages] = useState<any[]>([]);
@@ -10,7 +10,14 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
   const [sending, setSending] = useState(false);
   const [task, setTask] = useState<any>(null);
   const [profiles, setProfiles] = useState<Record<string, string>>({});
+  const [uploading, setUploading] = useState(false);
+  const [previewFile, setPreviewFile] = useState<{ name: string; url: string; type: string } | null>(null);
+  const [chatMembers, setChatMembers] = useState<{ id: string; display_name: string }[]>([]);
+  const [showMentions, setShowMentions] = useState(false);
+  const [mentionFilter, setMentionFilter] = useState('');
   const messagesRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const fetchTask = async () => {
@@ -26,6 +33,17 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
     };
     fetchTask();
   }, [taskId]);
+
+  // 멘션용 멤버 로드
+  useEffect(() => {
+    const loadMembers = async () => {
+      const { data: profile } = await supabase.from('profiles').select('client_id').eq('id', userId).single();
+      if (!profile?.client_id) return;
+      const { data } = await supabase.from('profiles').select('id, display_name, email').eq('client_id', profile.client_id);
+      if (data) setChatMembers(data.map(p => ({ id: p.id, display_name: p.display_name || p.email?.split('@')[0] || '?' })));
+    };
+    loadMembers();
+  }, [userId]);
 
   const fetchMessages = async () => {
     const { data } = await supabase
@@ -70,10 +88,64 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
     }
   }, [messages]);
 
+  // @멘션
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInput(value);
+    const cursor = e.target.selectionStart || value.length;
+    const before = value.substring(0, cursor);
+    const match = before.match(/@([^\s]*)$/);
+    if (match) { setMentionFilter(match[1].toLowerCase()); setShowMentions(true); }
+    else { setShowMentions(false); }
+  };
+
+  const filteredMentions = chatMembers
+    .filter(m => m.id !== userId)
+    .filter(m => m.display_name.toLowerCase().includes(mentionFilter));
+
+  const selectMention = (member: { id: string; display_name: string }) => {
+    const el = inputRef.current;
+    if (!el) return;
+    const cursor = el.selectionStart || input.length;
+    const before = input.substring(0, cursor);
+    const after = input.substring(cursor);
+    const match = before.match(/@([^\s]*)$/);
+    if (!match) return;
+    const beforeAt = before.substring(0, match.index);
+    const newText = `${beforeAt}@${member.display_name} ${after}`;
+    const newCursor = beforeAt.length + member.display_name.length + 2;
+    setInput(newText);
+    setShowMentions(false);
+    setTimeout(() => { el.focus(); el.setSelectionRange(newCursor, newCursor); }, 0);
+  };
+
+  const parseMentions = (text: string): string[] => {
+    const ids: string[] = [];
+    const regex = /@(\S+)/g;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(text)) !== null) {
+      const member = chatMembers.find(mb => mb.display_name === match![1]);
+      if (member) ids.push(member.id);
+    }
+    return [...new Set(ids)];
+  };
+
+  const renderContent = (text: string, isMine: boolean) => {
+    if (!text) return null;
+    const parts = text.split(/(@\S+)/g);
+    return parts.map((part, i) =>
+      part.startsWith('@')
+        ? <span key={i} className={`font-bold ${isMine ? 'text-yellow-200' : 'text-emerald-600'}`}>{part}</span>
+        : <span key={i}>{part}</span>
+    );
+  };
+
   const send = async () => {
     if (!input.trim()) return;
     setSending(true);
+    setShowMentions(false);
     const original = input.trim();
+    const mentionedIds = parseMentions(original);
     setInput('');
 
     // 1. 메시지 즉시 전송 (번역 없이)
@@ -84,6 +156,7 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
       content_ko: original,
       content_th: original,
       sender_lang: 'ko',
+      mentions: mentionedIds,
     }).select('id').single();
     setSending(false);
 
@@ -100,6 +173,42 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
       }).catch(() => {});
     }
   };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      alert('파일 크기는 10MB 이하만 가능합니다.');
+      return;
+    }
+    setUploading(true);
+    const ext = file.name.split('.').pop();
+    const path = `${taskId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error } = await supabase.storage.from('chat-files').upload(path, file);
+    if (error) {
+      alert('파일 업로드 실패: ' + error.message);
+      setUploading(false);
+      return;
+    }
+    const { data: urlData } = supabase.storage.from('chat-files').getPublicUrl(path);
+    const fileUrl = urlData.publicUrl;
+
+    await supabase.from('messages').insert({
+      task_id: taskId,
+      sender_id: userId,
+      content: `📎 ${file.name}`,
+      content_ko: `📎 ${file.name}`,
+      content_th: `📎 ${file.name}`,
+      sender_lang: 'ko',
+      file_url: fileUrl,
+      file_name: file.name,
+      file_type: file.type,
+    });
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const isImageType = (type: string) => type?.startsWith('image/');
 
   return (
     <div className="bg-white rounded-lg border border-slate-300 overflow-hidden flex flex-col" style={{ height: '480px' }}>
@@ -132,7 +241,28 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
               <div className={`max-w-[75%] rounded-lg px-4 py-2.5 ${
                 isMine ? 'bg-emerald-600 text-white' : 'bg-white border border-slate-200 text-slate-900'
               }`}>
-                <p className="text-sm">{m.content_ko || m.content}</p>
+                {m.file_url ? (
+                  isImageType(m.file_type) ? (
+                    <div>
+                      <img
+                        src={m.file_url}
+                        alt={m.file_name}
+                        className="max-w-full max-h-48 rounded cursor-pointer"
+                        onClick={() => setPreviewFile({ name: m.file_name, url: m.file_url, type: m.file_type })}
+                      />
+                      <p className="text-xs mt-1 opacity-70">{m.file_name}</p>
+                    </div>
+                  ) : (
+                    <a href={m.file_url} target="_blank" rel="noopener noreferrer"
+                      className={`flex items-center gap-2 ${isMine ? 'text-white hover:text-emerald-200' : 'text-emerald-600 hover:text-emerald-800'}`}>
+                      <FileText className="w-4 h-4 shrink-0" />
+                      <span className="text-sm underline truncate">{m.file_name}</span>
+                      <Download className="w-3.5 h-3.5 shrink-0" />
+                    </a>
+                  )
+                ) : (
+                  <p className="text-sm">{renderContent(m.content_ko || m.content, isMine)}</p>
+                )}
               </div>
               <span className={`text-[10px] mt-1 ${isMine ? 'text-emerald-700' : 'text-slate-500'}`}>
                 {new Date(m.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
@@ -142,15 +272,67 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
         })}
       </div>
 
+      {/* Image Preview Modal */}
+      {previewFile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setPreviewFile(null)}>
+          <div className="relative max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+            <button type="button" onClick={() => setPreviewFile(null)}
+              className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-white shadow-lg flex items-center justify-center text-slate-600 hover:text-slate-900 z-10">
+              <X className="w-4 h-4" />
+            </button>
+            <img src={previewFile.url} alt={previewFile.name} className="max-w-full max-h-[85vh] rounded-lg shadow-2xl" />
+            <p className="text-center text-white text-sm mt-2">{previewFile.name}</p>
+          </div>
+        </div>
+      )}
+
       {/* Input */}
       <div className="shrink-0 border-t border-slate-200 p-4 bg-white flex gap-2">
         <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && (e.preventDefault(), send())}
-          placeholder="한국어로 메시지 입력..."
-          className="flex-1 h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-shadow"
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip"
+          onChange={handleFileSelect}
         />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          className="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-slate-300 text-slate-500 hover:text-emerald-600 hover:border-emerald-300 disabled:opacity-50 transition-colors"
+          title="파일 첨부"
+        >
+          {uploading ? (
+            <span className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <Paperclip className="w-4 h-4" />
+          )}
+        </button>
+        <div className="relative flex-1">
+          {showMentions && filteredMentions.length > 0 && (
+            <div className="absolute bottom-full mb-1 left-0 right-0 bg-white border border-emerald-200 rounded-lg shadow-lg max-h-36 overflow-y-auto z-20">
+              {filteredMentions.slice(0, 5).map((m) => (
+                <button key={m.id} type="button"
+                  onMouseDown={(e) => { e.preventDefault(); selectMention(m); }}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-emerald-50 flex items-center gap-2 transition-colors">
+                  <span className="font-medium text-slate-700">{m.display_name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <input
+            ref={inputRef}
+            value={input}
+            onChange={handleInputChange}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') { setShowMentions(false); return; }
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); }
+            }}
+            onBlur={() => setTimeout(() => setShowMentions(false), 200)}
+            placeholder="메시지 입력... (@로 멘션)"
+            className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-shadow"
+          />
+        </div>
         <button
           type="button"
           onClick={send}

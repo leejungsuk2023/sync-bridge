@@ -37,3 +37,9 @@ export function sendMessage(msg) {
   }
   return chrome.runtime?.sendMessage?.(msg);
 }
+
+export function showNotification({ title, body }) {
+  if (isElectron) {
+    return window.electronAPI.showNotification({ title, body });
+  }
+}

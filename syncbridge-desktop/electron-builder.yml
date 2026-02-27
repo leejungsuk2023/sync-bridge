@@ -27,8 +27,12 @@ win:
   icon: public/icons/icon512.png
 nsis:
   oneClick: true
+  perMachine: false
   allowToChangeInstallationDirectory: false
   createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: SyncBridge
+  deleteAppDataOnUninstall: true
   runAfterFinish: true
 mac:
   target:

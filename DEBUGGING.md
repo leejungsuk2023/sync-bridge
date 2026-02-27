@@ -1,0 +1,206 @@
+# SyncBridge 디버깅 가이드
+
+이 문서는 SyncBridge 시스템의 주요 이슈 트러블슈팅을 위한 가이드입니다.
+
+---
+
+## 1. 전체 톡방 (General Chat) 안 보이는 문제
+
+### 증상
+
+Desktop App의 "채팅" 탭에서 전체 톡방 버튼이 렌더링되지 않음.
+
+### 원인 분석 흐름
+
+`App.jsx`의 `initGeneralChat`이 아래 순서로 실행됩니다:
+
+```
+1. profiles.client_id 조회
+2. client_id 유효성 체크 → null이면 중단
+3. 세션 토큰 확인
+4. WEB_URL/api/tasks?general_chat=true 호출
+5. 응답에서 task.id 추출 → generalChatTaskId 설정
+6. generalChatTaskId가 truthy일 때만 버튼 렌더링
+```
+
+### 체크리스트 (가능성 높은 순서)
+
+| 순위 | 원인 | 확인 방법 |
+|------|------|-----------|
+| 1 | `profiles.client_id`가 null | Supabase Dashboard → `profiles` 테이블에서 해당 워커의 `client_id` 확인 |
+| 2 | CORS 차단 | Desktop DevTools (`Cmd+Opt+I`) → Network 탭에서 `/api/tasks` 요청 확인 |
+| 3 | `VITE_WEB_URL` 불일치 | `syncbridge-desktop/.env`의 `VITE_WEB_URL`이 실제 배포된 URL과 일치하는지 |
+| 4 | Vercel 환경 변수 미설정 | Vercel Dashboard → Settings → Environment Variables에서 `SUPABASE_SERVICE_ROLE_KEY` 확인 |
+| 5 | 세션 토큰 만료 | 재로그인 후 재시도 |
+
+### 콘솔 로그 확인
+
+Desktop DevTools 콘솔에서 `[GeneralChat]` 프리픽스를 검색:
+
+```
+[GeneralChat] client_id 없음           → profiles.client_id 미설정 (가장 흔함)
+[GeneralChat] 세션 토큰 없음           → 재로그인 필요
+[GeneralChat] API 호출: https://...    → 정상 진행, URL 확인
+[GeneralChat] API 에러: 401 ...        → 토큰 만료 또는 잘못된 토큰
+[GeneralChat] API 에러: 400 ...        → client_id 관련 문제
+[GeneralChat] API 에러: 500 ...        → Vercel 서버 에러 (환경 변수 확인)
+[GeneralChat] 초기화 실패: TypeError   → CORS 또는 네트워크 에러
+[GeneralChat] taskId 설정 완료: xxx    → 성공
+```
+
+### 해결 방법
+
+**`profiles.client_id`가 null인 경우:**
+
+```sql
+-- Supabase SQL Editor에서 실행
+UPDATE profiles SET client_id = '해당-병원-uuid' WHERE id = '워커-uuid';
+```
+
+**CORS 에러인 경우:**
+
+`client-web/app/api/tasks/route.ts`에 CORS 헤더가 설정되어 있는지 확인.
+Vercel에 재배포: `cd client-web && vercel --prod`
+
+---
+
+## 2. 워커 자동 프로필 생성 시 client_id 누락
+
+### 원인
+
+`App.jsx`의 `ensureProfile`에서 신규 워커 프로필 생성 시 `client_id`를 포함하지 않음:
+
+```javascript
+await supabase.from('profiles').insert({
+  id: user.id, role: 'worker', email: user.email,
+  display_name: user.email.split('@')[0],
+  // client_id 없음!
+});
+```
+
+### 영향
+
+- 전체 톡방 접근 불가
+- 업무 할당 시 병원 필터 작동 안 함
+
+### 현재 해결 방법
+
+관리자(bbg_admin)가 UserManager에서 워커 생성 시 병원을 지정하거나, SQL로 직접 할당.
+
+---
+
+## 3. 번역이 안 되는 경우
+
+### 체크리스트
+
+| 확인 항목 | 방법 |
+|-----------|------|
+| `GEMINI_API_KEY` 설정 | Vercel Dashboard → Environment Variables |
+| API 응답 확인 | DevTools Network → `/api/translate` 요청의 응답 코드 |
+| 502 에러 | Gemini API 할당량 초과 또는 키 무효 |
+| CORS 에러 | Desktop/Extension에서 Vercel API 호출 차단 |
+
+### 번역 흐름
+
+```
+메시지 입력 → 즉시 DB 저장 (원본) → /api/translate 호출 →
+번역 결과로 messages UPDATE → Realtime 구독으로 UI 반영
+```
+
+번역 실패해도 원본 메시지는 항상 표시됨 (즉시 전송 패턴).
+
+---
+
+## 4. Desktop App DevTools 열기
+
+- **macOS:** `Cmd + Option + I`
+- **Windows:** `Ctrl + Shift + I`
+- 또는 `electron/main.js`에서 `mainWindow.webContents.openDevTools()` 추가
+
+---
+
+## 5. 환경 변수 체크리스트
+
+### Client Web (Vercel)
+
+| 변수 | 필수 | 용도 |
+|------|------|------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Y | Supabase 프로젝트 URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Y | Supabase anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Y | 서버사이드 API (tasks, users) |
+| `GEMINI_API_KEY` | Y | 번역 + AI 어시스트 |
+
+### Desktop App
+
+| 변수 | 필수 | 용도 |
+|------|------|------|
+| `VITE_SUPABASE_URL` | Y | Supabase 프로젝트 URL |
+| `VITE_SUPABASE_ANON_KEY` | Y | Supabase anon key |
+| `VITE_WEB_URL` | Y | Client Web 배포 URL (번역 API + 전체 톡방) |
+
+### Extension
+
+| 변수 | 필수 | 용도 |
+|------|------|------|
+| `VITE_SUPABASE_URL` | Y | Supabase 프로젝트 URL |
+| `VITE_SUPABASE_ANON_KEY` | Y | Supabase anon key |
+| `VITE_WEB_URL` | Y | Client Web URL (번역 API) |
+
+---
+
+## 6. CORS 관련 문제
+
+Desktop App(Electron)과 Extension은 Vercel의 API를 cross-origin으로 호출합니다.
+
+### 적용된 API Route
+
+- `/api/tasks` — 업무 CRUD + 전체 톡방
+- `/api/translate` — 번역
+
+### CORS 헤더 구성
+
+```
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS
+Access-Control-Allow-Headers: Content-Type, Authorization
+```
+
+각 API Route에 `OPTIONS` preflight 핸들러와 `withCors()` 래퍼가 적용되어 있음.
+
+### CORS 에러 발생 시
+
+1. Vercel에 최신 코드 배포 확인
+2. API Route 파일에 `OPTIONS` export와 `withCors()` 적용 확인
+3. DevTools Network 탭에서 preflight (`OPTIONS`) 요청 상태 확인
+
+---
+
+## 7. Supabase RLS 관련 문제
+
+### profiles 테이블 순환 참조
+
+`profiles` 테이블의 RLS 정책이 자기 자신을 참조하면 무한 루프 발생.
+`fix_rls_policies.sql`로 해결됨.
+
+### messages UPDATE 권한
+
+발신자만 메시지를 UPDATE할 수 있어야 함 (번역 결과 저장).
+`fix_rls_policies.sql`에 포함.
+
+---
+
+## 8. 공통 디버깅 패턴
+
+### 콘솔 로그 프리픽스
+
+| 프리픽스 | 위치 |
+|----------|------|
+| `[GeneralChat]` | Desktop App — 전체 톡방 초기화 |
+| `[Propose]` | Desktop App — 업무 제안 번역 |
+
+### Supabase Dashboard 활용
+
+1. **Table Editor** → `profiles`, `tasks`, `messages` 테이블 직접 확인
+2. **Logs** → API 호출 로그 확인
+3. **Auth** → 사용자 세션 상태 확인
+4. **Realtime Inspector** → 구독 채널 상태 확인

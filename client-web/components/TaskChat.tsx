@@ -9,6 +9,7 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [task, setTask] = useState<any>(null);
+  const [profiles, setProfiles] = useState<Record<string, string>>({});
   const messagesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -34,6 +35,23 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
       .order('created_at', { ascending: true });
     setMessages(data || []);
   };
+
+  // Load sender profiles
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const senderIds = [...new Set(messages.map(m => m.sender_id))];
+    const unknown = senderIds.filter(id => !profiles[id]);
+    if (unknown.length === 0) return;
+    supabase.from('profiles').select('id, display_name, email').in('id', unknown).then(({ data }) => {
+      if (data) {
+        setProfiles(prev => {
+          const next = { ...prev };
+          data.forEach((p: any) => { next[p.id] = p.display_name || p.email?.split('@')[0] || '?'; });
+          return next;
+        });
+      }
+    });
+  }, [messages]);
 
   useEffect(() => {
     fetchMessages();
@@ -105,8 +123,12 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
         )}
         {messages.map((m) => {
           const isMine = m.sender_id === userId;
+          const senderName = profiles[m.sender_id] || '';
           return (
             <div key={m.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
+              {!isMine && senderName && (
+                <span className="text-[10px] font-medium text-slate-500 mb-0.5 ml-1">{senderName}</span>
+              )}
               <div className={`max-w-[75%] rounded-lg px-4 py-2.5 ${
                 isMine ? 'bg-emerald-600 text-white' : 'bg-white border border-slate-200 text-slate-900'
               }`}>

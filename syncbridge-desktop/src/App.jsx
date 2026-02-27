@@ -351,9 +351,9 @@ export default function App() {
     fetchMessages(generalChatTaskId);
   };
 
-  // 그룹채팅 프로필 로드
+  // 채팅 프로필 로드 (전체 톡방 + 업무별 채팅 모두)
   useEffect(() => {
-    if (!isGeneralChat || messages.length === 0) return;
+    if (!chatTaskId || messages.length === 0) return;
     const senderIds = [...new Set(messages.map(m => m.sender_id))];
     const unknown = senderIds.filter(id => !chatProfiles[id]);
     if (unknown.length === 0) return;
@@ -366,7 +366,7 @@ export default function App() {
         });
       }
     });
-  }, [messages, isGeneralChat]);
+  }, [messages, chatTaskId]);
 
   // ── 번역 헬퍼 ──
   const handleTranslate = async () => {
@@ -503,8 +503,8 @@ export default function App() {
             const senderName = chatProfiles[m.sender_id] || '';
             return (
               <div key={m.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
-                {isGeneralChat && !isMine && senderName && (
-                  <span className="text-[10px] font-medium text-indigo-600 mb-0.5 ml-1">{senderName}</span>
+                {!isMine && senderName && (
+                  <span className={`text-[10px] font-medium mb-0.5 ml-1 ${isGeneralChat ? 'text-indigo-600' : 'text-slate-500'}`}>{senderName}</span>
                 )}
                 <div className={`max-w-[80%] rounded-lg px-3 py-2 ${
                   isMine

@@ -1,6 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+// CORS: Desktop App (Electron) 및 Extension에서의 cross-origin 요청 허용
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+}
+
+function withCors(response: NextResponse) {
+  Object.entries(CORS_HEADERS).forEach(([key, value]) => {
+    response.headers.set(key, value);
+  });
+  return response;
+}
+
 function getSupabaseAdmin() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -30,7 +48,7 @@ async function verifyUser(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const profile = await verifyUser(req);
   if (!profile) {
-    return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
+    return withCors(NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 }));
   }
 
   const { searchParams } = new URL(req.url);
@@ -44,7 +62,7 @@ export async function GET(req: NextRequest) {
   if (generalChat === 'true') {
     const gcClientId = clientId || profile.client_id;
     if (!gcClientId) {
-      return NextResponse.json({ error: 'client_id가 필요합니다.' }, { status: 400 });
+      return withCors(NextResponse.json({ error: 'client_id가 필요합니다.' }, { status: 400 }));
     }
 
     // 기존 전체 채팅방 task 조회
@@ -56,7 +74,7 @@ export async function GET(req: NextRequest) {
       .limit(1);
 
     if (existing && existing.length > 0) {
-      return NextResponse.json({ task: existing[0] });
+      return withCors(NextResponse.json({ task: existing[0] }));
     }
 
     // 없으면 생성
@@ -73,9 +91,9 @@ export async function GET(req: NextRequest) {
       .single();
 
     if (createErr) {
-      return NextResponse.json({ error: createErr.message }, { status: 400 });
+      return withCors(NextResponse.json({ error: createErr.message }, { status: 400 }));
     }
-    return NextResponse.json({ task: created });
+    return withCors(NextResponse.json({ task: created }));
   }
 
   let query = getSupabaseAdmin()
@@ -110,7 +128,7 @@ export async function GET(req: NextRequest) {
 
   const { data: tasks, error } = await query;
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return withCors(NextResponse.json({ error: error.message }, { status: 400 }));
   }
 
   // profiles join 수동 처리
@@ -131,25 +149,25 @@ export async function GET(req: NextRequest) {
     profiles: profilesMap[t.assignee_id] || null,
   }));
 
-  return NextResponse.json({ tasks: tasksWithProfiles });
+  return withCors(NextResponse.json({ tasks: tasksWithProfiles }));
 }
 
 // POST: 업무 생성
 export async function POST(req: NextRequest) {
   const profile = await verifyUser(req);
   if (!profile) {
-    return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
+    return withCors(NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 }));
   }
 
   if (!['client', 'bbg_admin'].includes(profile.role)) {
-    return NextResponse.json({ error: '업무 할당 권한이 없습니다.' }, { status: 403 });
+    return withCors(NextResponse.json({ error: '업무 할당 권한이 없습니다.' }, { status: 403 }));
   }
 
   const body = await req.json();
   const { client_id, assignee_id, content, content_th, status, due_date } = body;
 
   if (!assignee_id || !content) {
-    return NextResponse.json({ error: '담당자와 업무 내용은 필수입니다.' }, { status: 400 });
+    return withCors(NextResponse.json({ error: '담당자와 업무 내용은 필수입니다.' }, { status: 400 }));
   }
 
   const insertData: any = {
@@ -168,28 +186,28 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return withCors(NextResponse.json({ error: error.message }, { status: 400 }));
   }
 
-  return NextResponse.json(data);
+  return withCors(NextResponse.json(data));
 }
 
 // DELETE: 완료된 업무 삭제
 export async function DELETE(req: NextRequest) {
   const profile = await verifyUser(req);
   if (!profile) {
-    return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
+    return withCors(NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 }));
   }
 
   if (!['client', 'bbg_admin'].includes(profile.role)) {
-    return NextResponse.json({ error: '삭제 권한이 없습니다.' }, { status: 403 });
+    return withCors(NextResponse.json({ error: '삭제 권한이 없습니다.' }, { status: 403 }));
   }
 
   const { searchParams } = new URL(req.url);
   const taskId = searchParams.get('id');
 
   if (!taskId) {
-    return NextResponse.json({ error: '업무 ID가 필요합니다.' }, { status: 400 });
+    return withCors(NextResponse.json({ error: '업무 ID가 필요합니다.' }, { status: 400 }));
   }
 
   // 연결된 messages 먼저 삭제
@@ -197,24 +215,24 @@ export async function DELETE(req: NextRequest) {
 
   const { error } = await getSupabaseAdmin().from('tasks').delete().eq('id', taskId);
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return withCors(NextResponse.json({ error: error.message }, { status: 400 }));
   }
 
-  return NextResponse.json({ success: true });
+  return withCors(NextResponse.json({ success: true }));
 }
 
 // PATCH: 업무 수정 (평가 등)
 export async function PATCH(req: NextRequest) {
   const profile = await verifyUser(req);
   if (!profile) {
-    return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
+    return withCors(NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 }));
   }
 
   const body = await req.json();
   const { id, ...updates } = body;
 
   if (!id) {
-    return NextResponse.json({ error: '업무 ID가 필요합니다.' }, { status: 400 });
+    return withCors(NextResponse.json({ error: '업무 ID가 필요합니다.' }, { status: 400 }));
   }
 
   const { data, error } = await getSupabaseAdmin()
@@ -225,8 +243,8 @@ export async function PATCH(req: NextRequest) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return withCors(NextResponse.json({ error: error.message }, { status: 400 }));
   }
 
-  return NextResponse.json(data);
+  return withCors(NextResponse.json(data));
 }

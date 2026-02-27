@@ -121,6 +121,9 @@
 - API: `GET /api/tasks?general_chat=true&client_id=xxx` → 조회/자동 생성
 - 일반 업무 목록/캘린더에서 `.neq('content', '__GENERAL_CHAT__')` 필터로 숨김
 - Client Web + Desktop App 모두 지원
+- **필수 조건:** 워커의 `profiles.client_id`가 설정되어 있어야 함
+- **에러 피드백:** `client_id` 미설정 시 Desktop UI에 안내 메시지 표시, 콘솔에 `[GeneralChat]` 로그
+- **CORS:** Desktop App(Electron)에서 Vercel API 호출을 위해 cross-origin 허용
 
 ---
 
@@ -169,6 +172,8 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | service_role 키 노출 | 서버사이드 API Route에서만 사용, 클라이언트 코드에 미노출 |
 | Whisper 정보 유출 | RLS CASE 표현식으로 client 역할에게 is_whisper=true 메시지 필터링 |
 | 번역 실패 | 즉시 전송 패턴으로 원본은 항상 표시, 번역은 백그라운드에서 재시도 |
+| CORS 차단 | API Route에 CORS 헤더 + OPTIONS preflight 처리 (Desktop/Extension cross-origin 허용) |
+| 전체 톡방 미노출 | `profiles.client_id` 미설정 감지 → UI 에러 메시지 + 콘솔 `[GeneralChat]` 로그 |
 
 ---
 
@@ -194,7 +199,10 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | v1.1.0 | 마감일 날짜만 표시 (시간 제거) |
 | v1.2.0 | 전체 톡방 추가 |
 | v1.2.1 | 번역 수정 (즉시 전송 + 백그라운드 번역, Realtime UPDATE 수신) |
+| v1.2.2 | 채팅 발신자 이름 표시 |
+| v1.2.3 | 발신자 이름 데스크톱 릴리즈 |
+| v1.2.4 | 전체 톡방 디버깅 강화, CORS 수정, 에러 피드백 UI 추가 |
 
 ---
 
-**문서 버전:** 3.0 · Desktop App + 전체 톡방 + 번역 패턴 + RLS 수정 반영
+**문서 버전:** 3.1 · CORS 수정 + 전체 톡방 디버깅 강화 + 에러 피드백 UI 반영

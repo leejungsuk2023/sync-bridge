@@ -46,6 +46,7 @@ export default function App() {
   const chatFileRef = useRef(null);
   const [isGeneralChat, setIsGeneralChat] = useState(false);
   const [generalChatTaskId, setGeneralChatTaskId] = useState(null);
+  const [generalChatError, setGeneralChatError] = useState(null);
   const [chatProfiles, setChatProfiles] = useState({});
   const [fileUploading, setFileUploading] = useState(false);
   const [previewImg, setPreviewImg] = useState(null);
@@ -260,7 +261,7 @@ export default function App() {
         const d = await res.json();
         contentKo = d.translated || '';
       }
-    } catch { /* 번역 실패해도 등록은 진행 */ }
+    } catch (err) { console.warn('[Propose] 번역 실패 (등록은 진행):', err.message); }
 
     const { error } = await proposeTask(user.id, text, contentKo);
     setProposeSubmitting(false);
@@ -474,17 +475,43 @@ export default function App() {
     if (!user) return;
     const initGeneralChat = async () => {
       try {
-        const { data: profile } = await supabase.from('profiles').select('client_id').eq('id', user.id).single();
-        if (!profile?.client_id) return;
-        const session = (await supabase.auth.getSession()).data.session;
-        const res = await fetch(`${WEB_URL}/api/tasks?general_chat=true&client_id=${profile.client_id}`, {
-          headers: { Authorization: `Bearer ${session?.access_token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.task?.id) setGeneralChatTaskId(data.task.id);
+        const { data: profile, error: profileErr } = await supabase.from('profiles').select('client_id').eq('id', user.id).single();
+        if (profileErr) {
+          console.error('[GeneralChat] profiles 조회 실패:', profileErr.message);
+          return;
         }
-      } catch {}
+        if (!profile?.client_id) {
+          console.warn('[GeneralChat] client_id 없음 — 관리자에게 병원 배정 요청 필요 (user:', user.id, ')');
+          setGeneralChatError('no_client');
+          return;
+        }
+        const session = (await supabase.auth.getSession()).data.session;
+        if (!session?.access_token) {
+          console.warn('[GeneralChat] 세션 토큰 없음');
+          return;
+        }
+        const apiUrl = `${WEB_URL}/api/tasks?general_chat=true&client_id=${profile.client_id}`;
+        console.log('[GeneralChat] API 호출:', apiUrl);
+        const res = await fetch(apiUrl, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (!res.ok) {
+          const errText = await res.text().catch(() => '');
+          console.error('[GeneralChat] API 에러:', res.status, errText);
+          setGeneralChatError('api_error');
+          return;
+        }
+        const data = await res.json();
+        if (data.task?.id) {
+          setGeneralChatTaskId(data.task.id);
+          console.log('[GeneralChat] taskId 설정 완료:', data.task.id);
+        } else {
+          console.warn('[GeneralChat] 응답에 task.id 없음:', data);
+        }
+      } catch (err) {
+        console.error('[GeneralChat] 초기화 실패:', err);
+        setGeneralChatError('exception');
+      }
     };
     initGeneralChat();
   }, [user]);
@@ -866,7 +893,7 @@ export default function App() {
         {activeTab === 'chat' && (
           <section className="px-4 py-4">
             {/* 전체 톡방 버튼 */}
-            {generalChatTaskId && (
+            {generalChatTaskId ? (
               <button type="button" onClick={openGeneralChat}
                 className="w-full mb-4 p-3 rounded-lg border-2 border-indigo-300 bg-indigo-50 hover:bg-indigo-100 transition-colors flex items-center gap-3">
                 <span className="text-xl">💬</span>
@@ -876,6 +903,12 @@ export default function App() {
                 </div>
                 <span className="ml-auto text-xs text-indigo-400 font-medium">เปิด →</span>
               </button>
+            ) : generalChatError && (
+              <div className="w-full mb-4 p-3 rounded-lg border border-amber-300 bg-amber-50 text-sm text-amber-700">
+                {generalChatError === 'no_client'
+                  ? 'ยังไม่ได้เชื่อมต่อกับบริษัท กรุณาติดต่อผู้ดูแล (병원 배정이 안 되어 있습니다. 관리자에게 문의하세요)'
+                  : 'ไม่สามารถโหลดห้องแชทได้ กรุณาลองใหม่ (톡방 로드 실패, 다시 시도해주세요)'}
+              </div>
             )}
             <p className="text-sm font-medium text-slate-700 mb-3">เลือกงานเพื่อแชท (채팅할 업무 선택)</p>
             {tasks.length === 0 ? (

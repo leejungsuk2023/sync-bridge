@@ -2,16 +2,34 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
+// CORS: Desktop App (Electron) 및 Extension에서의 cross-origin 요청 허용
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+}
+
+function withCors(response: NextResponse) {
+  Object.entries(CORS_HEADERS).forEach(([key, value]) => {
+    response.headers.set(key, value);
+  });
+  return response;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { text, targetLang } = await req.json();
 
     if (!text?.trim()) {
-      return NextResponse.json({ error: 'text is required' }, { status: 400 });
+      return withCors(NextResponse.json({ error: 'text is required' }, { status: 400 }));
     }
 
     if (!GEMINI_API_KEY) {
-      return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 500 });
+      return withCors(NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 500 }));
     }
 
     const langName = targetLang === 'th' ? 'Thai' : targetLang === 'ko' ? 'Korean' : targetLang;
@@ -45,14 +63,14 @@ export async function POST(req: NextRequest) {
 
     if (!res.ok) {
       const errBody = await res.text();
-      return NextResponse.json({ error: `Gemini API error: ${res.status}`, detail: errBody }, { status: 502 });
+      return withCors(NextResponse.json({ error: `Gemini API error: ${res.status}`, detail: errBody }, { status: 502 }));
     }
 
     const data = await res.json();
     const translated = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
 
-    return NextResponse.json({ translated });
+    return withCors(NextResponse.json({ translated }));
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return withCors(NextResponse.json({ error: err.message }, { status: 500 }));
   }
 }

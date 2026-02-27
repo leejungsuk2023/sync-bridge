@@ -264,6 +264,8 @@ bbg_admin 전용 실시간 모니터링 대시보드입니다.
 - **API:** `GET /api/tasks?general_chat=true&client_id=xxx` → 채팅방 task 조회/자동 생성
 - **일반 목록 숨김:** 업무 목록/캘린더 쿼리에서 `.neq('content', '__GENERAL_CHAT__')` 필터로 제외
 - **UI:** 접기/펼치기, 발신자 이름 표시, 실시간 수신
+- **필수 조건:** 워커의 `profiles.client_id`가 반드시 설정되어 있어야 함 (없으면 UI에 안내 메시지 표시)
+- **에러 핸들링:** Desktop App에서 `[GeneralChat]` 프리픽스 로그로 초기화 실패 원인 추적 가능
 
 ---
 
@@ -331,12 +333,41 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | v1.1.0 | 마감일 날짜만 표시 (시간 제거) |
 | v1.2.0 | 전체 톡방 추가 |
 | v1.2.1 | 번역 수정 (즉시 전송 + 백그라운드 번역, Realtime UPDATE 수신) |
+| v1.2.2 | 채팅 발신자 이름 표시 |
+| v1.2.3 | 발신자 이름 데스크톱 릴리즈 |
+| v1.2.4 | 전체 톡방 디버깅 강화, CORS 수정, 에러 피드백 UI 추가 |
+
+---
+
+## CORS 설정
+
+Desktop App(Electron)과 Extension은 Vercel에 배포된 Client Web API를 cross-origin으로 호출합니다.
+`/api/tasks`, `/api/translate` 등 모든 API Route에 CORS 헤더가 설정되어 있습니다.
+
+- `Access-Control-Allow-Origin: *`
+- `Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS`
+- `Access-Control-Allow-Headers: Content-Type, Authorization`
+- `OPTIONS` preflight 요청 처리 포함
+
+---
+
+## 트러블슈팅 (General Chat)
+
+데스크톱에서 전체 톡방이 보이지 않는 경우 아래 순서로 확인:
+
+1. **`profiles.client_id` 확인** — Supabase Dashboard에서 해당 워커의 `client_id`가 비어있으면 톡방 로드 불가
+2. **`VITE_WEB_URL` 확인** — `syncbridge-desktop/.env`의 URL이 실제 배포된 client-web 주소와 일치하는지
+3. **Vercel 환경 변수** — `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`가 설정되어 있는지
+4. **DevTools 콘솔** — `[GeneralChat]` 프리픽스 로그로 어떤 단계에서 실패하는지 확인
+
+자세한 내용은 `DEBUGGING.md` 참고.
 
 ---
 
 ## 관련 문서
 
 - `PRD.md` — 제품 요구사항 및 현재 구현 현황
+- `DEBUGGING.md` — 디버깅 가이드 및 트러블슈팅
 - `figma-prompts.md` — Figma Make 디자인 프롬프트
 - `supabase/README.md` — DB 스키마/Auth 설정
 - `client-web/README.md` — 대시보드 세부

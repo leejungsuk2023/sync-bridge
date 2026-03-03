@@ -316,8 +316,10 @@ export default function App() {
       if (res.ok) {
         const d = await res.json();
         contentKo = d.translated || '';
+      } else {
+        console.error('[Chat] translate API error:', res.status);
       }
-    } catch { /* 번역 실패해도 메시지는 보냄 */ }
+    } catch (err) { console.error('[Chat] translate error:', err); }
 
     await supabase.from('messages').insert({
       task_id: chatTaskId,

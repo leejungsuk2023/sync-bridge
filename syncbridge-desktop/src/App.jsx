@@ -327,11 +327,18 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: original, targetLang: 'ko' }),
-      }).then(res => res.ok ? res.json() : null).then(d => {
-        if (d?.translated) {
-          supabase.from('messages').update({ content_ko: d.translated }).eq('id', inserted.id);
+      }).then(res => {
+        if (!res.ok) {
+          console.error('[GeneralChat] translate API error:', res.status);
+          return null;
         }
-      }).catch(() => {});
+        return res.json();
+      }).then(d => {
+        if (d?.translated) {
+          supabase.from('messages').update({ content_ko: d.translated }).eq('id', inserted.id)
+            .then(({ error }) => { if (error) console.error('[GeneralChat] update content_ko error:', error); });
+        }
+      }).catch(err => console.error('[GeneralChat] translate fetch error:', err));
     }
   };
 

@@ -21,7 +21,8 @@
 g sync/
 ├── README.md                # 이 문서
 ├── PRD.md                   # 제품 요구사항
-├── figma-prompts.md         # Figma Make 디자인 프롬프트
+├── CLAUDE.md                # 프로젝트 규칙 (Claude Code용)
+├── DEBUGGING.md             # 디버깅 가이드
 │
 ├── client-web/              # Next.js 14 관리자 대시보드
 │   ├── app/
@@ -53,9 +54,11 @@ g sync/
 │   │   ├── main.js          # Electron 메인 프로세스
 │   │   └── preload.js       # 프리로드 스크립트
 │   ├── src/
-│   │   ├── App.jsx          # 메인 UI (업무, 채팅, 전체 톡방, 번역)
+│   │   ├── App.jsx          # 메인 UI (업무, 채팅, 전체 톡방, 번역, AI)
 │   │   ├── main.jsx         # React 엔트리
-│   │   └── lib/supabase.js  # Supabase 클라이언트
+│   │   └── lib/
+│   │       ├── supabase.js  # Supabase 클라이언트
+│   │       └── platform.js  # 플랫폼 추상화 (Electron/Chrome 분기)
 │   └── package.json
 │
 ├── syncbridge-extension/    # Chrome Extension (Manifest V3)
@@ -77,6 +80,8 @@ g sync/
     ├── worker_propose_task.sql # Worker 업무 제안 (source 컬럼 + RLS)
     ├── whisper_message.sql     # Whisper 메시지 + client 역할 필터링 RLS
     ├── fix_rls_policies.sql    # messages UPDATE + profiles 동료 조회 정책
+    ├── chat_file_attachment.sql # 채팅 파일 첨부 (file_url, file_name, file_type + Storage)
+    ├── chat_mentions.sql       # @멘션 기능 (mentions jsonb 컬럼)
     ├── setup_test_client.sql   # 테스트 데이터 셋업
     └── README.md
 ```
@@ -98,6 +103,8 @@ g sync/
    7. `supabase/worker_propose_task.sql` — Worker 업무 제안 기능
    8. `supabase/whisper_message.sql` — Whisper(본사 지시) 메시지
    9. `supabase/fix_rls_policies.sql` — messages UPDATE + profiles 동료 조회 정책
+   10. `supabase/chat_file_attachment.sql` — 채팅 파일 첨부 (file_url, Storage RLS)
+   11. `supabase/chat_mentions.sql` — @멘션 (mentions jsonb 컬럼)
 3. **Authentication** → Providers → **Email** 활성화
 
 ### 2. Client Web 실행
@@ -209,13 +216,16 @@ bbg_admin 전용 실시간 모니터링 대시보드입니다.
 
 | 탭 | 기능 |
 |------|------|
-| **업무** | 담당 태스크 목록, 마감일 표시(색상 코딩), 완료 처리 |
-| **채팅** | 전체 톡방 + 업무별 채팅, 태국어 입력 → 한국어 백그라운드 번역 |
-| **번역** | 태국어 → 한국어 즉석 번역 헬퍼 |
+| **업무** | 담당 태스크 목록, 마감일 표시(색상 코딩), 완료 처리, **업무 제안(Propose Task)** |
+| **채팅** | 전체 톡방 + 업무별 채팅, 태국어 입력 → 한국어 백그라운드 번역, **파일 첨부**, **@멘션** |
+| **번역/AI** | 태국어 → 한국어 즉석 번역 + AI 상담 어시스트 (의도 파악 + 추천 답변) |
 
 - 즉시 전송 + 백그라운드 번역 (Gemini API)
 - Realtime 구독으로 번역 결과 실시간 반영
-- 전체 톡방: 그룹 채팅 (발신자 이름 표시)
+- 전체 톡방: 그룹 채팅 (발신자 이름 표시, 멤버 온라인 상태)
+- 파일 첨부: 이미지/문서 업로드, 미리보기
+- @멘션: 팀원 태그, 멘션 시 푸시 알림
+- 푸시 알림: 새 메시지/멘션 수신 시 데스크톱 알림
 - GitHub Actions CI/CD로 자동 빌드/릴리즈
 
 ### Worker Extension (태국어/한국어 병기)
@@ -336,13 +346,14 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | v1.2.2 | 채팅 발신자 이름 표시 |
 | v1.2.3 | 발신자 이름 데스크톱 릴리즈 |
 | v1.2.4 | 전체 톡방 디버깅 강화, CORS 수정, 에러 피드백 UI 추가 |
+| v1.3.0 | 파일 첨부, @멘션, 푸시 알림, 멤버 온라인 상태, NSIS 바로가기 수정 |
 
 ---
 
 ## CORS 설정
 
 Desktop App(Electron)과 Extension은 Vercel에 배포된 Client Web API를 cross-origin으로 호출합니다.
-`/api/tasks`, `/api/translate` 등 모든 API Route에 CORS 헤더가 설정되어 있습니다.
+`/api/tasks`, `/api/translate`에 CORS 헤더가 설정되어 있습니다. (`/api/ai-assist`, `/api/admin/users`는 미적용 — 필요 시 동일 패턴 추가)
 
 - `Access-Control-Allow-Origin: *`
 - `Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS`
@@ -368,7 +379,6 @@ Desktop App(Electron)과 Extension은 Vercel에 배포된 Client Web API를 cros
 
 - `PRD.md` — 제품 요구사항 및 현재 구현 현황
 - `DEBUGGING.md` — 디버깅 가이드 및 트러블슈팅
-- `figma-prompts.md` — Figma Make 디자인 프롬프트
 - `supabase/README.md` — DB 스키마/Auth 설정
 - `client-web/README.md` — 대시보드 세부
 - `syncbridge-extension/README.md` — 확장프로그램 세부

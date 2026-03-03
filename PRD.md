@@ -66,9 +66,13 @@
 | 출퇴근 토글 | ✅ | 출근/자리비움/퇴근 상태 변경 → time_logs 기록 |
 | 업무 수신 | ✅ | 담당 태스크 실시간 조회, 마감일 색상 코딩(빨강=초과, 회색=여유) |
 | 업무 완료 처리 | ✅ | 완료 클릭 → Client Web 실시간 반영 |
-| 전체 톡방 | ✅ | 클라이언트↔직원 그룹 채팅, 발신자 이름 표시 |
+| 업무 제안 | ✅ | Worker 직접 업무 등록 (태→한 번역), "자체 제안" 뱃지 |
+| 전체 톡방 | ✅ | 클라이언트↔직원 그룹 채팅, 발신자 이름, 멤버 온라인 상태 표시 |
 | 업무별 채팅 | ✅ | 태국어 입력 → 한국어 백그라운드 번역, 실시간 수신 |
-| 번역 헬퍼 | ✅ | 태국어 → 한국어 즉석 번역 |
+| 파일 첨부 | ✅ | 채팅 내 이미지/문서 업로드, 미리보기, 다운로드 |
+| @멘션 | ✅ | 팀원 태그 (@이름), 멘션 시 하이라이트 + 푸시 알림 |
+| 푸시 알림 | ✅ | 새 메시지/멘션 수신 시 데스크톱 알림 (Electron Notification) |
+| 번역 + AI | ✅ | 태→한 즉석 번역 + AI 상담 어시스트 (의도 파악 + 추천 답변) |
 | 자동 빌드 | ✅ | GitHub Actions + electron-builder (macOS/Windows) |
 | 자동 업데이트 | ✅ | electron-updater로 신규 버전 자동 감지/설치 |
 
@@ -95,7 +99,7 @@
 | `profiles` | 사용자 프로필 (role, client_id, display_name) |
 | `time_logs` | 근태 기록 (worker_id, status, created_at) |
 | `tasks` | 업무 (content, content_th, assignee_id, due_date, rating, source, status) |
-| `messages` | 업무별 채팅 (content_ko, content_th, is_whisper, sender_lang) |
+| `messages` | 업무별 채팅 (content_ko, content_th, is_whisper, sender_lang, file_url, file_name, file_type, mentions) |
 | `quick_replies` | 자동답변 템플릿 (title/body × ko/th, client_id) |
 | `task_presets` | 업무 프리셋 (title/content × ko/th, client_id) |
 
@@ -202,7 +206,8 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | v1.2.2 | 채팅 발신자 이름 표시 |
 | v1.2.3 | 발신자 이름 데스크톱 릴리즈 |
 | v1.2.4 | 전체 톡방 디버깅 강화, CORS 수정, 에러 피드백 UI 추가 |
+| v1.3.0 | 파일 첨부, @멘션, 푸시 알림, 멤버 온라인 상태, NSIS 바로가기 수정 |
 
 ---
 
-**문서 버전:** 3.1 · CORS 수정 + 전체 톡방 디버깅 강화 + 에러 피드백 UI 반영
+**문서 버전:** 3.2 · v1.3.0 기능 반영 (파일 첨부, @멘션, 푸시 알림, AI 어시스트) + 코드-문서 정합성 수정

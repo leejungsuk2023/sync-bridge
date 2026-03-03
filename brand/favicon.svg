@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!--
+    SyncBridge — Favicon (32x32)
+    Simplified "S" in purple on transparent background.
+    Clean and recognizable at small sizes.
+  -->
+  <rect width="32" height="32" fill="none"/>
+
+  <!--
+    Bold "S" shape, simplified for small sizes.
+    Uses rounded rectangle segments rather than complex bezier.
+    The S is drawn as two arcs with a connecting diagonal,
+    optimized for legibility at 16-32px.
+  -->
+  <path fill="#7C6CF0" d="
+    M 16 2
+    C 10.5 2 6 4 3.5 7.5
+    C 1.5 10.5 1.5 14 3.5 17
+    C 5 19.5 7.5 21 10.5 22
+    L 12.5 22.8
+    C 14.5 23.5 15.5 24.5 15.5 25.5
+    C 15.5 27 14 28 12 28
+    C 10 28 8.5 27 7.5 25.5
+    C 7 24.5 7 23.5 7 22.5
+    L 2.5 22.5
+    C 2.5 25 3.5 27.5 5.5 29.5
+    C 7.5 31 10 32 13 32
+    C 16 32 18.5 31 20.5 29
+    C 22 27.5 22.5 25.5 22.5 23.5
+    C 22.5 21 21.5 19 19.5 17.5
+    C 18 16.5 16 15.5 13.5 15
+    L 11.5 14.5
+    C 9.5 14 8.5 13 8 12
+    C 7.5 11 8 10 9 9
+    C 10 7.5 11.5 7 13.5 7
+    C 15 7 16.5 7.5 17.5 8.5
+    C 18 9 18.5 9.5 18.5 10.5
+    L 23 10.5
+    C 23 8 22 5.5 20 4
+    C 18.5 2.5 17.5 2 16 2
+    Z
+  "/>
+</svg>

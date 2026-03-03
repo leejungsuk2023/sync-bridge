@@ -1,13 +1,7 @@
 # Chrome Web Store 심사 제출 가이드
-
-SyncBridge Worker Extension을 Chrome Web Store에 등록하기 위한 단계별 가이드.
-
----
-
-## 1. 심사 전 manifest.json 수정 필요
-
-현재 문제점:
-
+ ---
+ ㅇㅇㅇㅇ
+          
 | 항목 | 현재 | 문제 |
 |------|------|------|
 | `host_permissions` | `http://localhost:3000/*` 포함 | localhost는 심사 거절 사유 |
@@ -170,11 +164,11 @@ BBG 내부용이면 전체 공개할 필요 없음:
 
 ## 체크리스트
 
-- [x] 아이콘 만들기 → `syncbridge-extension/public/icons/` (16/48/128 PNG)
-- [x] Client Web 배포 → https://client-web-zeta.vercel.app
-- [x] manifest.json 수정 → localhost 제거, 아이콘 추가, 배포 URL, version 1.0.0, 영문 description
-- [x] 개인정보 처리방침 페이지 → https://client-web-zeta.vercel.app/privacy
-- [ ] 개발자 계정 등록 ($5) — https://chrome.google.com/webstore/devconsole
-- [ ] 빌드 → ZIP → 업로드 (`cd syncbridge-extension && npm run build && cd dist && zip -r ../syncbridge-v1.0.0.zip .`)
+- [ ] 아이콘 만들기 (16/48/128 PNG)
+- [ ] Client Web 배포 (Vercel 등)
+- [ ] manifest.json 수정 (localhost 제거, 아이콘 추가, 배포 URL)
+- [ ] 개인정보 처리방침 페이지 만들기 (간단한 1페이지면 충분)
+- [ ] 개발자 계정 등록 ($5)
+- [ ] 빌드 → ZIP → 업로드
 - [ ] 스토어 정보 입력 + 스크린샷
 - [ ] 심사 제출

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 72" width="380" height="72">
+  <!--
+    SyncBridge — Text Wordmark Only
+    "Sync" in purple #7C6CF0, "Bridge" in blue #4AB8F0
+    Bold, clean sans-serif. Transparent background.
+    Using a single <text> with two <tspan> segments to
+    guarantee the two words are flush with no gap.
+  -->
+  <rect width="380" height="72" fill="none"/>
+
+  <text
+    x="8"
+    y="56"
+    font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="56"
+    font-weight="800"
+    letter-spacing="-2"
+  >
+    <tspan fill="#7C6CF0">Sync</tspan><tspan fill="#4AB8F0">Bridge</tspan>
+  </text>
+</svg>

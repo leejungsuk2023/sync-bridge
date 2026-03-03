@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>คู่มือ SyncBridge สำหรับพนักงาน (Worker)</title>
+  <style>
+    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+    body { font-family: 'Sarabun', 'Thonburi', 'Tahoma', sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 24px; color: #222; }
+    h1 { font-size: 1.75rem; border-bottom: 2px solid #2563eb; padding-bottom: 8px; }
+    h2 { font-size: 1.25rem; margin-top: 24px; color: #1e40af; }
+    h3 { font-size: 1.1rem; margin-top: 16px; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 0.95rem; }
+    th, td { border: 1px solid #cbd5e1; padding: 8px 12px; text-align: left; }
+    th { background: #e0e7ff; }
+    ul { padding-left: 1.5rem; }
+    hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
+    .subtitle { color: #64748b; margin-top: 4px; }
+    .footer { font-size: 0.9rem; color: #64748b; margin-top: 32px; }
+  </style>
+</head>
+<body>
+  <h1>คู่มือการใช้งาน SyncBridge สำหรับพนักงาน (Worker)</h1>
+  <p class="subtitle"><strong>SyncBridge</strong> — ระบบซิงค์งานระหว่างบริษัทลูกค้า (เกาหลี) กับพนักงานทำงานทางไกล (ไทย)<br>คู่มือฉบับนี้สำหรับ <strong>พนักงาน (Worker)</strong> ที่ใช้ Chrome Extension ในการรับ-ส่งงานและแชทกับลูกค้า</p>
+  <hr>
+
+  <h2>1. การติดตั้งและเข้าสู่ระบบ</h2>
+  <h3>1.1 ติดตั้ง Chrome Extension</h3>
+  <ol>
+    <li>เปิด Chrome แล้วไปที่ <code>chrome://extensions</code></li>
+    <li>เปิด <strong>โหมดนักพัฒนา (Developer mode)</strong> ทางมุมขวาบน</li>
+    <li>คลิก <strong>โหลดส่วนขยายที่คลายการบีบอัดแล้ว (Load unpacked)</strong></li>
+    <li>เลือกโฟลเดอร์ <code>dist</code> ของ SyncBridge Extension</li>
+  </ol>
+  <h3>1.2 เข้าสู่ระบบ</h3>
+  <ol>
+    <li>คลิกไอคอน SyncBridge บน Chrome</li>
+    <li>ใส่ <strong>อีเมล</strong> และ <strong>รหัสผ่าน</strong> ที่ได้รับจากผู้ดูแล</li>
+    <li>คลิกเข้าสู่ระบบ — หลังล็อกอินระบบจะสร้างโปรไฟล์ Worker ให้อัตโนมัติ</li>
+  </ol>
+  <hr>
+
+  <h2>2. การลงเวลาทำงาน (ออก근 / ไม่อยู่ / เลิกงาน)</h2>
+  <p>ที่ส่วนหัวของ Extension จะมีปุ่มสถานะ 3 แบบ:</p>
+  <table>
+    <tr><th>ปุ่ม</th><th>ความหมาย</th><th>การทำงาน</th></tr>
+    <tr><td><strong>ออก근 (Online)</strong></td><td>กำลังทำงาน</td><td>กดเพื่อบันทึกว่าออก근แล้ว — เวลาจะถูกบันทึกในระบบทันที</td></tr>
+    <tr><td><strong>ไม่อยู่ (Away)</strong></td><td>ลุกจากที่นั่งชั่วคราว</td><td>กดเมื่อต้องลุกไปทำอย่างอื่นสั้นๆ</td></tr>
+    <tr><td><strong>เลิกงาน (Offline)</strong></td><td>เลิกทำงานแล้ว</td><td>กดเมื่อจบกะ — ระบบจะบันทึกเวลาเลิกงาน</td></tr>
+  </table>
+  <ul>
+    <li><strong>ตัวจับเวลา:</strong> ใต้ปุ่มจะมีตัวนับเวลาแสดงระยะเวลาที่อยู่สถานะนั้น (อัปเดตทุกวินาที)</li>
+    <li><strong>Activity Ping:</strong> ถ้าคุณออก근อยู่แต่ไม่ขยับเมาส์/คีย์บอร์ดเกิน <strong>10 นาที</strong> ระบบจะเปลี่ยนสถานะเป็น "ไม่อยู่" อัตโนมัติ</li>
+  </ul>
+  <hr>
+
+  <h2>3. แท็บ งาน (Tasks)</h2>
+  <h3>3.1 ดูรายการงานที่ได้รับมอบหมาย</h3>
+  <ul>
+    <li>เลือกแท็บ <strong>งาน</strong> จะเห็นรายการงานที่ลูกค้ามอบหมายให้คุณ</li>
+    <li>แต่ละงานแสดง: <strong>ชื่อ/เนื้อหา</strong>, <strong>สถานะ</strong>, <strong>วันครบกำหนด</strong></li>
+    <li><strong>สีวันครบกำหนด:</strong> <strong>แดง</strong> — ใกล้หมดเวลาหรือเลยกำหนด / <strong>ส้ม</strong> — กำลังจะถึงกำหนด / <strong>เทา</strong> — ยังมีเวลาพอ</li>
+  </ul>
+  <h3>3.2 ทำเครื่องหมายงานเป็น "เสร็จแล้ว"</h3>
+  <ol>
+    <li>เลือกงานที่ทำเสร็จแล้ว</li>
+    <li>คลิกปุ่ม <strong>เสร็จแล้ว / Complete</strong> — สถานะจะอัปเดตไปที่ฝั่งลูกค้าแบบเรียลไทม์</li>
+  </ol>
+  <h3>3.3 เสนองาน (Propose Task)</h3>
+  <p>คุณสามารถ <strong>เสนองานที่อยากทำ</strong> ให้ลูกค้าพิจารณาได้:</p>
+  <ol>
+    <li>ที่แท็บ <strong>งาน</strong> คลิกปุ่ม <strong>"+ เสนองาน"</strong> ด้านบน</li>
+    <li>กรอก <strong>เนื้อหางานเป็นภาษาไทย</strong> — ระบบจะแปลเป็นเกาหลีให้อัตโนมัติ</li>
+    <li>กดส่ง — งานจะถูกบันทึกในระบบพร้อมป้าย <strong>"เสนอเอง"</strong></li>
+    <li>ถ้ามีงานที่ลูกค้าสั่งยังไม่เสร็จ ระบบจะแจ้งเตือน (แต่ยังส่งงานเสนอได้)</li>
+  </ol>
+  <hr>
+
+  <h2>4. แท็บ แชท (Chat)</h2>
+  <ul>
+    <li>เลือกแท็บ <strong>แชท</strong> เพื่อดูการสนทนาตามแต่ละงาน</li>
+    <li>เลือกงานที่ต้องการจากรายการ แล้วพิมพ์ข้อความ</li>
+    <li><strong>ภาษาไทยที่คุณพิมพ์จะถูกแปลเป็นเกาหลีอัตโนมัติ</strong> แล้วส่งไปยังลูกค้า</li>
+    <li>ข้อความจากลูกค้าจะแสดงเป็นภาษาเกาหลี (และอาจมีคำแปลตามที่ระบบรองรับ)</li>
+  </ul>
+  <hr>
+
+  <h2>5. แท็บ แปล (Translation)</h2>
+  <ul>
+    <li>ใช้สำหรับ <strong>แปลข้อความไทย → เกาหลี</strong> ทันที</li>
+    <li>พิมพ์ข้อความภาษาไทยในช่อง แล้วกดแปล — จะได้ประโยคภาษาเกาหลี</li>
+    <li>ใช้ช่วยร่างข้อความก่อนนำไปใช้ในแชทหรือรายงานงาน</li>
+  </ul>
+  <hr>
+
+  <h2>6. แท็บ เทมเพลต (Templates / Quick Reply)</h2>
+  <ul>
+    <li>แท็บนี้โหลด <strong>ข้อความตอบกลับสำเร็จรูป</strong> จากระบบ (ที่ลูกค้า/ผู้ดูแลตั้งไว้)</li>
+    <li>คลิกที่เทมเพลตที่ต้องการ → ข้อความจะถูก <strong>copy ไปที่คลิปบอร์ด</strong></li>
+    <li>นำไปวางในแชทหรือที่อื่นได้ทันที</li>
+  </ul>
+  <hr>
+
+  <h2>7. AI ดราก์ (วิเคราะห์ข้อความด้วย AI)</h2>
+  <p>เมื่อคุณ <strong>ทำงานบนเว็บไซต์</strong> (เช่น ตอบลูกค้าในแชทของโรงพยาบาล):</p>
+  <ol>
+    <li><strong>ลากเลือกข้อความ</strong> ที่ต้องการวิเคราะห์ (อย่างน้อย 5 ตัวอักษร)</li>
+    <li>จะมีปุ่ม <strong>"AI"</strong> ลอยขึ้นมา</li>
+    <li>คลิกปุ่ม <strong>AI</strong> — ระบบจะ: แปลข้อความเป็นภาษาเกาหลี, วิเคราะห์ว่าลูกค้าต้องการอะไร, แสดง <strong>คำตอบแนะนำ 3 แบบ (ภาษาไทย)</strong></li>
+    <li>คลิกคำตอบที่ต้องการ → ข้อความจะถูก copy ไปที่คลิปบอร์ด พร้อมแจ้งเตือน</li>
+  </ol>
+  <p>ใช้ฟีเจอร์นี้ช่วยตอบคำถามลูกค้าได้เร็วและสอดคล้องกับบริบท</p>
+  <hr>
+
+  <h2>8. การแจ้งเตือนและไอคอน</h2>
+  <ul>
+    <li>เมื่อมี <strong>งานใหม่</strong> ที่มอบหมายให้คุณ ไอคอน SyncBridge บน Chrome จะแสดง <strong>ตัวเลขแจ้งเตือน (Badge)</strong></li>
+    <li>เปิด Extension เพื่อดูรายการงานและแชทล่าสุด</li>
+  </ul>
+  <hr>
+
+  <h2>สรุปการใช้งานประจำวัน</h2>
+  <ol>
+    <li><strong>เปิด Chrome</strong> → คลิกไอคอน SyncBridge → <strong>ออก근</strong> เมื่อเริ่มทำงาน</li>
+    <li>ดูแท็บ <strong>งาน</strong> — ทำตามงานที่มอบหมาย และกด <strong>เสร็จแล้ว</strong> เมื่อทำครบ</li>
+    <li>ใช้แท็บ <strong>แชท</strong> สื่อสารกับลูกค้าตามงาน (ข้อความไทยจะถูกแปลเป็นเกาหลีอัตโนมัติ)</li>
+    <li>ใช้ <strong>เทมเพลต</strong> และ <strong>AI ดราก์</strong> ช่วยตอบลูกค้าให้เร็ว</li>
+    <li>ใช้ <strong>แปล</strong> เมื่อต้องการแปลประโยคไทย–เกาหลี</li>
+    <li><strong>เสนองาน</strong> ได้เมื่อมีไอเดียงานที่อยากเสนอให้ลูกค้า</li>
+    <li>เมื่อจบกะ กด <strong>เลิกงาน</strong> — ระบบจะบันทึกเวลาอัตโนมัติ</li>
+  </ol>
+  <hr>
+  <p class="footer">คู่มือฉบับนี้จัดทำสำหรับ SyncBridge Worker Extension (Chrome).<br>หากมีคำถามเพิ่มเติม กรุณาติดต่อผู้ดูแลระบบหรือ BBG.</p>
+</body>
+</html>

@@ -96,7 +96,7 @@ export default function WorkerDashboard({ user, profile }: { user: any; profile:
       <main className="flex-1 px-4 sm:px-6 py-4 pb-20 md:pb-6 space-y-4 overflow-y-auto">
         {activeTab === 'งาน' && (
           <>
-            <TaskList assigneeId={user.id} userId={user.id} title="งานของฉัน" locale="th" canComplete />
+            <TaskList assigneeId={user.id} userId={user.id} title="งานของฉัน" locale="th" />
             <TaskPropose userId={user.id} />
             <TaskList clientId={profile.client_id} userId={user.id} title="งานทั้งหมดของทีม" locale="th" />
           </>

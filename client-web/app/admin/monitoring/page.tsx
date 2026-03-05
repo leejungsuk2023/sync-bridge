@@ -484,7 +484,7 @@ export default function MonitoringPage() {
         <div className="flex items-center gap-4">
           <span className="text-sm text-slate-600">{profile.email}</span>
           <span className="text-xs px-2 py-1 rounded bg-slate-100 text-slate-700">bbg_admin</span>
-          <a href="/" className="text-sm text-slate-500 hover:text-slate-700">대시보드</a>
+          <a href="/app" className="text-sm text-slate-500 hover:text-slate-700">대시보드</a>
           <button type="button" onClick={handleLogout} className="text-sm text-slate-500 hover:text-slate-700">
             로그아웃
           </button>

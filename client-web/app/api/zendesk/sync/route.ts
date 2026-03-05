@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { ZendeskClient } from '@/lib/zendesk';
 
-// CORS: Desktop App (Electron) and Extension cross-origin requests
+// Vercel serverless max duration (seconds)
+export const maxDuration = 60;
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -45,25 +47,33 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}));
-  const since = body.since as string | undefined;
+  const page = body.page || 1;
+  const perPage = Math.min(body.per_page || 20, 50);
 
   const zendesk = new ZendeskClient();
   const errors: string[] = [];
   let synced = 0;
 
   try {
-    // 1. Fetch tickets from Zendesk
-    const tickets = await zendesk.fetchTickets(since);
+    // Fetch one page of tickets (not all)
+    const data = await zendesk.fetchTicketsPage(page, perPage);
+    const tickets = data.tickets;
+    const hasMore = !!data.next_page;
+    const totalCount = data.count;
 
-    // 2. Collect all unique user IDs for bulk lookup
+    if (tickets.length === 0) {
+      return withCors(NextResponse.json({ synced: 0, hasMore: false, totalCount: 0 }));
+    }
+
+    // Bulk fetch users for this batch
     const userIds = new Set<number>();
-    tickets.forEach(t => {
+    tickets.forEach((t: any) => {
       if (t.assignee_id) userIds.add(t.assignee_id);
       if (t.requester_id) userIds.add(t.requester_id);
     });
     const usersMap = await zendesk.fetchUsers([...userIds]);
 
-    // 3. For each ticket, fetch comments and upsert
+    // Process each ticket: fetch comments + upsert
     for (const ticket of tickets) {
       try {
         const comments = await zendesk.fetchTicketComments(ticket.id);
@@ -83,7 +93,7 @@ export async function POST(req: NextRequest) {
           tags: ticket.tags,
           created_at_zd: ticket.created_at,
           updated_at_zd: ticket.updated_at,
-          comments: comments, // stored as JSONB
+          comments: comments,
           synced_at: new Date().toISOString(),
         }, { onConflict: 'ticket_id' });
 
@@ -92,9 +102,15 @@ export async function POST(req: NextRequest) {
         errors.push(`Ticket ${ticket.id}: ${err.message}`);
       }
     }
+
+    return withCors(NextResponse.json({
+      synced,
+      page,
+      hasMore,
+      totalCount,
+      errors: errors.length > 0 ? errors : undefined,
+    }));
   } catch (err: any) {
     return withCors(NextResponse.json({ error: err.message, synced, errors }, { status: 500 }));
   }
-
-  return withCors(NextResponse.json({ synced, errors }));
 }

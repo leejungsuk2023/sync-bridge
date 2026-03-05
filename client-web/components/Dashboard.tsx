@@ -87,6 +87,11 @@ export default function Dashboard({ user }: { user: any }) {
           <div className="flex items-center gap-4">
             <span className="text-sm text-slate-600">{profile?.email || user.email}</span>
             {getRoleBadge(profile?.role || 'unknown')}
+            {profile?.role === 'bbg_admin' && (
+              <a href="/admin/monitoring" className="text-sm text-indigo-600 hover:text-indigo-800 transition-colors font-medium">
+                모니터링
+              </a>
+            )}
             <button onClick={handleLogout} className="text-sm text-slate-500 hover:text-slate-700 transition-colors">
               로그아웃
             </button>

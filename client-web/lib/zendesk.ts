@@ -81,6 +81,12 @@ export class ZendeskClient {
     return tickets;
   }
 
+  // Fetch a single page of tickets (for batch processing)
+  async fetchTicketsPage(page: number = 1, perPage: number = 20): Promise<{ tickets: ZendeskTicket[]; next_page: string | null; count: number }> {
+    const data = await this.fetchApi(`/tickets.json?sort_by=updated_at&sort_order=desc&per_page=${perPage}&page=${page}`);
+    return { tickets: data.tickets || [], next_page: data.next_page || null, count: data.count || 0 };
+  }
+
   async fetchTicketComments(ticketId: number): Promise<ZendeskComment[]> {
     const comments: ZendeskComment[] = [];
     let nextPage: string | null = `/tickets/${ticketId}/comments.json`;

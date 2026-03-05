@@ -42,6 +42,7 @@ export default function SalesPerformance() {
   const [stats, setStats] = useState<StatsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [period, setPeriod] = useState<'week' | 'month'>('month');
 
@@ -72,16 +73,29 @@ export default function SalesPerformance() {
 
   const handleSync = async () => {
     setSyncing(true);
+    setSyncProgress('');
+    let page = 1;
+    let totalSynced = 0;
     try {
       const headers = await getAuthHeader();
-      await fetch('/api/zendesk/sync', {
-        method: 'POST',
-        headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
+      while (true) {
+        setSyncProgress(`${totalSynced}건 동기화 중... (page ${page})`);
+        const res = await fetch('/api/zendesk/sync', {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ page, per_page: 20 }),
+        });
+        if (!res.ok) break;
+        const data = await res.json();
+        totalSynced += data.synced || 0;
+        if (!data.hasMore) break;
+        page++;
+      }
+      setSyncProgress(`${totalSynced}건 동기화 완료`);
       await fetchStats();
     } catch (err) {
       console.error('[SalesPerformance] Sync failed:', err);
+      setSyncProgress('동기화 실패');
     } finally {
       setSyncing(false);
     }
@@ -164,6 +178,9 @@ export default function SalesPerformance() {
             <Search className={`w-3.5 h-3.5 ${analyzing ? 'animate-spin' : ''}`} />
             Analyze
           </button>
+          {syncProgress && (
+            <span className="text-xs text-slate-500">{syncProgress}</span>
+          )}
         </div>
       </div>
 

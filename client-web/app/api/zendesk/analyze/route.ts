@@ -50,10 +50,12 @@ Analyze the following support ticket conversation and return a JSON response wit
 - quality_score (1-5): How well the agent handled the inquiry. 5=excellent, 1=very poor
 - reservation_converted (boolean): Did the conversation lead to a hospital reservation/booking?
 - needs_followup (boolean): Does this customer need follow-up contact?
-- followup_reason (string or null): If needs_followup is true, explain why
-- summary (string): 2-3 sentence summary of the conversation
-- issues (string[]): List of any problems found (e.g., slow response, incorrect info, missed opportunity)
+- followup_reason (string or null): If needs_followup is true, explain why in Korean
+- summary (string): 2-3 sentence summary of the conversation IN KOREAN (한국어로 작성)
+- issues (string[]): List of any problems found in Korean (e.g., 응답 지연, 잘못된 정보, 기회 놓침)
 - hospital_name (string or null): Name of the hospital discussed, if any
+
+IMPORTANT: summary, followup_reason, and issues MUST be written in Korean (한국어).
 
 Ticket Subject: ${ticket.subject}
 Ticket Status: ${ticket.status}
@@ -88,10 +90,11 @@ export async function POST(req: NextRequest) {
   let analyzed = 0;
 
   try {
-    // Find tickets that don't have a matching zendesk_analyses row
+    // Find active tickets with meaningful conversations (>= 10 comments)
     const { data: tickets, error: fetchErr } = await supabaseAdmin
       .from('zendesk_tickets')
       .select('*')
+      .in('status', ['open', 'pending', 'new'])
       .order('updated_at_zd', { ascending: false });
 
     if (fetchErr) {
@@ -110,10 +113,14 @@ export async function POST(req: NextRequest) {
       .in('ticket_id', ticketIds);
 
     const analyzedIds = new Set((existingAnalyses || []).map(a => a.ticket_id));
-    const unanalyzed = tickets.filter(t => !analyzedIds.has(t.ticket_id));
+    const unanalyzed = tickets.filter(t => {
+      if (analyzedIds.has(t.ticket_id)) return false;
+      const commentCount = Array.isArray(t.comments) ? t.comments.length : 0;
+      return commentCount >= 10;
+    });
 
     if (unanalyzed.length === 0) {
-      return withCors(NextResponse.json({ analyzed: 0, message: 'All tickets already analyzed' }));
+      return withCors(NextResponse.json({ analyzed: 0, message: 'No active tickets with 10+ comments to analyze' }));
     }
 
     // Process sequentially, up to limit

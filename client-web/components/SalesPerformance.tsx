@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { BarChart3, Star, RefreshCw, Users, TrendingUp, AlertTriangle, Search } from 'lucide-react';
 
@@ -45,6 +45,10 @@ export default function SalesPerformance() {
   const [syncProgress, setSyncProgress] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [period, setPeriod] = useState<'week' | 'month'>('month');
+  const [workers, setWorkers] = useState<{id: string, display_name: string, email: string}[]>([]);
+  const [assigningTicketId, setAssigningTicketId] = useState<number | null>(null);
+  const [selectedWorker, setSelectedWorker] = useState('');
+  const [assigning, setAssigning] = useState(false);
 
   const getAuthHeader = async () => {
     const session = (await supabase.auth.getSession()).data.session;
@@ -70,6 +74,74 @@ export default function SalesPerformance() {
     setLoading(true);
     fetchStats();
   }, [period]);
+
+  useEffect(() => {
+    const fetchWorkers = async () => {
+      const { data } = await supabase.from('profiles').select('id, display_name, email').eq('role', 'worker');
+      setWorkers(data || []);
+    };
+    fetchWorkers();
+  }, []);
+
+  const handleAssignFollowup = async (ticket: RecentTicket) => {
+    if (!selectedWorker) return;
+    setAssigning(true);
+    try {
+      const headers = await getAuthHeader();
+      // Translate ticket subject to Thai
+      let contentTh = '';
+      try {
+        const trRes = await fetch('/api/translate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: `[팔로업] ${ticket.subject}`, targetLang: 'th' }),
+        });
+        if (trRes.ok) {
+          const trData = await trRes.json();
+          contentTh = trData.translated || '';
+        }
+      } catch {}
+
+      // Translate description (summary) to Thai
+      let descTh = '';
+      const desc = ticket.summary || '';
+      if (desc) {
+        try {
+          const trRes = await fetch('/api/translate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: desc, targetLang: 'th' }),
+          });
+          if (trRes.ok) {
+            const trData = await trRes.json();
+            descTh = trData.translated || '';
+          }
+        } catch {}
+      }
+
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assignee_id: selectedWorker,
+          content: `[팔로업] ${ticket.subject}`,
+          content_th: contentTh,
+          description: desc,
+          description_th: descTh,
+          source: 'zendesk_followup',
+        }),
+      });
+
+      if (res.ok) {
+        setAssigningTicketId(null);
+        setSelectedWorker('');
+      }
+    } catch (err) {
+      console.error('[SalesPerformance] Followup assign failed:', err);
+    } finally {
+      setAssigning(false);
+    }
+  };
 
   const handleSync = async () => {
     setSyncing(true);
@@ -280,30 +352,77 @@ export default function SalesPerformance() {
                       <th className="text-center px-3 py-2 font-medium">품질</th>
                       <th className="text-center px-3 py-2 font-medium">전환</th>
                       <th className="text-center px-3 py-2 font-medium">팔로업</th>
-                      <th className="text-left px-3 py-2 font-medium rounded-tr-lg">요약</th>
+                      <th className="text-left px-3 py-2 font-medium">요약</th>
+                      <th className="text-center px-3 py-2 font-medium rounded-tr-lg">작업</th>
                     </tr>
                   </thead>
                   <tbody>
                     {stats.recentTickets.map(t => (
-                      <tr key={t.ticket_id} className="border-t border-slate-100 hover:bg-slate-50">
-                        <td className="px-3 py-2 max-w-[200px]">
-                          <div className="truncate text-slate-900" title={t.subject || ''}>
-                            {t.subject || '-'}
-                          </div>
-                          <div className="text-xs text-slate-400">
-                            {t.created_at_zd ? new Date(t.created_at_zd).toLocaleDateString('ko-KR') : ''}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2 text-slate-700">{t.assignee_name || '-'}</td>
-                        <td className="text-center px-3 py-2">{qualityBadge(t.quality_score)}</td>
-                        <td className="text-center px-3 py-2">{boolBadge(t.reservation_converted)}</td>
-                        <td className="text-center px-3 py-2">{boolBadge(t.needs_followup)}</td>
-                        <td className="px-3 py-2 max-w-[250px]">
-                          <div className="truncate text-slate-600" title={t.summary || ''}>
-                            {t.summary || '-'}
-                          </div>
-                        </td>
-                      </tr>
+                      <React.Fragment key={t.ticket_id}>
+                        <tr className="border-t border-slate-100 hover:bg-slate-50">
+                          <td className="px-3 py-2 max-w-[200px]">
+                            <div className="truncate text-slate-900" title={t.subject || ''}>
+                              {t.subject || '-'}
+                            </div>
+                            <div className="text-xs text-slate-400">
+                              {t.created_at_zd ? new Date(t.created_at_zd).toLocaleDateString('ko-KR') : ''}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-slate-700">{t.assignee_name || '-'}</td>
+                          <td className="text-center px-3 py-2">{qualityBadge(t.quality_score)}</td>
+                          <td className="text-center px-3 py-2">{boolBadge(t.reservation_converted)}</td>
+                          <td className="text-center px-3 py-2">{boolBadge(t.needs_followup)}</td>
+                          <td className="px-3 py-2">
+                            <div className="text-slate-600 text-xs leading-relaxed whitespace-pre-wrap">
+                              {t.summary || '-'}
+                            </div>
+                          </td>
+                          <td className="text-center px-3 py-2">
+                            {t.needs_followup === true ? (
+                              <button
+                                onClick={() => setAssigningTicketId(assigningTicketId === t.ticket_id ? null : t.ticket_id)}
+                                className="px-2 py-1 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                              >
+                                배정
+                              </button>
+                            ) : (
+                              <span className="text-slate-400">-</span>
+                            )}
+                          </td>
+                        </tr>
+                        {assigningTicketId === t.ticket_id && (
+                          <tr className="bg-indigo-50">
+                            <td colSpan={7} className="px-3 py-3">
+                              <div className="flex items-center gap-3">
+                                <span className="text-sm text-slate-700 font-medium">담당자 배정:</span>
+                                <select
+                                  value={selectedWorker}
+                                  onChange={e => setSelectedWorker(e.target.value)}
+                                  className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                >
+                                  <option value="">선택하세요</option>
+                                  {workers.map(w => (
+                                    <option key={w.id} value={w.id}>{w.display_name || w.email}</option>
+                                  ))}
+                                </select>
+                                <button
+                                  onClick={() => handleAssignFollowup(t)}
+                                  disabled={!selectedWorker || assigning}
+                                  className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                                >
+                                  {assigning ? '배정 중...' : '배정'}
+                                </button>
+                                <button
+                                  onClick={() => { setAssigningTicketId(null); setSelectedWorker(''); }}
+                                  className="px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700"
+                                >
+                                  취소
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>

@@ -264,7 +264,7 @@ export default function TaskList({ clientId, userId, canComplete = false, assign
                         {L.complete}
                       </button>
                     )}
-                    {task.status === 'pending' && (
+                    {task.status === 'pending' && canComplete && (
                       <button
                         type="button"
                         onClick={() => deleteTask(task.id)}
@@ -274,7 +274,7 @@ export default function TaskList({ clientId, userId, canComplete = false, assign
                         {L.cancel}
                       </button>
                     )}
-                    {task.status === 'done' && (
+                    {task.status === 'done' && canComplete && (
                       <>
                         <button
                           type="button"

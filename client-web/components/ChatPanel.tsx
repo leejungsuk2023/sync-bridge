@@ -144,6 +144,13 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
     return () => { ch.unsubscribe(); };
   }, [clientId, fetchMembers]);
 
+  // Request notification permission
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
+
   // Load messages
   const fetchMessages = useCallback(async () => {
     if (!chatTaskId) return;
@@ -176,7 +183,22 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
     fetchMessages();
     const ch = supabase
       .channel('chat_panel_' + chatTaskId)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `task_id=eq.${chatTaskId}` }, () => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `task_id=eq.${chatTaskId}` }, (payload) => {
+        fetchMessages();
+        // Show browser notification if tab is hidden and message is from someone else
+        if (document.hidden && payload.new && (payload.new as any).sender_id !== userId) {
+          const senderName = profiles[(payload.new as any).sender_id] || '';
+          const content = (payload.new as any).content || '';
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification(senderName ? `${senderName} (${roomLabel || 'Chat'})` : (roomLabel || 'Chat'), {
+              body: content.length > 100 ? content.slice(0, 100) + '...' : content,
+              icon: '/favicon.ico',
+              tag: 'syncbridge-chat-' + chatTaskId,
+            });
+          }
+        }
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `task_id=eq.${chatTaskId}` }, () => {
         fetchMessages();
       })
       .subscribe();

@@ -4,7 +4,26 @@ import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { X, Send, Paperclip, FileText, Download } from 'lucide-react';
 
-export default function TaskChat({ taskId, userId, onClose }: { taskId: string; userId: string; onClose: () => void }) {
+export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { taskId: string; userId: string; onClose: () => void; locale?: 'ko' | 'th' }) {
+  // Locale-aware label map
+  const L = locale === 'th' ? {
+    title: 'แชทงาน',
+    noMessages: 'ยังไม่มีข้อความ',
+    inputPlaceholder: 'พิมพ์ข้อความ... (ใช้ @ เพื่อเมนชัน)',
+    send: 'ส่ง',
+    attachFile: 'แนบไฟล์',
+    fileSizeError: 'ขนาดไฟล์ต้องไม่เกิน 10MB',
+    uploadError: 'อัปโหลดไฟล์ไม่สำเร็จ: ',
+  } : {
+    title: '업무 채팅',
+    noMessages: '메시지가 없습니다',
+    inputPlaceholder: '메시지 입력... (@로 멘션)',
+    send: '전송',
+    attachFile: '파일 첨부',
+    fileSizeError: '파일 크기는 10MB 이하만 가능합니다.',
+    uploadError: '파일 업로드 실패: ',
+  };
+
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -182,7 +201,7 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) {
-      alert('파일 크기는 10MB 이하만 가능합니다.');
+      alert(L.fileSizeError);
       return;
     }
     setUploading(true);
@@ -190,7 +209,7 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
     const path = `${taskId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
     const { error } = await supabase.storage.from('chat-files').upload(path, file);
     if (error) {
-      alert('파일 업로드 실패: ' + error.message);
+      alert(L.uploadError + error.message);
       setUploading(false);
       return;
     }
@@ -219,7 +238,7 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
       {/* Header */}
       <div className="shrink-0 bg-slate-50 border-b border-slate-200 p-4 flex items-start justify-between">
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold text-slate-900">업무 채팅</h3>
+          <h3 className="text-sm font-semibold text-slate-900">{L.title}</h3>
           {task && <p className="text-xs text-slate-600 mt-1 truncate">{task.content}</p>}
         </div>
         <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors ml-2">
@@ -231,7 +250,7 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
       <div ref={messagesRef} className="flex-1 overflow-y-auto p-4 bg-slate-50 space-y-3">
         {messages.length === 0 && (
           <div className="flex items-center justify-center h-full">
-            <p className="text-sm text-slate-500">메시지가 없습니다</p>
+            <p className="text-sm text-slate-500">{L.noMessages}</p>
           </div>
         )}
         {messages.map((m) => {
@@ -304,7 +323,7 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
           className="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-slate-300 text-slate-500 hover:text-emerald-600 hover:border-emerald-300 disabled:opacity-50 transition-colors"
-          title="파일 첨부"
+          title={L.attachFile}
         >
           {uploading ? (
             <span className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
@@ -333,7 +352,7 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); }
             }}
             onBlur={() => setTimeout(() => setShowMentions(false), 200)}
-            placeholder="메시지 입력... (@로 멘션)"
+            placeholder={L.inputPlaceholder}
             className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-shadow"
           />
         </div>
@@ -344,7 +363,7 @@ export default function TaskChat({ taskId, userId, onClose }: { taskId: string; 
           className="inline-flex items-center gap-1.5 px-5 h-10 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors"
         >
           <Send className="w-4 h-4" />
-          전송
+          {L.send}
         </button>
       </div>
     </div>

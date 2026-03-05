@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import WorkerStatusToggle from './WorkerStatusToggle';
 import TaskList from './TaskList';
 import TaskPropose from './TaskPropose';
-import GeneralChat from './GeneralChat';
+import ChatLayout from './ChatLayout';
 import TranslationHelper from './TranslationHelper';
 
 type Tab = 'งาน' | 'แชท' | 'เครื่องมือ';
@@ -102,7 +102,7 @@ export default function WorkerDashboard({ user, profile }: { user: any; profile:
           </>
         )}
         {activeTab === 'แชท' && (
-          <GeneralChat userId={user.id} clientId={profile.client_id} />
+          <ChatLayout userId={user.id} clientId={profile.client_id} locale="th" assigneeId={user.id} />
         )}
         {activeTab === 'เครื่องมือ' && (
           <TranslationHelper />

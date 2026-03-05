@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { CHAT_ROOMS, ALL_CHAT_SENTINELS } from '@/lib/chat-rooms';
 
 // CORS: Desktop App (Electron) 및 Extension에서의 cross-origin 요청 허용
 const CORS_HEADERS = {
@@ -60,14 +61,132 @@ export async function GET(req: NextRequest) {
   const month = searchParams.get('month'); // format: 2026-03
   const generalChat = searchParams.get('general_chat');
 
-  // 전체 톡방 조회/생성
+  // Chat room: single room lookup/create
+  const chatRoom = searchParams.get('chat_room');
+  if (chatRoom) {
+    const roomDef = CHAT_ROOMS.find(r => r.key === chatRoom);
+    if (!roomDef) {
+      return withCors(NextResponse.json({ error: 'Invalid chat_room key' }, { status: 400 }));
+    }
+    const roomClientId = clientId || profile.client_id;
+    if (!roomClientId) {
+      return withCors(NextResponse.json({ error: 'client_id is required' }, { status: 400 }));
+    }
+
+    // Check for existing
+    const { data: existing } = await getSupabaseAdmin()
+      .from('tasks')
+      .select('*')
+      .eq('client_id', roomClientId)
+      .eq('content', roomDef.sentinel)
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      return withCors(NextResponse.json({ task: existing[0] }));
+    }
+
+    // If this is WORK room, check for legacy __GENERAL_CHAT__ and migrate
+    if (roomDef.key === 'WORK') {
+      const { data: legacy } = await getSupabaseAdmin()
+        .from('tasks')
+        .select('*')
+        .eq('client_id', roomClientId)
+        .eq('content', '__GENERAL_CHAT__')
+        .limit(1);
+      if (legacy && legacy.length > 0) {
+        const { data: migrated } = await getSupabaseAdmin()
+          .from('tasks')
+          .update({ content: '__CHAT_WORK__', content_th: '__CHAT_WORK__' })
+          .eq('id', legacy[0].id)
+          .select()
+          .single();
+        if (migrated) {
+          return withCors(NextResponse.json({ task: migrated }));
+        }
+      }
+    }
+
+    // Create new
+    const { data: created, error: createErr } = await getSupabaseAdmin()
+      .from('tasks')
+      .insert({
+        client_id: roomClientId,
+        assignee_id: profile.id,
+        content: roomDef.sentinel,
+        content_th: roomDef.sentinel,
+        status: 'pending',
+      })
+      .select()
+      .single();
+
+    if (createErr) {
+      return withCors(NextResponse.json({ error: createErr.message }, { status: 400 }));
+    }
+    return withCors(NextResponse.json({ task: created }));
+  }
+
+  // List all chat rooms for a client (find or create all 4)
+  const listChatRooms = searchParams.get('list_chat_rooms');
+  if (listChatRooms === 'true') {
+    const roomClientId = clientId || profile.client_id;
+    if (!roomClientId) {
+      return withCors(NextResponse.json({ error: 'client_id is required' }, { status: 400 }));
+    }
+
+    // Migrate legacy __GENERAL_CHAT__ to __CHAT_WORK__ first
+    const { data: legacy } = await getSupabaseAdmin()
+      .from('tasks')
+      .select('*')
+      .eq('client_id', roomClientId)
+      .eq('content', '__GENERAL_CHAT__')
+      .limit(1);
+    if (legacy && legacy.length > 0) {
+      await getSupabaseAdmin()
+        .from('tasks')
+        .update({ content: '__CHAT_WORK__', content_th: '__CHAT_WORK__' })
+        .eq('id', legacy[0].id);
+    }
+
+    const rooms: any[] = [];
+    for (const room of CHAT_ROOMS) {
+      const { data: existing } = await getSupabaseAdmin()
+        .from('tasks')
+        .select('*')
+        .eq('client_id', roomClientId)
+        .eq('content', room.sentinel)
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        rooms.push({ ...room, taskId: existing[0].id });
+      } else {
+        const { data: created } = await getSupabaseAdmin()
+          .from('tasks')
+          .insert({
+            client_id: roomClientId,
+            assignee_id: profile.id,
+            content: room.sentinel,
+            content_th: room.sentinel,
+            status: 'pending',
+          })
+          .select()
+          .single();
+        if (created) {
+          rooms.push({ ...room, taskId: created.id });
+        }
+      }
+    }
+
+    return withCors(NextResponse.json({ rooms }));
+  }
+
+  // 전체 톡방 조회/생성 (backward compat — migrates __GENERAL_CHAT__ to __CHAT_WORK__)
   if (generalChat === 'true') {
     const gcClientId = clientId || profile.client_id;
     if (!gcClientId) {
       return withCors(NextResponse.json({ error: 'client_id가 필요합니다.' }, { status: 400 }));
     }
 
-    // 기존 전체 채팅방 task 조회
+    // 기존 전체 채팅방 task 조회 (legacy sentinel)
     const { data: existing } = await getSupabaseAdmin()
       .from('tasks')
       .select('*')
@@ -76,17 +195,24 @@ export async function GET(req: NextRequest) {
       .limit(1);
 
     if (existing && existing.length > 0) {
-      return withCors(NextResponse.json({ task: existing[0] }));
+      // Migrate to __CHAT_WORK__
+      const { data: migrated } = await getSupabaseAdmin()
+        .from('tasks')
+        .update({ content: '__CHAT_WORK__', content_th: '__CHAT_WORK__' })
+        .eq('id', existing[0].id)
+        .select()
+        .single();
+      return withCors(NextResponse.json({ task: migrated || existing[0] }));
     }
 
-    // 없으면 생성
+    // 없으면 __CHAT_WORK__ sentinel로 생성
     const { data: created, error: createErr } = await getSupabaseAdmin()
       .from('tasks')
       .insert({
         client_id: gcClientId,
         assignee_id: profile.id,
-        content: '__GENERAL_CHAT__',
-        content_th: '__GENERAL_CHAT__',
+        content: '__CHAT_WORK__',
+        content_th: '__CHAT_WORK__',
         status: 'pending',
       })
       .select()
@@ -101,8 +227,11 @@ export async function GET(req: NextRequest) {
   let query = getSupabaseAdmin()
     .from('tasks')
     .select('*')
-    .neq('content', '__GENERAL_CHAT__')
     .order('created_at', { ascending: false });
+
+  for (const sentinel of ALL_CHAT_SENTINELS) {
+    query = query.neq('content', sentinel);
+  }
 
   // month 필터가 있으면 limit 제거 (캘린더용), 없으면 20개 제한
   if (!month) {

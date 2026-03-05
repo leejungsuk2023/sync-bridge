@@ -8,7 +8,7 @@ import TaskAssign from './TaskAssign';
 import TaskList from './TaskList';
 import TimeReport from './TimeReport';
 import TaskCalendar from './TaskCalendar';
-import GeneralChat from './GeneralChat';
+import ChatLayout from './ChatLayout';
 import TaskPresetManager from './TaskPresetManager';
 import UserManager from './UserManager';
 import WorkerDashboard from './WorkerDashboard';
@@ -96,7 +96,7 @@ export default function Dashboard({ user }: { user: any }) {
       {/* Main */}
       <main className="max-w-[1440px] mx-auto p-6 space-y-6">
         <WorkerStatus workers={workers} />
-        <GeneralChat userId={user.id} clientId={profile?.client_id} />
+        <ChatLayout userId={user.id} clientId={profile?.client_id} />
         <TaskAssign workers={workers} clientId={profile?.client_id} />
         <TaskList clientId={profile?.client_id} userId={user.id} canComplete />
         {profile?.role === 'bbg_admin' && (

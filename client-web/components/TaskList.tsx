@@ -390,7 +390,7 @@ export default function TaskList({ clientId, userId, canComplete = false, assign
                 {/* Chat panel inline */}
                 {chatTaskId === task.id && (
                   <div className="mt-4 border-t border-slate-200 pt-4">
-                    <TaskChat taskId={task.id} userId={userId} onClose={() => setChatTaskId(null)} />
+                    <TaskChat taskId={task.id} userId={userId} onClose={() => setChatTaskId(null)} locale={locale} />
                   </div>
                 )}
               </div>

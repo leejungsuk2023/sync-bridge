@@ -53,7 +53,9 @@
 ### 콘솔 로그 프리픽스
 
 디버깅 로그에는 `[기능명]` 프리픽스를 사용:
-- `[GeneralChat]` — 전체 톡방
+- `[ChatPanel]` — 채팅 패널 (방 채팅 + 업무 채팅 공통)
+- `[ChatSidebar]` — 사이드바 채팅방 목록
+- `[TaskChat]` — 업무별 채팅
 - `[Propose]` — 업무 제안
 
 ### 환경 변수
@@ -61,20 +63,49 @@
 - Desktop/Extension의 `VITE_WEB_URL`은 실제 배포된 client-web URL과 일치해야 함
 - Vercel에 `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY` 필수 설정
 
-### 전체 톡방 필수 조건
+### 채팅방 시스템
 
-워커의 `profiles.client_id`가 설정되어 있어야 전체 톡방이 작동함.
+워커의 `profiles.client_id`가 설정되어 있어야 채팅방 시스템이 작동함.
 미설정 시 UI에 안내 메시지를 표시하고 콘솔에 경고 로그를 남김.
+
+**채팅방 종류 (4개 고정 방):**
+
+| 방 이름 | 센티넬 값 | 용도 |
+|---------|----------|------|
+| WORK | `__CHAT_WORK__` | 업무 전반 소통 |
+| CS | `__CHAT_CS__` | 고객 서비스 |
+| GRAPHIC | `__CHAT_GRAPHIC__` | 디자인/그래픽 |
+| KOL | `__CHAT_KOL__` | KOL 마케팅 |
+
+채팅방 상수 및 타입 정의: `client-web/lib/chat-rooms.ts`
+
+**API 파라미터:**
+- `GET /api/tasks?chat_room=WORK&client_id=xxx` — 단일 채팅방 조회/생성
+- `GET /api/tasks?list_chat_rooms=true&client_id=xxx` — 4개 방 일괄 조회/생성
+- `GET /api/tasks?general_chat=true` — 하위호환 유지 (`__CHAT_WORK__`로 자동 마이그레이션)
+- 일반 업무 목록에서 모든 센티넬 값(`__CHAT_*__`)은 자동 필터링됨
+
+**UI 레이아웃:**
+- 데스크톱: 사이드바(w-64) + 채팅 패널(flex-1) 동시 표시
+- 모바일: 사이드바 ↔ 패널 전환 (뒤로가기 버튼)
 
 ---
 
 ## 파일 구조 참고
 
 ```
-client-web/app/api/          # 모든 API route (CORS 필수)
-syncbridge-desktop/src/      # Electron 앱 (Vite + React)
-syncbridge-extension/src/    # Chrome Extension
-supabase/                    # SQL 마이그레이션
+client-web/app/api/              # 모든 API route (CORS 필수)
+client-web/lib/chat-rooms.ts     # 채팅방 상수, 센티넬 값, 타입 정의
+client-web/components/
+  ChatLayout.tsx                 # 사이드바 + 패널 오케스트레이터 (반응형)
+  ChatSidebar.tsx                # 좌측 사이드바 (방 4개 + 업무 목록)
+  ChatPanel.tsx                  # 방/업무 겸용 채팅 패널 (GeneralChat 대체)
+  TaskChat.tsx                   # 업무별 채팅 (기존 유지)
+  Dashboard.tsx                  # 클라이언트 대시보드 (ChatLayout 사용)
+  WorkerDashboard.tsx            # 워커 대시보드 (ChatLayout 사용)
+syncbridge-desktop/src/          # Electron 앱 (Vite + React)
+syncbridge-extension/src/        # Chrome Extension
+supabase/                        # SQL 마이그레이션
 ```
 
 관련 문서: `README.md`, `PRD.md`, `DEBUGGING.md`

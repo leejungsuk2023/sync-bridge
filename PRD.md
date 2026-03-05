@@ -34,9 +34,9 @@
 | 역할 기반 라우팅 | ✅ | worker 로그인 → WorkerDashboard, client/bbg_admin → Dashboard 자동 분기 |
 | 직원 상태 모니터링 | ✅ | 실시간 온라인/자리비움/오프라인, 좌측 액센트 보더, 평균 평점 |
 | 전체 톡방 | ✅ | 클라이언트↔직원 그룹 채팅, 접기/펼치기, 발신자 이름, 실시간 수신 |
-| 업무 할당 | ✅ | 담당자 선택, 프리셋 자동 채우기, 마감일 설정(날짜+시간 datetime-local), 한→태 자동 번역, 할당자 표시 |
+| 업무 할당 | ✅ | 업무 제목(content) + 상세 가이드(description) 분리 입력, 각각 한→태 자동 번역, 프리셋 자동 채우기, 마감일 설정(datetime-local), 할당자 표시 |
 | 업무 프리셋 | ✅ | bbg_admin이 자주 쓰는 업무 지시를 프리셋으로 등록, 병원별/전체 공용 |
-| 업무 목록 | ✅ | 내 업무/팀 전체 분리, 실시간 조회, 상태 배지, 인라인 채팅, 기한초과 경고 |
+| 업무 목록 | ✅ | 업무 제목(굵게) + 상세 가이드 접기/펼치기 표시, 태국어 제목(content_th)·가이드(description_th) 동시 표시, 내 업무/팀 전체 분리, 실시간 조회, 상태 배지, 인라인 채팅, 기한초과 경고 |
 | 업무 완료/취소/되돌리기 | ✅ | client만 완료(초록 완료 버튼)/취소(X 취소)/되돌리기 처리 가능 |
 | 마감일 인라인 수정 | ✅ | 기존 마감일 클릭 → 인라인 datetime-local 편집 |
 | 업무 캘린더 | ✅ | 월별 업무 현황 달력, 날짜별 업무 수 표시 |
@@ -113,7 +113,7 @@
 | `clients` | 고객사(병원) 정보 |
 | `profiles` | 사용자 프로필 (role, client_id, display_name) |
 | `time_logs` | 근태 기록 (worker_id, status, created_at) |
-| `tasks` | 업무 (content, content_th, assignee_id, due_date, rating, source, status, created_by) |
+| `tasks` | 업무 (content, content_th, description, description_th, assignee_id, due_date, rating, source, status, created_by) |
 | `messages` | 업무별 채팅 (content_ko, content_th, is_whisper, sender_lang, file_url, file_name, file_type, mentions) |
 | `quick_replies` | 자동답변 템플릿 (title/body × ko/th, client_id) |
 | `task_presets` | 업무 프리셋 (title/content × ko/th, client_id) |
@@ -173,8 +173,8 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | 경로 | 메서드 | 역할 |
 |------|--------|------|
 | `/api/tasks` | GET | 업무 목록 조회, 전체 톡방 조회/생성 (`?general_chat=true`) |
-| `/api/tasks` | POST | 업무 생성 (client, bbg_admin) |
-| `/api/tasks` | PATCH | 업무 수정 (상태 변경, 평가 등) |
+| `/api/tasks` | POST | 업무 생성 (client, bbg_admin) — content, content_th, description, description_th, assignee_id, due_date, source |
+| `/api/tasks` | PATCH | 업무 수정 — status, rating, due_date, content, content_th, description, description_th, assignee_id |
 | `/api/tasks` | DELETE | 업무 삭제 + 연결 메시지 삭제 |
 | `/api/translate` | POST | 한↔태 양방향 번역 (Gemini API) |
 | `/api/ai-assist` | POST | AI 상담 어시스턴트 (의도 파악 + 추천 답변) |
@@ -229,4 +229,4 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 
 ---
 
-**문서 버전:** 3.4 · Phase 1 워커 웹 대시보드 반영 (WorkerDashboard, WorkerStatusToggle, TaskPropose, TranslationHelper, 역할 기반 라우팅, 업무 완료/취소/되돌리기, created_by, datetime-local)
+**문서 버전:** 3.5 · 업무 상세 설명 필드 분리 반영 (description/description_th 컬럼 추가, TaskAssign 제목+가이드 분리 입력, TaskList 접기/펼치기 표시, PATCH whitelist 업데이트)

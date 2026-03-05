@@ -297,7 +297,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { client_id, assignee_id, content, content_th, status, due_date, source } = body;
+  const { client_id, assignee_id, content, content_th, description, description_th, status, due_date, source } = body;
 
   // Worker can only create proposals (source: 'worker_proposed')
   if (!['client', 'bbg_admin'].includes(profile.role) && source !== 'worker_proposed') {
@@ -316,6 +316,8 @@ export async function POST(req: NextRequest) {
     status: status || 'pending',
     created_by: profile.id,
   };
+  if (description) insertData.description = description;
+  if (description_th) insertData.description_th = description_th;
   if (due_date) insertData.due_date = due_date;
   if (source) insertData.source = source;
 
@@ -377,7 +379,7 @@ export async function DELETE(req: NextRequest) {
 }
 
 // PATCH: 업무 수정 (field whitelist + scope check)
-const ALLOWED_PATCH_FIELDS = ['status', 'rating', 'rated_by', 'rated_at', 'due_date', 'content', 'content_th', 'assignee_id'];
+const ALLOWED_PATCH_FIELDS = ['status', 'rating', 'rated_by', 'rated_at', 'due_date', 'content', 'content_th', 'description', 'description_th', 'assignee_id'];
 
 export async function PATCH(req: NextRequest) {
   const profile = await verifyUser(req);

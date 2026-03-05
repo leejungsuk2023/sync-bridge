@@ -100,12 +100,15 @@ client-web/components/
   ChatLayout.tsx                 # 사이드바 + 패널 오케스트레이터 (반응형)
   ChatSidebar.tsx                # 좌측 사이드바 (방 4개 + 업무 목록)
   ChatPanel.tsx                  # 방/업무 겸용 채팅 패널 (GeneralChat 대체)
+  TaskAssign.tsx                 # 업무 할당 폼 — 제목(content) + 상세 가이드(description) 분리 입력, 각각 한→태 자동번역
+  TaskList.tsx                   # 업무 목록 — 제목 굵게 표시, description 접기/펼치기, description_th 번역 동시 표시
   TaskChat.tsx                   # 업무별 채팅 (기존 유지)
   Dashboard.tsx                  # 클라이언트 대시보드 (ChatLayout 사용)
   WorkerDashboard.tsx            # 워커 대시보드 (ChatLayout 사용)
 syncbridge-desktop/src/          # Electron 앱 (Vite + React)
 syncbridge-extension/src/        # Chrome Extension
 supabase/                        # SQL 마이그레이션
+supabase/task_description.sql    # tasks 테이블 description, description_th 컬럼 추가
 ```
 
 관련 문서: `README.md`, `PRD.md`, `DEBUGGING.md`

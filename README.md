@@ -82,6 +82,7 @@ g sync/
     ├── fix_rls_policies.sql    # messages UPDATE + profiles 동료 조회 정책
     ├── chat_file_attachment.sql # 채팅 파일 첨부 (file_url, file_name, file_type + Storage)
     ├── chat_mentions.sql       # @멘션 기능 (mentions jsonb 컬럼)
+    ├── task_description.sql    # tasks 상세 설명 컬럼 (description, description_th)
     ├── setup_test_client.sql   # 테스트 데이터 셋업
     └── README.md
 │
@@ -121,6 +122,7 @@ g sync/
    9. `supabase/fix_rls_policies.sql` — messages UPDATE + profiles 동료 조회 정책
    10. `supabase/chat_file_attachment.sql` — 채팅 파일 첨부 (file_url, Storage RLS)
    11. `supabase/chat_mentions.sql` — @멘션 (mentions jsonb 컬럼)
+   12. `supabase/task_description.sql` — 업무 상세 설명 컬럼 (description, description_th)
 3. **Authentication** → Providers → **Email** 활성화
 
 ### 2. Client Web 실행
@@ -197,8 +199,8 @@ VITE_WEB_URL=http://localhost:3000   # 번역/AI API URL
 | 로그인 | Supabase Auth, 그라데이션 배경 디자인 |
 | 직원 상태 | 온라인/자리 비움/오프라인 + 평균 품질평가 (Realtime) |
 | 전체 톡방 | 클라이언트↔직원 간 그룹 채팅방 (접기/펼치기, 발신자 이름 표시) |
-| 업무 할당 | 프리셋 선택 → 자동 채우기, 마감일 설정(날짜만), 한국어 입력 → 태국어 자동 번역 |
-| 업무 목록 | 실시간 조회, 인라인 채팅, 완료 시 별점 품질 평가(1~5점), 기한초과 경고 |
+| 업무 할당 | 업무 제목(한국어 → 태국어 자동번역) + 상세 가이드(선택, 태국어 자동번역) 분리 입력, 프리셋 선택 → 자동 채우기, 마감일 설정 |
+| 업무 목록 | 업무 제목(굵게) + 상세 가이드 접기/펼치기, 태국어 제목·가이드 번역 동시 표시, 실시간 조회, 인라인 채팅, 완료 시 별점 품질 평가(1~5점), 기한초과 경고 |
 | 업무 캘린더 | 월별 업무 현황 달력, 날짜별 업무 수 표시 |
 | 채팅 | 업무별 1:1 채팅, 즉시 전송 + 백그라운드 번역, 실시간 업데이트 |
 | 파일 첨부 | 채팅 내 이미지/문서 업로드, 미리보기, 다운로드 (Supabase Storage) |

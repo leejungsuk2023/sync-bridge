@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Star, MessageCircle, Trash2, RotateCcw, Calendar, X, CheckCircle } from 'lucide-react';
+import { Star, MessageCircle, Trash2, RotateCcw, Calendar, X, CheckCircle, ChevronDown } from 'lucide-react';
 import TaskChat from './TaskChat';
 
 export default function TaskList({ clientId, userId, canComplete = false, assigneeId, title, locale = 'ko' }: { clientId?: string; userId: string; canComplete?: boolean; assigneeId?: string; title?: string; locale?: 'ko' | 'th' }) {
@@ -29,6 +29,9 @@ export default function TaskList({ clientId, userId, canComplete = false, assign
     duePrefix: 'กำหนดส่ง',
     setDue: 'ตั้งกำหนดส่ง',
     delete: 'ลบ',
+    detailCollapse: 'ย่อรายละเอียด',
+    detailExpand: 'ดูรายละเอียด',
+    detailGuide: 'คำแนะนำรายละเอียด',
   } : {
     defaultTitle: '업무 목록',
     loading: '불러오는 중...',
@@ -51,6 +54,9 @@ export default function TaskList({ clientId, userId, canComplete = false, assign
     duePrefix: '마감',
     setDue: '기한 설정',
     delete: '삭제',
+    detailCollapse: '상세 접기',
+    detailExpand: '상세 보기',
+    detailGuide: '상세 가이드',
   };
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,6 +94,16 @@ export default function TaskList({ clientId, userId, canComplete = false, assign
   const [ratingTaskId, setRatingTaskId] = useState<string | null>(null);
   const [ratingValue, setRatingValue] = useState<number | null>(null);
   const [editDueDateTaskId, setEditDueDateTaskId] = useState<string | null>(null);
+  const [expandedDesc, setExpandedDesc] = useState<Set<string>>(new Set());
+
+  const toggleDesc = (taskId: string) => {
+    setExpandedDesc(prev => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  };
 
   const submitRating = async (taskId: string, rating: number) => {
     const session = (await supabase.auth.getSession()).data.session;
@@ -235,7 +251,19 @@ export default function TaskList({ clientId, userId, canComplete = false, assign
               <div key={task.id} className="border border-slate-200 rounded-lg p-4 space-y-3">
                 {/* Content + Status + Chat */}
                 <div className="flex items-start justify-between gap-3">
-                  <p className="text-sm text-slate-900 flex-1">{task.content}</p>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-slate-900">{task.content}</p>
+                    {task.description && (
+                      <button
+                        type="button"
+                        onClick={() => toggleDesc(task.id)}
+                        className="text-xs text-blue-500 hover:text-blue-700 mt-1 flex items-center gap-0.5"
+                      >
+                        <ChevronDown className={`w-3 h-3 transition-transform ${expandedDesc.has(task.id) ? 'rotate-180' : ''}`} />
+                        {expandedDesc.has(task.id) ? L.detailCollapse : L.detailExpand}
+                      </button>
+                    )}
+                  </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                       task.status === 'done' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
@@ -296,13 +324,24 @@ export default function TaskList({ clientId, userId, canComplete = false, assign
                   </div>
                 </div>
 
+                {/* Expanded description */}
+                {task.description && expandedDesc.has(task.id) && (
+                  <div className="bg-blue-50 border border-blue-100 rounded p-3">
+                    <p className="text-xs font-medium text-blue-900 mb-1">{L.detailGuide}</p>
+                    <p className="text-sm text-blue-800 whitespace-pre-wrap">{locale === 'th' && task.description_th ? task.description_th : task.description}</p>
+                  </div>
+                )}
+
                 {/* Thai translation */}
                 {task.content_th && (
                   <div className="bg-slate-50 border border-slate-200 rounded p-2.5">
                     <p className="text-xs text-slate-600 flex items-center gap-1.5">
                       <span>🇹🇭</span>
-                      {task.content_th}
+                      <span className="font-medium">{task.content_th}</span>
                     </p>
+                    {task.description_th && (
+                      <p className="text-xs text-slate-500 mt-1 ml-5">{task.description_th}</p>
+                    )}
                   </div>
                 )}
 

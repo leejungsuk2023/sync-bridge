@@ -7,9 +7,11 @@ import { Loader2 } from 'lucide-react';
 export default function TaskAssign({ workers, clientId }: { workers: any[]; clientId?: string }) {
   const [assigneeId, setAssigneeId] = useState('');
   const [content, setContent] = useState('');
+  const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [preview, setPreview] = useState('');
+  const [previewDesc, setPreviewDesc] = useState('');
   const [dueDate, setDueDate] = useState('');
 
   // 프리셋
@@ -64,6 +66,7 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
     setLoading(true);
     setError('');
     setPreview('');
+    setPreviewDesc('');
 
     let contentTh = '';
     if (presetContentTh && selectedPresetId) {
@@ -96,6 +99,30 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
       }
     }
 
+    // Translate description if provided
+    let descriptionTh = '';
+    if (description.trim()) {
+      try {
+        const res = await fetch('/api/translate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: description.trim(), targetLang: 'th' }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setError('상세 가이드 번역 실패: ' + (data.error || '알 수 없는 오류'));
+          setLoading(false);
+          return;
+        }
+        descriptionTh = data.translated || '';
+        setPreviewDesc(descriptionTh);
+      } catch (err: any) {
+        setError('상세 가이드 번역 요청 실패: ' + err.message);
+        setLoading(false);
+        return;
+      }
+    }
+
     const insertData: any = {
       client_id: targetClientId,
       assignee_id: assigneeId,
@@ -104,6 +131,10 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
       status: 'pending',
     };
     if (dueDate) insertData.due_date = new Date(dueDate).toISOString();
+    if (description.trim()) {
+      insertData.description = description.trim();
+      insertData.description_th = descriptionTh;
+    }
 
     try {
       const session = (await supabase.auth.getSession()).data.session;
@@ -127,8 +158,10 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
       return;
     }
     setContent('');
+    setDescription('');
     setAssigneeId('');
     setPreview('');
+    setPreviewDesc('');
     setSelectedPresetId('');
     setPresetContentTh('');
     setDueDate('');
@@ -189,11 +222,12 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
           </div>
         </div>
 
-        {/* 2행: 업무 내용 + 할당 버튼 */}
-        <div className="flex gap-3 items-end">
+        {/* 2행: 업무 제목 + 할당 버튼 */}
+        <div className="flex gap-3 items-end mb-3">
           <div className="flex-1">
-            <label className="block text-xs font-medium text-slate-600 mb-1">업무 내용 (한국어 → 태국어 자동번역)</label>
-            <textarea
+            <label className="block text-xs font-medium text-slate-600 mb-1">업무 제목 (한국어 → 태국어 자동번역)</label>
+            <input
+              type="text"
               value={content}
               onChange={(e) => {
                 setContent(e.target.value);
@@ -204,16 +238,15 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
                   }
                 }
               }}
-              placeholder="예: 오늘 오후 2시 페이스북 이벤트 게시글 업로드"
-              rows={2}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg resize-none text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-shadow"
+              placeholder="예: 페이스북 이벤트 게시글 업로드"
+              className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-shadow"
               required
             />
           </div>
           <button
             type="submit"
             disabled={loading || workers.length === 0}
-            className="shrink-0 h-[68px] px-6 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+            className="shrink-0 h-10 px-6 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
           >
             {loading ? (
               <>
@@ -226,10 +259,25 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
           </button>
         </div>
 
-        {preview && (
+        {/* 3행: 상세 가이드 (선택) */}
+        <div className="mb-3">
+          <label className="block text-xs font-medium text-slate-600 mb-1">
+            상세 가이드 <span className="text-slate-400">(선택사항, 태국어 자동번역)</span>
+          </label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="예: 오후 2시까지 완료, 이미지 3장 포함, 해시태그 #이벤트 추가"
+            rows={3}
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg resize-none text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-shadow"
+          />
+        </div>
+
+        {(preview || previewDesc) && (
           <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3">
             <p className="text-xs font-medium text-amber-900 mb-1">태국어 번역 미리보기</p>
-            <p className="text-sm text-amber-800">{preview}</p>
+            {preview && <p className="text-sm text-amber-800 font-medium">{preview}</p>}
+            {previewDesc && <p className="text-sm text-amber-800 mt-1">{previewDesc}</p>}
           </div>
         )}
 

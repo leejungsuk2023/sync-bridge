@@ -30,6 +30,8 @@ interface RecentTicket {
   needs_followup: boolean | null;
   summary: string | null;
   created_at_zd: string;
+  comment_count: number;
+  status: string;
 }
 
 interface StatsData {
@@ -375,9 +377,21 @@ export default function SalesPerformance() {
                           <td className="text-center px-3 py-2">{boolBadge(t.reservation_converted)}</td>
                           <td className="text-center px-3 py-2">{boolBadge(t.needs_followup)}</td>
                           <td className="px-3 py-2">
-                            <div className="text-slate-600 text-xs leading-relaxed whitespace-pre-wrap">
-                              {t.summary || '-'}
-                            </div>
+                            {t.summary ? (
+                              <div className="text-slate-600 text-xs leading-relaxed whitespace-pre-wrap">
+                                {t.summary}
+                              </div>
+                            ) : t.comment_count < 10 ? (
+                              <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                                대화 {t.comment_count}건 (10건 미만)
+                              </span>
+                            ) : !['open', 'pending', 'new'].includes(t.status) ? (
+                              <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                                종결 ({t.status})
+                              </span>
+                            ) : (
+                              <span className="text-xs text-amber-500">분석 대기</span>
+                            )}
                           </td>
                           <td className="text-center px-3 py-2">
                             {t.needs_followup === true ? (

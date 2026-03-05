@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
   // Fetch tickets in period
   const { data: tickets, error: ticketsErr } = await supabaseAdmin
     .from('zendesk_tickets')
-    .select('ticket_id, subject, assignee_email, assignee_name, created_at_zd')
+    .select('ticket_id, subject, assignee_email, assignee_name, created_at_zd, comments, status')
     .gte('created_at_zd', sinceISO)
     .order('created_at_zd', { ascending: false });
 
@@ -171,6 +171,8 @@ export async function GET(req: NextRequest) {
       needs_followup: analysis?.needs_followup ?? null,
       summary: analysis?.summary ?? null,
       created_at_zd: t.created_at_zd,
+      comment_count: Array.isArray(t.comments) ? t.comments.length : 0,
+      status: t.status,
     };
   });
 

@@ -45,6 +45,8 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const period = searchParams.get('period') || 'month';
+  const limitParam = parseInt(searchParams.get('limit') || '20', 10);
+  const limit = Math.min(Math.max(limitParam, 1), 200);
 
   // Calculate date range
   const now = new Date();
@@ -156,8 +158,9 @@ export async function GET(req: NextRequest) {
     }))
     .sort((a, b) => b.ticketCount - a.ticketCount);
 
-  // Recent tickets (limit 20, with analysis joined)
-  const recentTickets = (tickets || []).slice(0, 20).map(t => {
+  // Recent tickets (with analysis joined)
+  const totalCount = (tickets || []).length;
+  const recentTickets = (tickets || []).slice(0, limit).map(t => {
     const analysis = analysisMap.get(t.ticket_id);
     return {
       ticket_id: t.ticket_id,
@@ -171,5 +174,5 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  return withCors(NextResponse.json({ overview, byAssignee, recentTickets }));
+  return withCors(NextResponse.json({ overview, byAssignee, recentTickets, totalCount }));
 }

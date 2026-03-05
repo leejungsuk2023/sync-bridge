@@ -12,7 +12,6 @@ import ChatLayout from './ChatLayout';
 import TaskPresetManager from './TaskPresetManager';
 import UserManager from './UserManager';
 import WorkerDashboard from './WorkerDashboard';
-import SalesPerformance from './SalesPerformance';
 
 export default function Dashboard({ user }: { user: any }) {
   const [profile, setProfile] = useState<any>(null);
@@ -92,6 +91,11 @@ export default function Dashboard({ user }: { user: any }) {
                 모니터링
               </a>
             )}
+            {profile?.role === 'bbg_admin' && (
+              <a href="/sales" className="text-sm text-indigo-600 hover:text-indigo-800 transition-colors font-medium">
+                Sales
+              </a>
+            )}
             <button onClick={handleLogout} className="text-sm text-slate-500 hover:text-slate-700 transition-colors">
               로그아웃
             </button>
@@ -110,9 +114,6 @@ export default function Dashboard({ user }: { user: any }) {
         )}
         <TaskCalendar workers={workers} clientId={profile?.client_id} />
         <TimeReport workers={workers} />
-        {profile?.role === 'bbg_admin' && (
-          <SalesPerformance />
-        )}
         {profile?.role === 'bbg_admin' && (
           <UserManager clients={clients} />
         )}

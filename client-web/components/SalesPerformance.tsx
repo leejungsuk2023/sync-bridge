@@ -36,6 +36,7 @@ interface StatsData {
   overview: Overview;
   byAssignee: AssigneeStat[];
   recentTickets: RecentTicket[];
+  totalCount: number;
 }
 
 export default function SalesPerformance() {
@@ -49,6 +50,7 @@ export default function SalesPerformance() {
   const [assigningTicketId, setAssigningTicketId] = useState<number | null>(null);
   const [selectedWorker, setSelectedWorker] = useState('');
   const [assigning, setAssigning] = useState(false);
+  const [ticketLimit, setTicketLimit] = useState(20);
 
   const getAuthHeader = async () => {
     const session = (await supabase.auth.getSession()).data.session;
@@ -58,7 +60,7 @@ export default function SalesPerformance() {
   const fetchStats = async () => {
     try {
       const headers = await getAuthHeader();
-      const res = await fetch(`/api/zendesk/stats?period=${period}`, { headers });
+      const res = await fetch(`/api/zendesk/stats?period=${period}&limit=${ticketLimit}`, { headers });
       if (res.ok) {
         const data = await res.json();
         setStats(data);
@@ -73,7 +75,7 @@ export default function SalesPerformance() {
   useEffect(() => {
     setLoading(true);
     fetchStats();
-  }, [period]);
+  }, [period, ticketLimit]);
 
   useEffect(() => {
     const fetchWorkers = async () => {
@@ -427,6 +429,16 @@ export default function SalesPerformance() {
                   </tbody>
                 </table>
               </div>
+              {stats.recentTickets.length >= ticketLimit && (
+                <div className="text-center mt-4">
+                  <button
+                    onClick={() => setTicketLimit(prev => prev + 20)}
+                    className="px-4 py-2 text-sm text-indigo-600 border border-indigo-300 rounded-lg hover:bg-indigo-50 transition-colors"
+                  >
+                    더 보기
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </>

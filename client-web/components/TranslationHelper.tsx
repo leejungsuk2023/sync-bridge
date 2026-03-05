@@ -12,7 +12,7 @@ export default function TranslationHelper() {
   const [error, setError] = useState('');
 
   const placeholder =
-    direction === 'th-ko' ? 'แปลข้อความภาษาไทย...' : '번역할 한국어를 입력하세요...';
+    direction === 'th-ko' ? 'แปลข้อความภาษาไทย...' : 'พิมพ์ภาษาเกาหลีที่ต้องการแปล...';
 
   const handleTranslate = async () => {
     if (!inputText.trim()) return;
@@ -30,7 +30,7 @@ export default function TranslationHelper() {
       setResult(data.translated ?? '');
     } catch (e) {
       console.error('[TranslationHelper] translate error:', e);
-      setError('번역 중 오류가 발생했습니다. 다시 시도해 주세요.');
+      setError('เกิดข้อผิดพลาดในการแปล กรุณาลองอีกครั้ง');
     } finally {
       setTranslating(false);
     }
@@ -58,7 +58,7 @@ export default function TranslationHelper() {
     <div className="bg-gradient-to-r from-cyan-50/70 to-white rounded-xl shadow-sm border border-cyan-100 border-l-4 border-l-cyan-400 p-4 sm:p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-base font-semibold text-gray-800">번역 도우미</h2>
+        <h2 className="text-base font-semibold text-gray-800">ตัวช่วยแปลภาษา</h2>
         <button
           onClick={toggleDirection}
           className="flex items-center gap-1.5 text-sm text-cyan-700 bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 rounded-lg px-3 py-1.5 transition-colors"
@@ -87,10 +87,10 @@ export default function TranslationHelper() {
         {translating ? (
           <>
             <Loader2 className="w-4 h-4 animate-spin" />
-            번역 중...
+            กำลังแปล...
           </>
         ) : (
-          '번역하기'
+          'แปลภาษา'
         )}
       </button>
 
@@ -103,7 +103,7 @@ export default function TranslationHelper() {
       {result && (
         <div className="mt-4">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs font-medium text-gray-500">번역 결과</span>
+            <span className="text-xs font-medium text-gray-500">ผลการแปล</span>
             <button
               onClick={handleCopy}
               className="flex items-center gap-1 text-xs text-gray-500 hover:text-cyan-600 transition-colors"
@@ -111,12 +111,12 @@ export default function TranslationHelper() {
               {copied ? (
                 <>
                   <Check className="w-3.5 h-3.5 text-green-500" />
-                  <span className="text-green-500">복사됨</span>
+                  <span className="text-green-500">คัดลอกแล้ว</span>
                 </>
               ) : (
                 <>
                   <Copy className="w-3.5 h-3.5" />
-                  복사
+                  คัดลอก
                 </>
               )}
             </button>

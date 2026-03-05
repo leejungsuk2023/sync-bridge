@@ -5,7 +5,53 @@ import { supabase } from '@/lib/supabase';
 import { Star, MessageCircle, Trash2, RotateCcw, Calendar, X, CheckCircle } from 'lucide-react';
 import TaskChat from './TaskChat';
 
-export default function TaskList({ workers, clientId, userId, canComplete = false, assigneeId, title }: { workers: any[]; clientId?: string; userId: string; canComplete?: boolean; assigneeId?: string; title?: string }) {
+export default function TaskList({ clientId, userId, canComplete = false, assigneeId, title, locale = 'ko' }: { clientId?: string; userId: string; canComplete?: boolean; assigneeId?: string; title?: string; locale?: 'ko' | 'th' }) {
+  // Locale-aware label map
+  const L = locale === 'th' ? {
+    defaultTitle: 'รายการงาน',
+    loading: 'กำลังโหลด...',
+    noTasks: 'ไม่มีงานที่กำลังดำเนินการ',
+    showDone: (n: number) => `ดูงานเสร็จแล้ว ${n} รายการ`,
+    hideDone: (n: number) => `ซ่อนงานเสร็จแล้ว ${n} รายการ`,
+    done: 'เสร็จแล้ว',
+    pending: 'รอดำเนินการ',
+    chat: 'แชท',
+    complete: 'เสร็จ',
+    cancel: 'ยกเลิก',
+    rate: 'ให้คะแนน',
+    quality: 'คุณภาพ:',
+    assignedBy: 'มอบหมาย:',
+    assignee: 'รับผิดชอบ:',
+    confirmDelete: 'ต้องการลบงานนี้หรือไม่? ประวัติแชทจะถูกลบด้วย',
+    confirmRevert: 'ต้องการเปลี่ยนงานนี้กลับเป็นกำลังดำเนินการหรือไม่?',
+    confirmComplete: 'ต้องการทำเครื่องหมายว่างานนี้เสร็จแล้วหรือไม่?',
+    overdue: 'เลยกำหนด',
+    duePrefix: 'กำหนดส่ง',
+    setDue: 'ตั้งกำหนดส่ง',
+    delete: 'ลบ',
+  } : {
+    defaultTitle: '업무 목록',
+    loading: '불러오는 중...',
+    noTasks: '진행 중인 업무가 없습니다.',
+    showDone: (n: number) => `완료 ${n}건 보기`,
+    hideDone: (n: number) => `완료 ${n}건 숨기기`,
+    done: '완료',
+    pending: '대기',
+    chat: '채팅',
+    complete: '완료',
+    cancel: '취소',
+    rate: '평가하기',
+    quality: '품질:',
+    assignedBy: '할당:',
+    assignee: '담당:',
+    confirmDelete: '이 업무를 삭제하시겠습니까? 채팅 내역도 함께 삭제됩니다.',
+    confirmRevert: '이 업무를 다시 진행 중으로 되돌리시겠습니까?',
+    confirmComplete: '이 업무를 완료 처리하시겠습니까?',
+    overdue: '기한초과',
+    duePrefix: '마감',
+    setDue: '기한 설정',
+    delete: '삭제',
+  };
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [chatTaskId, setChatTaskId] = useState<string | null>(null);
@@ -45,7 +91,7 @@ export default function TaskList({ workers, clientId, userId, canComplete = fals
 
   const submitRating = async (taskId: string, rating: number) => {
     const session = (await supabase.auth.getSession()).data.session;
-    await fetch('/api/tasks', {
+    const res = await fetch('/api/tasks', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -53,24 +99,29 @@ export default function TaskList({ workers, clientId, userId, canComplete = fals
       },
       body: JSON.stringify({ id: taskId, rating, rated_by: userId, rated_at: new Date().toISOString() }),
     });
+    if (!res.ok) console.error('[TaskList] submitRating failed:', await res.text());
     setRatingTaskId(null);
     setRatingValue(null);
   };
 
   const deleteTask = async (taskId: string) => {
-    if (!confirm('이 업무를 삭제하시겠습니까? 채팅 내역도 함께 삭제됩니다.')) return;
+    if (!confirm(L.confirmDelete)) return;
     const session = (await supabase.auth.getSession()).data.session;
-    await fetch(`/api/tasks?id=${taskId}`, {
+    const res = await fetch(`/api/tasks?id=${taskId}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${session?.access_token}` },
     });
+    if (!res.ok) {
+      console.error('[TaskList] deleteTask failed:', await res.text());
+      return;
+    }
     setTasks(prev => prev.filter(t => t.id !== taskId));
   };
 
   const revertTask = async (taskId: string) => {
-    if (!confirm('이 업무를 다시 진행 중으로 되돌리시겠습니까?')) return;
+    if (!confirm(L.confirmRevert)) return;
     const session = (await supabase.auth.getSession()).data.session;
-    await fetch('/api/tasks', {
+    const res = await fetch('/api/tasks', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -78,12 +129,13 @@ export default function TaskList({ workers, clientId, userId, canComplete = fals
       },
       body: JSON.stringify({ id: taskId, status: 'pending', rating: null, rated_by: null, rated_at: null }),
     });
+    if (!res.ok) console.error('[TaskList] revertTask failed:', await res.text());
   };
 
   const completeTask = async (taskId: string) => {
-    if (!confirm('이 업무를 완료 처리하시겠습니까?')) return;
+    if (!confirm(L.confirmComplete)) return;
     const session = (await supabase.auth.getSession()).data.session;
-    await fetch('/api/tasks', {
+    const res = await fetch('/api/tasks', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -91,11 +143,12 @@ export default function TaskList({ workers, clientId, userId, canComplete = fals
       },
       body: JSON.stringify({ id: taskId, status: 'done' }),
     });
+    if (!res.ok) console.error('[TaskList] completeTask failed:', await res.text());
   };
 
   const updateDueDate = async (taskId: string, newDueDate: string) => {
     const session = (await supabase.auth.getSession()).data.session;
-    await fetch('/api/tasks', {
+    const res = await fetch('/api/tasks', {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -103,6 +156,7 @@ export default function TaskList({ workers, clientId, userId, canComplete = fals
       },
       body: JSON.stringify({ id: taskId, due_date: newDueDate ? new Date(newDueDate).toISOString() : null }),
     });
+    if (!res.ok) console.error('[TaskList] updateDueDate failed:', await res.text());
     setEditDueDateTaskId(null);
   };
 
@@ -130,7 +184,7 @@ export default function TaskList({ workers, clientId, userId, canComplete = fals
           onClick={() => setRatingTaskId(task.id)}
           className="text-xs text-blue-600 hover:text-blue-700 font-medium"
         >
-          평가하기
+          {L.rate}
         </button>
       );
     }
@@ -150,7 +204,7 @@ export default function TaskList({ workers, clientId, userId, canComplete = fals
           ))}
         </div>
         <button type="button" onClick={() => setRatingTaskId(null)} className="text-xs text-slate-500 hover:text-slate-700">
-          취소
+          {L.cancel}
         </button>
       </div>
     );
@@ -160,21 +214,21 @@ export default function TaskList({ workers, clientId, userId, canComplete = fals
     <div className="space-y-4">
       <div className="bg-gradient-to-r from-amber-50/70 to-white rounded-xl shadow-sm border border-amber-100 border-l-4 border-l-amber-400 p-6">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold text-slate-900">{title || '업무 목록'}</h2>
+          <h2 className="text-lg font-semibold text-slate-900">{title || L.defaultTitle}</h2>
           {doneTasks.length > 0 && (
             <button
               type="button"
               onClick={() => setShowDone(!showDone)}
               className="text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors"
             >
-              완료 {doneTasks.length}건 {showDone ? '숨기기' : '보기'}
+              {showDone ? L.hideDone(doneTasks.length) : L.showDone(doneTasks.length)}
             </button>
           )}
         </div>
         {loading ? (
-          <p className="text-center text-slate-500 py-12">불러오는 중...</p>
+          <p className="text-center text-slate-500 py-12">{L.loading}</p>
         ) : pendingTasks.length === 0 && !showDone ? (
-          <p className="text-center text-slate-500 py-12">진행 중인 업무가 없습니다.</p>
+          <p className="text-center text-slate-500 py-12">{L.noTasks}</p>
         ) : (
           <div className="space-y-4 max-h-[800px] overflow-y-auto pr-2">
             {[...pendingTasks, ...(showDone ? doneTasks : [])].map((task) => (
@@ -186,7 +240,7 @@ export default function TaskList({ workers, clientId, userId, canComplete = fals
                     <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                       task.status === 'done' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
                     }`}>
-                      {task.status === 'done' ? '완료' : '대기'}
+                      {task.status === 'done' ? L.done : L.pending}
                     </span>
                     <button
                       type="button"
@@ -198,17 +252,16 @@ export default function TaskList({ workers, clientId, userId, canComplete = fals
                       }`}
                     >
                       <MessageCircle className="w-3 h-3" />
-                      채팅
+                      {L.chat}
                     </button>
                     {task.status === 'pending' && canComplete && (
                       <button
                         type="button"
                         onClick={() => completeTask(task.id)}
                         className="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs text-emerald-600 border border-emerald-300 hover:bg-emerald-50 transition-colors"
-                        title="업무 완료"
                       >
                         <CheckCircle className="w-3 h-3" />
-                        완료
+                        {L.complete}
                       </button>
                     )}
                     {task.status === 'pending' && (
@@ -216,10 +269,9 @@ export default function TaskList({ workers, clientId, userId, canComplete = fals
                         type="button"
                         onClick={() => deleteTask(task.id)}
                         className="inline-flex items-center gap-1 h-7 px-2 rounded-md text-xs text-red-500 border border-red-200 hover:bg-red-50 transition-colors"
-                        title="업무 취소"
                       >
                         <X className="w-3 h-3" />
-                        취소
+                        {L.cancel}
                       </button>
                     )}
                     {task.status === 'done' && (
@@ -257,7 +309,7 @@ export default function TaskList({ workers, clientId, userId, canComplete = fals
                 {/* Rating */}
                 {task.status === 'done' && (
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-slate-700">품질:</span>
+                    <span className="text-xs font-medium text-slate-700">{L.quality}</span>
                     <Stars task={task} />
                   </div>
                 )}
@@ -266,11 +318,11 @@ export default function TaskList({ workers, clientId, userId, canComplete = fals
                 <div className="flex items-center gap-2 text-xs text-slate-500">
                   {task.assigner && (
                     <>
-                      <span>할당: {task.assigner.display_name || task.assigner.email}</span>
+                      <span>{L.assignedBy} {task.assigner.display_name || task.assigner.email}</span>
                       <span>·</span>
                     </>
                   )}
-                  <span>담당: {task.profiles?.display_name || task.profiles?.email || '-'}</span>
+                  <span>{L.assignee} {task.profiles?.display_name || task.profiles?.email || '-'}</span>
                   <span>·</span>
                   <span>{new Date(task.created_at).toLocaleString('ko-KR')}</span>
                   {(() => {
@@ -293,7 +345,7 @@ export default function TaskList({ workers, clientId, userId, canComplete = fals
                             onClick={() => setEditDueDateTaskId(null)}
                             className="text-xs text-slate-400 hover:text-slate-600"
                           >
-                            취소
+                            {L.cancel}
                           </button>
                           {task.due_date && (
                             <button
@@ -301,7 +353,7 @@ export default function TaskList({ workers, clientId, userId, canComplete = fals
                               onClick={() => updateDueDate(task.id, '')}
                               className="text-xs text-red-400 hover:text-red-600"
                             >
-                              삭제
+                              {L.delete}
                             </button>
                           )}
                         </>
@@ -317,9 +369,9 @@ export default function TaskList({ workers, clientId, userId, canComplete = fals
                         <>
                           <span>·</span>
                           {isOverdue ? (
-                            <button type="button" onClick={() => setEditDueDateTaskId(task.id)} className="text-red-600 font-medium hover:underline">⚠ 기한초과</button>
+                            <button type="button" onClick={() => setEditDueDateTaskId(task.id)} className="text-red-600 font-medium hover:underline">⚠ {L.overdue}</button>
                           ) : (
-                            <button type="button" onClick={() => setEditDueDateTaskId(task.id)} className="hover:text-blue-600 hover:underline transition-colors">📅 마감 {dateStr}{timeStr}</button>
+                            <button type="button" onClick={() => setEditDueDateTaskId(task.id)} className="hover:text-blue-600 hover:underline transition-colors">📅 {L.duePrefix} {dateStr}{timeStr}</button>
                           )}
                         </>
                       );
@@ -328,7 +380,7 @@ export default function TaskList({ workers, clientId, userId, canComplete = fals
                       <>
                         <span>·</span>
                         <button type="button" onClick={() => setEditDueDateTaskId(task.id)} className="text-blue-500 hover:text-blue-700 hover:underline transition-colors">
-                          <Calendar className="w-3 h-3 inline mr-0.5" />기한 설정
+                          <Calendar className="w-3 h-3 inline mr-0.5" />{L.setDue}
                         </button>
                       </>
                     );

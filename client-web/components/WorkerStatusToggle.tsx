@@ -4,9 +4,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 
 const STATUS_OPTIONS = [
-  { value: 'online', label: 'เข้างาน (출근)', badge: 'bg-emerald-500', text: 'text-white', ring: 'ring-emerald-400' },
-  { value: 'away', label: 'ไม่อยู่ (자리비움)', badge: 'bg-amber-400', text: 'text-slate-800', ring: 'ring-amber-300' },
-  { value: 'offline', label: 'เลิกงาน (퇴근)', badge: 'bg-slate-400', text: 'text-white', ring: 'ring-slate-300' },
+  { value: 'online', label: 'เข้างาน', badge: 'bg-emerald-500', text: 'text-white', ring: 'ring-emerald-400' },
+  { value: 'away', label: 'ไม่อยู่', badge: 'bg-amber-400', text: 'text-slate-800', ring: 'ring-amber-300' },
+  { value: 'offline', label: 'เลิกงาน', badge: 'bg-slate-400', text: 'text-white', ring: 'ring-slate-300' },
 ] as const;
 
 type StatusValue = (typeof STATUS_OPTIONS)[number]['value'];
@@ -87,7 +87,7 @@ export default function WorkerStatusToggle({ userId }: { userId: string }) {
     <div className="bg-gradient-to-r from-blue-50/70 to-white rounded-xl shadow-sm border border-blue-100 border-l-4 border-l-blue-400 p-4 sm:p-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h2 className="text-base sm:text-lg font-semibold text-slate-900">내 상태</h2>
+          <h2 className="text-base sm:text-lg font-semibold text-slate-900">สถานะของฉัน</h2>
           <div className="flex items-center gap-2 mt-1">
             <span
               className={`inline-block w-2 h-2 rounded-full ${currentOption.badge}`}

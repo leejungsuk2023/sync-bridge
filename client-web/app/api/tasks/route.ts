@@ -19,11 +19,13 @@ function withCors(response: NextResponse) {
   return response;
 }
 
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+);
+
 function getSupabaseAdmin() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
+  return supabaseAdmin;
 }
 
 // 요청자 인증 확인
@@ -132,9 +134,12 @@ export async function GET(req: NextRequest) {
   }
 
   // profiles join 수동 처리 (assignee + created_by)
-  const assigneeIds = [...new Set((tasks || []).map(t => t.assignee_id).filter(Boolean))];
-  const creatorIds = [...new Set((tasks || []).map(t => t.created_by).filter(Boolean))];
-  const allProfileIds = [...new Set([...assigneeIds, ...creatorIds])];
+  const profileIds = new Set<string>();
+  (tasks || []).forEach(t => {
+    if (t.assignee_id) profileIds.add(t.assignee_id);
+    if (t.created_by) profileIds.add(t.created_by);
+  });
+  const allProfileIds = [...profileIds];
   let profilesMap: Record<string, any> = {};
 
   if (allProfileIds.length > 0) {

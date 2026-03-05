@@ -8,10 +8,10 @@ import TaskPropose from './TaskPropose';
 import GeneralChat from './GeneralChat';
 import TranslationHelper from './TranslationHelper';
 
-type Tab = '업무' | '채팅' | '도구';
+type Tab = 'งาน' | 'แชท' | 'เครื่องมือ';
 
 export default function WorkerDashboard({ user, profile }: { user: any; profile: any }) {
-  const [activeTab, setActiveTab] = useState<Tab>('업무');
+  const [activeTab, setActiveTab] = useState<Tab>('งาน');
   const [avgRating, setAvgRating] = useState<number | null>(null);
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export default function WorkerDashboard({ user, profile }: { user: any; profile:
     await supabase.auth.signOut();
   };
 
-  const tabs: Tab[] = ['업무', '채팅', '도구'];
+  const tabs: Tab[] = ['งาน', 'แชท', 'เครื่องมือ'];
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -47,13 +47,13 @@ export default function WorkerDashboard({ user, profile }: { user: any; profile:
               {profile?.email || user.email}
             </span>
             <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-emerald-100 text-emerald-700 text-xs font-medium rounded-full whitespace-nowrap">
-              직원
+              พนักงาน
             </span>
             <button
               onClick={handleLogout}
               className="text-xs sm:text-sm text-slate-500 hover:text-slate-700 transition-colors whitespace-nowrap"
             >
-              로그아웃
+              ออกจากระบบ
             </button>
           </div>
         </div>
@@ -68,7 +68,7 @@ export default function WorkerDashboard({ user, profile }: { user: any; profile:
           {avgRating !== null && (
             <div className="flex-shrink-0 flex flex-col items-center bg-white border border-amber-200 rounded-xl px-3 py-2 shadow-sm">
               <span className="text-lg font-bold text-amber-500">{avgRating}</span>
-              <span className="text-[10px] text-slate-500">평균 평점</span>
+              <span className="text-[10px] text-slate-500">คะแนนเฉลี่ย</span>
             </div>
           )}
         </div>
@@ -94,17 +94,17 @@ export default function WorkerDashboard({ user, profile }: { user: any; profile:
 
       {/* Main Content */}
       <main className="flex-1 px-4 sm:px-6 py-4 pb-20 md:pb-6 space-y-4 overflow-y-auto">
-        {activeTab === '업무' && (
+        {activeTab === 'งาน' && (
           <>
-            <TaskList workers={[]} assigneeId={user.id} userId={user.id} title="내 업무" />
+            <TaskList assigneeId={user.id} userId={user.id} title="งานของฉัน" locale="th" />
             <TaskPropose userId={user.id} />
-            <TaskList workers={[]} clientId={profile.client_id} userId={user.id} title="팀 전체 업무" />
+            <TaskList clientId={profile.client_id} userId={user.id} title="งานทั้งหมดของทีม" locale="th" />
           </>
         )}
-        {activeTab === '채팅' && (
+        {activeTab === 'แชท' && (
           <GeneralChat userId={user.id} clientId={profile.client_id} />
         )}
-        {activeTab === '도구' && (
+        {activeTab === 'เครื่องมือ' && (
           <TranslationHelper />
         )}
       </main>

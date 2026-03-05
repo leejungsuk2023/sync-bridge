@@ -14,7 +14,7 @@ export default function TaskPropose({ userId }: { userId: string }) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!contentTh.trim()) {
-      setError('업무 내용을 입력해 주세요. (กรุณากรอกเนื้อหางาน)');
+      setError('กรุณากรอกเนื้อหางาน');
       return;
     }
 
@@ -33,14 +33,14 @@ export default function TaskPropose({ userId }: { userId: string }) {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError('번역 실패: ' + (data.error || '알 수 없는 오류'));
+        setError('แปลไม่สำเร็จ: ' + (data.error || '알 수 없는 오류'));
         setLoading(false);
         return;
       }
       contentKo = data.translated || '';
       setPreview(contentKo);
     } catch (err: any) {
-      setError('번역 요청 실패: ' + err.message);
+      setError('ส่งคำขอแปลไม่สำเร็จ: ' + err.message);
       setLoading(false);
       return;
     }
@@ -64,12 +64,12 @@ export default function TaskPropose({ userId }: { userId: string }) {
       const result = await res.json();
       setLoading(false);
       if (!res.ok) {
-        setError('업무 제안 실패: ' + (result.error || '알 수 없는 오류'));
+        setError('เสนองานไม่สำเร็จ: ' + (result.error || '알 수 없는 오류'));
         return;
       }
     } catch (err: any) {
       setLoading(false);
-      setError('업무 제안 실패: ' + err.message);
+      setError('เสนองานไม่สำเร็จ: ' + err.message);
       return;
     }
 
@@ -79,11 +79,11 @@ export default function TaskPropose({ userId }: { userId: string }) {
 
   return (
     <div className="bg-gradient-to-r from-violet-50/70 to-white rounded-xl shadow-sm border border-violet-100 border-l-4 border-l-violet-400 p-4 sm:p-6">
-      <h2 className="text-lg font-semibold text-slate-900 mb-4">업무 제안 (เสนองานใหม่)</h2>
+      <h2 className="text-lg font-semibold text-slate-900 mb-4">เสนองานใหม่</h2>
       <form onSubmit={handleSubmit}>
         <div className="mb-3">
           <label className="block text-xs font-medium text-slate-600 mb-1">
-            업무 내용 — 태국어로 입력하면 한국어로 자동번역됩니다
+            เนื้อหางาน — พิมพ์ภาษาไทยจะแปลเป็นภาษาเกาหลีอัตโนมัติ
           </label>
           <textarea
             value={contentTh}
@@ -92,7 +92,7 @@ export default function TaskPropose({ userId }: { userId: string }) {
               setPreview('');
               setSubmitted(false);
             }}
-            placeholder="เสนองานใหม่... (새 업무 제안...)"
+            placeholder="เสนองานใหม่..."
             rows={3}
             className="w-full px-3 py-2 border border-slate-300 rounded-lg resize-none text-sm focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none transition-shadow"
             required
@@ -108,24 +108,24 @@ export default function TaskPropose({ userId }: { userId: string }) {
             {loading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                제안 중... (กำลังส่ง...)
+                กำลังส่ง...
               </>
             ) : (
-              '업무 제안 (เสนองาน)'
+              'เสนองาน'
             )}
           </button>
         </div>
 
         {preview && (
           <div className="mt-3 bg-violet-50 border border-violet-200 rounded-lg p-3">
-            <p className="text-xs font-medium text-violet-900 mb-1">한국어 번역 미리보기</p>
+            <p className="text-xs font-medium text-violet-900 mb-1">ตัวอย่างภาษาเกาหลี</p>
             <p className="text-sm text-violet-800">{preview}</p>
           </div>
         )}
 
         {submitted && (
           <div className="mt-3 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-            업무 제안이 전송되었습니다. (ส่งการเสนองานเรียบร้อยแล้ว)
+            ส่งการเสนองานเรียบร้อยแล้ว
           </div>
         )}
 

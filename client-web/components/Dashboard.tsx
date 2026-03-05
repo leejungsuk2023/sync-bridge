@@ -11,6 +11,7 @@ import TaskCalendar from './TaskCalendar';
 import GeneralChat from './GeneralChat';
 import TaskPresetManager from './TaskPresetManager';
 import UserManager from './UserManager';
+import WorkerDashboard from './WorkerDashboard';
 
 export default function Dashboard({ user }: { user: any }) {
   const [profile, setProfile] = useState<any>(null);
@@ -56,6 +57,10 @@ export default function Dashboard({ user }: { user: any }) {
     );
   }
 
+  if (profile?.role === 'worker') {
+    return <WorkerDashboard user={user} profile={profile} />;
+  }
+
   const getRoleBadge = (role: string) => {
     switch (role) {
       case 'bbg_admin':
@@ -93,7 +98,7 @@ export default function Dashboard({ user }: { user: any }) {
         <WorkerStatus workers={workers} />
         <GeneralChat userId={user.id} clientId={profile?.client_id} />
         <TaskAssign workers={workers} clientId={profile?.client_id} />
-        <TaskList workers={workers} clientId={profile?.client_id} userId={user.id} />
+        <TaskList workers={workers} clientId={profile?.client_id} userId={user.id} canComplete />
         {profile?.role === 'bbg_admin' && (
           <TaskPresetManager profile={profile} clients={clients} />
         )}

@@ -14,7 +14,7 @@
 
 | 구분 | 기술 | 역할 |
 |------|------|------|
-| **Client Web** | Next.js 14 (App Router), Tailwind CSS, lucide-react | 고객사·BBG 관리자용. 업무 지시, 실시간 근태 대시보드, 관제 모니터링. |
+| **Client Web** | Next.js 14 (App Router), Tailwind CSS, lucide-react | 고객사·BBG 관리자·워커용. 업무 지시, 실시간 근태 대시보드, 관제 모니터링. 워커는 웹 브라우저만으로 업무 수행 가능 (Phase 1 완료). |
 | **Desktop App** | Electron + React 18 (Vite), Tailwind CSS | 태국 직원용 데스크톱 앱. 업무 수신, 채팅, 전체 톡방, 번역. macOS/Windows. |
 | **Worker Extension** | Chrome Extension V3 (React + Vite, Tailwind CSS) | 태국 직원용. 브라우저 팝업. 실시간 업무 수신, 채팅, 번역, AI 어시스트. |
 | **Backend & DB** | Supabase (PostgreSQL, Auth, Realtime, RLS) | 데이터 저장, 인증/권한, 실시간 동기화, 행 수준 보안. |
@@ -26,24 +26,39 @@
 
 ## 3. 구현 완료 기능
 
-### 3.1 Client Web — 대시보드
+### 3.1 Client Web — 클라이언트/어드민 대시보드
 
 | 기능 | 상태 | 설명 |
 |------|------|------|
 | 인증 | ✅ | Supabase Auth (이메일/비밀번호), 역할 기반 접근 제어 |
+| 역할 기반 라우팅 | ✅ | worker 로그인 → WorkerDashboard, client/bbg_admin → Dashboard 자동 분기 |
 | 직원 상태 모니터링 | ✅ | 실시간 온라인/자리비움/오프라인, 좌측 액센트 보더, 평균 평점 |
 | 전체 톡방 | ✅ | 클라이언트↔직원 그룹 채팅, 접기/펼치기, 발신자 이름, 실시간 수신 |
-| 업무 할당 | ✅ | 담당자 선택, 프리셋 자동 채우기, 마감일 설정(날짜만), 한→태 자동 번역 |
+| 업무 할당 | ✅ | 담당자 선택, 프리셋 자동 채우기, 마감일 설정(날짜+시간 datetime-local), 한→태 자동 번역, 할당자 표시 |
 | 업무 프리셋 | ✅ | bbg_admin이 자주 쓰는 업무 지시를 프리셋으로 등록, 병원별/전체 공용 |
-| 업무 목록 | ✅ | 실시간 조회, 상태 배지, 인라인 채팅, 기한초과 경고 |
+| 업무 목록 | ✅ | 내 업무/팀 전체 분리, 실시간 조회, 상태 배지, 인라인 채팅, 기한초과 경고 |
+| 업무 완료/취소/되돌리기 | ✅ | client만 완료(초록 완료 버튼)/취소(X 취소)/되돌리기 처리 가능 |
+| 마감일 인라인 수정 | ✅ | 기존 마감일 클릭 → 인라인 datetime-local 편집 |
 | 업무 캘린더 | ✅ | 월별 업무 현황 달력, 날짜별 업무 수 표시 |
 | 업무 품질 평가 | ✅ | 완료 업무에 1~5점 별점 평가 (Star 아이콘, 호버 인터랙션) |
 | 채팅 | ✅ | 업무별 1:1 채팅, 즉시 전송 + 백그라운드 번역, 실시간 업데이트 |
+| 파일 첨부 | ✅ | 채팅 내 이미지/문서 업로드, 미리보기, 다운로드 (Supabase Storage, 10MB 제한) |
+| @멘션 | ✅ | 채팅에서 @이름으로 팀원 태그, 하이라이트 표시, mentions jsonb 컬럼 저장 |
 | 자동답변 관리 | ✅ | 퀵 리플라이 CRUD, 한→태 자동 번역, 병원별/전체 공용 |
 | 근무 리포트 | ✅ | 일간 근태 요약 테이블, 출근율 프로그레스 바, 색상 코딩 |
 | 계정 관리 | ✅ | bbg_admin 전용, 병원/직원 계정 생성·삭제 (service_role API) |
 | AI 어시스트 API | ✅ | 환자 메시지 → 한국어 번역 + 의도 파악 + 추천 답변 3개 |
 | 섹션 색상 구분 | ✅ | 각 섹션별 그라데이션 배경 + 좌측 컬러 보더로 시각적 구분 |
+
+### 3.1b Client Web — 워커 웹 대시보드 (Phase 1 완료)
+
+| 기능 | 상태 | 설명 |
+|------|------|------|
+| 워커 대시보드 | ✅ | `WorkerDashboard.tsx` — 탭 네비게이션 (업무/채팅/도구), Desktop App 없이 웹으로 업무 수행 |
+| 출퇴근 상태 토글 | ✅ | `WorkerStatusToggle.tsx` — 출근/자리비움/퇴근 버튼 + 경과 시간 표시, `profiles.status` PATCH |
+| 업무 제안 | ✅ | `TaskPropose.tsx` — 워커가 태국어로 업무 입력 → 한국어 자동 번역, `source: 'worker'`로 저장 |
+| 번역 도우미 | ✅ | `TranslationHelper.tsx` — 태국어↔한국어 즉석 번역 패널, `/api/translate` 활용 |
+| 내 업무 / 팀 전체 분리 | ✅ | TaskList에서 본인 할당 업무와 팀 전체 업무를 탭으로 구분 |
 
 ### 3.2 Client Web — God Mode 관제 (`/admin/monitoring`)
 
@@ -74,7 +89,7 @@
 | 푸시 알림 | ✅ | 새 메시지/멘션 수신 시 데스크톱 알림 (Electron Notification) |
 | 번역 + AI | ✅ | 태→한 즉석 번역 + AI 상담 어시스트 (의도 파악 + 추천 답변) |
 | 자동 빌드 | ✅ | GitHub Actions + electron-builder (macOS/Windows) |
-| 자동 업데이트 | ✅ | electron-updater로 신규 버전 자동 감지/설치 |
+| 자동 업데이트 | ⬜ | electron-updater 의존성 포함, 아직 미구현 (수동 다운로드 방식) |
 
 ### 3.4 Worker Extension (Chrome)
 
@@ -98,7 +113,7 @@
 | `clients` | 고객사(병원) 정보 |
 | `profiles` | 사용자 프로필 (role, client_id, display_name) |
 | `time_logs` | 근태 기록 (worker_id, status, created_at) |
-| `tasks` | 업무 (content, content_th, assignee_id, due_date, rating, source, status) |
+| `tasks` | 업무 (content, content_th, assignee_id, due_date, rating, source, status, created_by) |
 | `messages` | 업무별 채팅 (content_ko, content_th, is_whisper, sender_lang, file_url, file_name, file_type, mentions) |
 | `quick_replies` | 자동답변 템플릿 (title/body × ko/th, client_id) |
 | `task_presets` | 업무 프리셋 (title/content × ko/th, client_id) |
@@ -148,8 +163,8 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | role | 접근 범위 |
 |------|-----------|
 | `bbg_admin` | 모든 기능 + God Mode + 프리셋 관리 + 계정 관리 + Whisper 전송 |
-| `client` | 자사 직원/업무/자동답변, 프리셋 사용(조회만), 전체 톡방 참여, Whisper 볼 수 없음 |
-| `worker` | 본인 업무/채팅, 업무 제안, 전체 톡방 참여, 템플릿 읽기, time_logs 기록 |
+| `client` | 자사 직원/업무/자동답변, 프리셋 사용(조회만), 업무 완료/취소/되돌리기, 전체 톡방 참여, Whisper 볼 수 없음 |
+| `worker` | 워커 웹 대시보드, 본인 업무/채팅, 업무 제안, 전체 톡방 참여, 상태 토글, 번역 도우미, 템플릿 읽기, time_logs 기록 |
 
 ---
 
@@ -185,6 +200,10 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 
 | 우선순위 | 항목 | 설명 |
 |----------|------|------|
+| 완료 | 브랜드 에셋 (SVG) | 로고 모노그램, 워드마크, 파비콘 등 SVG BI 파일 7종 (`brand/`) |
+| 완료 | 사용자 가이드 | 고객사 가이드(한국어), 직원 가이드(태국어), Extension 매뉴얼 |
+| 완료 | 워커 웹 대시보드 (Phase 1) | WorkerDashboard, WorkerStatusToggle, TaskPropose, TranslationHelper 구현 완료 |
+| 높음 | 모바일 반응형 (Phase 2) | 워커 대시보드 모바일 최적화, 터치 친화적 UI |
 | 높음 | 회원가입/온보딩 플로우 | 자체 가입 → 관리자 승인 또는 초대 링크 |
 | 높음 | 업무 가이드 PDF | 프리셋별 상세 작업 가이드를 PDF로 제공, 워커에게 전달 |
 | 중간 | 주간/월간 리포트 | 일간 외 장기 근태/업무 통계 |
@@ -210,4 +229,4 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 
 ---
 
-**문서 버전:** 3.2 · v1.3.0 기능 반영 (파일 첨부, @멘션, 푸시 알림, AI 어시스트) + 코드-문서 정합성 수정
+**문서 버전:** 3.4 · Phase 1 워커 웹 대시보드 반영 (WorkerDashboard, WorkerStatusToggle, TaskPropose, TranslationHelper, 역할 기반 라우팅, 업무 완료/취소/되돌리기, created_by, datetime-local)

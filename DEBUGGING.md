@@ -109,6 +109,60 @@ await supabase.from('profiles').insert({
 
 번역 실패해도 원본 메시지는 항상 표시됨 (즉시 전송 패턴).
 
+### 번역 에러 로그 확인 (v1.3.0+)
+
+v1.3.0부터 모든 채팅 컴포넌트에 번역 에러 로깅이 추가되었습니다.
+
+**Client Web (브라우저 DevTools):**
+
+```
+[GeneralChat] translate API error: 502     → Gemini API 에러 (할당량 초과 등)
+[GeneralChat] update error: ...            → Supabase messages UPDATE 실패
+[GeneralChat] translate fetch error: ...   → 네트워크 에러 (CORS 등)
+[TaskChat] translate API error: 502        → 업무별 채팅 번역 실패
+[TaskChat] update error: ...               → 업무별 채팅 UPDATE 실패
+```
+
+**Desktop App (DevTools):**
+
+동일한 패턴이지만, Desktop에서는 `VITE_WEB_URL`로 번역 API를 호출하므로:
+- `VITE_WEB_URL`이 잘못되면 fetch 자체가 실패
+- Vercel 배포가 안 됐으면 404/500 에러
+
+**자주 발생하는 원인:**
+1. `VITE_WEB_URL`이 실제 배포 URL과 불일치 (GitHub Secrets 확인)
+2. `GEMINI_API_KEY` 미설정 또는 만료
+3. Supabase RLS가 messages UPDATE를 차단 (발신자만 UPDATE 가능)
+
+---
+
+## 3.5 파일 업로드 실패
+
+### 체크리스트
+
+| 확인 항목 | 방법 |
+|-----------|------|
+| Storage 버킷 존재 | Supabase Dashboard → Storage → `chat-files` 버킷 확인 |
+| 버킷 공개 설정 | `chat-files` 버킷이 `public: true`인지 확인 |
+| RLS 정책 | `chat_files_upload` (INSERT), `chat_files_read` (SELECT) 정책 존재 확인 |
+| 파일 크기 | 10MB 이하인지 확인 (클라이언트에서 체크) |
+| MIME 타입 | 이미지, PDF, 문서, ZIP만 허용 |
+
+### 해결 방법
+
+**버킷이 없는 경우:**
+```sql
+-- supabase/chat_file_attachment.sql 실행
+INSERT INTO storage.buckets (id, name, public) VALUES ('chat-files', 'chat-files', true) ON CONFLICT (id) DO NOTHING;
+```
+
+**RLS 정책이 없는 경우:**
+```sql
+CREATE POLICY "chat_files_upload" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'chat-files');
+CREATE POLICY "chat_files_read" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'chat-files');
+CREATE POLICY "chat_files_public_read" ON storage.objects FOR SELECT TO anon USING (bucket_id = 'chat-files');
+```
+
 ---
 
 ## 4. Desktop App DevTools 열기
@@ -189,14 +243,72 @@ Access-Control-Allow-Headers: Content-Type, Authorization
 
 ---
 
-## 8. 공통 디버깅 패턴
+## 8. 워커 웹 대시보드 디버깅
+
+### 상태 토글 (WorkerStatusToggle) 문제
+
+**증상:** 출근/자리비움/퇴근 버튼 클릭 후 상태가 변경되지 않음.
+
+**체크리스트:**
+
+| 순위 | 원인 | 확인 방법 |
+|------|------|-----------|
+| 1 | `profiles.status` PATCH 권한 부족 | Supabase Dashboard → RLS 정책에서 worker의 own profiles UPDATE 허용 여부 확인 |
+| 2 | `profiles.id` 불일치 | Supabase Auth 로그인 user.id와 profiles.id 일치 여부 확인 |
+| 3 | `NEXT_PUBLIC_SUPABASE_URL` 미설정 | `.env.local` 확인 |
+
+**콘솔 로그:**
+
+```
+[WorkerStatusToggle] status update error: ...   → Supabase PATCH 실패
+[WorkerStatusToggle] status updated: 출근       → 정상
+```
+
+### 업무 제안 (TaskPropose) 번역 문제
+
+**증상:** 태국어 입력 후 한국어 번역이 비어 있거나 저장이 안 됨.
+
+**체크리스트:**
+
+| 확인 항목 | 방법 |
+|-----------|------|
+| `GEMINI_API_KEY` 설정 | Vercel Dashboard → Environment Variables |
+| `/api/tasks` POST 권한 | 워커 role의 tasks INSERT RLS 정책 확인 |
+| `source: 'worker'` 컬럼 | `tasks` 테이블에 source 컬럼 존재 여부 확인 |
+
+**콘솔 로그:**
+
+```
+[TaskPropose] translate error: ...              → 번역 API 실패
+[TaskPropose] insert error: ...                 → tasks 저장 실패
+[TaskPropose] propose submitted: {id}           → 정상 완료
+```
+
+### 역할 기반 라우팅 문제
+
+**증상:** 워커 로그인 후 클라이언트 대시보드가 표시되거나 빈 화면이 표시됨.
+
+**체크리스트:**
+
+| 확인 항목 | 방법 |
+|-----------|------|
+| `profiles.role` 값 | Supabase → profiles 테이블에서 해당 계정의 role 컬럼이 `'worker'`인지 확인 |
+| Dashboard.tsx 분기 조건 | `if (profile.role === 'worker') return <WorkerDashboard ...>` 코드 확인 |
+| 프로필 로딩 타이밍 | 네트워크 느린 환경에서 profile이 null인 상태로 분기될 수 있음 — 로딩 스피너 확인 |
+
+---
+
+## 9. 공통 디버깅 패턴
 
 ### 콘솔 로그 프리픽스
 
 | 프리픽스 | 위치 |
 |----------|------|
-| `[GeneralChat]` | Desktop App — 전체 톡방 초기화 |
+| `[GeneralChat]` | GeneralChat.tsx / Desktop App — 전체 톡방 초기화 + 번역 에러 |
+| `[TaskChat]` | TaskChat.tsx — 업무별 채팅 번역 에러 |
 | `[Propose]` | Desktop App — 업무 제안 번역 |
+| `[WorkerStatusToggle]` | WorkerStatusToggle.tsx — 출퇴근 상태 변경 에러 |
+| `[TaskPropose]` | TaskPropose.tsx — 워커 업무 제안 번역 + 저장 에러 |
 
 ### Supabase Dashboard 활용
 
@@ -204,3 +316,16 @@ Access-Control-Allow-Headers: Content-Type, Authorization
 2. **Logs** → API 호출 로그 확인
 3. **Auth** → 사용자 세션 상태 확인
 4. **Realtime Inspector** → 구독 채널 상태 확인
+
+### 워커 대시보드 관련 DB 확인 쿼리
+
+```sql
+-- 워커 role 확인
+SELECT id, email, role, client_id, status FROM profiles WHERE role = 'worker';
+
+-- 워커 업무 제안 확인 (source = 'worker')
+SELECT id, content, content_th, source, created_by, created_at FROM tasks WHERE source = 'worker' ORDER BY created_at DESC;
+
+-- 특정 워커의 상태 이력
+SELECT worker_id, status, created_at FROM time_logs WHERE worker_id = '워커-uuid' ORDER BY created_at DESC LIMIT 10;
+```

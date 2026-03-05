@@ -1,6 +1,7 @@
-# SyncBridge Client Web (관리자 대시보드)
+# SyncBridge Client Web (통합 웹 대시보드)
 
-한국 고객사(병원) 및 BBG 관리자용 Next.js 대시보드입니다.
+한국 고객사(병원), BBG 관리자, 태국 워커용 Next.js 대시보드입니다.
+워커는 Desktop App/Extension 없이 웹 브라우저만으로 업무를 수행할 수 있습니다 (Phase 1 완료).
 
 ## 기술 스택
 
@@ -29,6 +30,16 @@ npm run dev
 | `/` | 메인 페이지 (로그인 + 대시보드) |
 | `/admin/monitoring` | God Mode 통합 관제 (bbg_admin 전용) |
 
+### 역할 기반 라우팅
+
+로그인 후 role에 따라 자동 분기:
+
+| role | 렌더링 컴포넌트 | 설명 |
+|------|----------------|------|
+| `worker` | `WorkerDashboard.tsx` | 워커 전용 대시보드 (업무/채팅/도구 탭) |
+| `client` | `Dashboard.tsx` | 기존 클라이언트 대시보드 |
+| `bbg_admin` | `Dashboard.tsx` | 기존 어드민 대시보드 |
+
 ## API 엔드포인트
 
 | 경로 | 메서드 | 역할 |
@@ -43,14 +54,25 @@ npm run dev
 
 ## 컴포넌트
 
+### 워커 대시보드 (신규 — Phase 1)
+
+| 컴포넌트 | 기능 |
+|----------|------|
+| `WorkerDashboard.tsx` | 워커 전용 대시보드. 탭 네비게이션 (업무/채팅/도구). role === 'worker' 시 렌더링 |
+| `WorkerStatusToggle.tsx` | 출근/자리비움/퇴근 상태 토글 + 경과 시간 표시. `profiles.status` PATCH 업데이트 |
+| `TaskPropose.tsx` | 워커의 업무 제안 폼. 태국어 입력 → 한국어 자동 번역, `source: 'worker'`로 저장 |
+| `TranslationHelper.tsx` | 태국어↔한국어 간편 번역 도우미. 기존 `/api/translate` 활용 |
+
+### 클라이언트/어드민 대시보드
+
 | 컴포넌트 | 기능 | 섹션 색상 |
 |----------|------|-----------|
 | `LoginPage.tsx` | 이메일/비밀번호 로그인 | - |
-| `Dashboard.tsx` | 메인 대시보드 레이아웃 | - |
+| `Dashboard.tsx` | 메인 대시보드 레이아웃. role 기반 분기 (worker → WorkerDashboard) | - |
 | `WorkerStatus.tsx` | 실시간 직원 상태 카드 | 파란색 (blue) |
 | `GeneralChat.tsx` | 전체 톡방 (그룹 채팅) | 인디고 (indigo) |
-| `TaskAssign.tsx` | 업무 할당 폼 (프리셋 + 마감일) | 초록색 (emerald) |
-| `TaskList.tsx` | 업무 목록 + 별점 평가 + 인라인 채팅 | 노란색 (amber) |
+| `TaskAssign.tsx` | 업무 할당 폼 (프리셋 + 마감일 datetime-local, 담당자 표시) | 초록색 (emerald) |
+| `TaskList.tsx` | 업무 목록 (내 업무/팀 전체 분리) + 별점 평가 + 인라인 채팅 | 노란색 (amber) |
 | `TaskChat.tsx` | 업무별 1:1 채팅 | - |
 | `TaskCalendar.tsx` | 월별 업무 캘린더 | 보라색 (violet) |
 | `TaskPresetManager.tsx` | 업무 프리셋 CRUD (bbg_admin) | 분홍색 (rose) |
@@ -58,7 +80,15 @@ npm run dev
 | `UserManager.tsx` | 계정 관리 CRUD (bbg_admin) | 회색 (slate) |
 | `QuickReplyManager.tsx` | 자동답변 CRUD | - |
 
-### 대시보드 섹션 배치 순서
+### 워커 대시보드 탭 구성
+
+| 탭 | 내용 |
+|----|------|
+| 업무 | 내 업무 목록 (본인 할당 업무) / 팀 전체 업무 (소속 병원 전체) |
+| 채팅 | 업무별 채팅 + 전체 톡방 |
+| 도구 | WorkerStatusToggle (출퇴근), TaskPropose (업무 제안), TranslationHelper (번역) |
+
+### 클라이언트/어드민 대시보드 섹션 배치 순서
 
 1. WorkerStatus (직원 상태)
 2. GeneralChat (전체 톡방)
@@ -70,6 +100,24 @@ npm run dev
 8. UserManager (계정 관리, bbg_admin만)
 
 ## 기능 상세
+
+### 워커 웹 대시보드 (Phase 1 — 신규)
+
+- 워커가 Desktop App/Extension 없이 웹 브라우저만으로 업무 수행 가능
+- 탭 네비게이션: 업무 탭(내 업무 / 팀 전체 업무 분리), 채팅 탭, 도구 탭
+- **출퇴근 상태 토글** — 출근/자리비움/퇴근 버튼, 상태 유지 경과 시간 표시
+- **업무 제안** — 워커가 직접 태국어로 업무 입력 → 한국어 자동 번역 후 저장 (`source: 'worker'`)
+- **번역 도우미** — 태국어↔한국어 즉석 번역 패널
+
+### 업무 기능 개선 (신규)
+
+- **마감일 시간 포함** — `datetime-local` 입력으로 날짜+시간 지정 가능
+- **마감일 인라인 수정** — 기존 마감일 클릭 시 인라인 편집 가능
+- **업무 완료 처리** — client만 완료(초록 완료 버튼) 처리 가능, worker 직접 완료 불가
+- **완료 업무 되돌리기** — client가 완료된 업무를 대기 중으로 되돌릴 수 있음
+- **업무 취소** — client가 대기 중 업무를 X 취소로 취소 처리 가능
+- **할당자 표시** — 업무 카드에 "할당: OOO" 표시 (`created_by` 컬럼 활용)
+- **내 업무 / 팀 전체 분리** — TaskList에서 본인 업무와 팀 전체 업무를 탭으로 구분
 
 ### 전체 톡방 (GeneralChat)
 - 클라이언트↔직원 간 그룹 채팅방
@@ -103,8 +151,8 @@ bbg_admin 전용 실시간 모니터링 대시보드입니다.
 | role | 접근 범위 |
 |------|-----------|
 | `bbg_admin` | 전체 직원 조회, God Mode 관제, 프리셋/계정 관리, Whisper 전송 |
-| `client` | 자사 할당 직원만 조회, 업무 할당, 전체 톡방 참여 |
-| `worker` | 본인 업무/채팅, 전체 톡방 참여 |
+| `client` | 자사 할당 직원만 조회, 업무 할당/완료/취소/되돌리기, 전체 톡방 참여 |
+| `worker` | 워커 대시보드, 본인 업무 확인, 업무 제안, 채팅, 전체 톡방, 상태 토글, 번역 도우미 |
 
 ## 환경 변수
 

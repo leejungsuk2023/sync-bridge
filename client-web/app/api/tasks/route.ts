@@ -131,15 +131,17 @@ export async function GET(req: NextRequest) {
     return withCors(NextResponse.json({ error: error.message }, { status: 400 }));
   }
 
-  // profiles join 수동 처리
+  // profiles join 수동 처리 (assignee + created_by)
   const assigneeIds = [...new Set((tasks || []).map(t => t.assignee_id).filter(Boolean))];
+  const creatorIds = [...new Set((tasks || []).map(t => t.created_by).filter(Boolean))];
+  const allProfileIds = [...new Set([...assigneeIds, ...creatorIds])];
   let profilesMap: Record<string, any> = {};
 
-  if (assigneeIds.length > 0) {
+  if (allProfileIds.length > 0) {
     const { data: profiles } = await getSupabaseAdmin()
       .from('profiles')
       .select('id, email, display_name')
-      .in('id', assigneeIds);
+      .in('id', allProfileIds);
 
     (profiles || []).forEach(p => { profilesMap[p.id] = p; });
   }
@@ -147,6 +149,7 @@ export async function GET(req: NextRequest) {
   const tasksWithProfiles = (tasks || []).map(t => ({
     ...t,
     profiles: profilesMap[t.assignee_id] || null,
+    assigner: t.created_by ? profilesMap[t.created_by] || null : null,
   }));
 
   return withCors(NextResponse.json({ tasks: tasksWithProfiles }));
@@ -159,12 +162,13 @@ export async function POST(req: NextRequest) {
     return withCors(NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 }));
   }
 
-  if (!['client', 'bbg_admin'].includes(profile.role)) {
+  const body = await req.json();
+  const { client_id, assignee_id, content, content_th, status, due_date, source } = body;
+
+  // Worker can only create proposals (source: 'worker_proposed')
+  if (!['client', 'bbg_admin'].includes(profile.role) && source !== 'worker_proposed') {
     return withCors(NextResponse.json({ error: '업무 할당 권한이 없습니다.' }, { status: 403 }));
   }
-
-  const body = await req.json();
-  const { client_id, assignee_id, content, content_th, status, due_date } = body;
 
   if (!assignee_id || !content) {
     return withCors(NextResponse.json({ error: '담당자와 업무 내용은 필수입니다.' }, { status: 400 }));
@@ -176,8 +180,10 @@ export async function POST(req: NextRequest) {
     content,
     content_th: content_th || '',
     status: status || 'pending',
+    created_by: profile.id,
   };
   if (due_date) insertData.due_date = due_date;
+  if (source) insertData.source = source;
 
   const { data, error } = await getSupabaseAdmin()
     .from('tasks')
@@ -192,7 +198,7 @@ export async function POST(req: NextRequest) {
   return withCors(NextResponse.json(data));
 }
 
-// DELETE: 완료된 업무 삭제
+// DELETE: 업무 삭제 (client_id scope check)
 export async function DELETE(req: NextRequest) {
   const profile = await verifyUser(req);
   if (!profile) {
@@ -210,6 +216,21 @@ export async function DELETE(req: NextRequest) {
     return withCors(NextResponse.json({ error: '업무 ID가 필요합니다.' }, { status: 400 }));
   }
 
+  // Verify task belongs to the user's client scope
+  const { data: task } = await getSupabaseAdmin()
+    .from('tasks')
+    .select('client_id')
+    .eq('id', taskId)
+    .single();
+
+  if (!task) {
+    return withCors(NextResponse.json({ error: '업무를 찾을 수 없습니다.' }, { status: 404 }));
+  }
+
+  if (profile.role !== 'bbg_admin' && task.client_id !== profile.client_id) {
+    return withCors(NextResponse.json({ error: '해당 업무에 대한 삭제 권한이 없습니다.' }, { status: 403 }));
+  }
+
   // 연결된 messages 먼저 삭제
   await getSupabaseAdmin().from('messages').delete().eq('task_id', taskId);
 
@@ -221,7 +242,9 @@ export async function DELETE(req: NextRequest) {
   return withCors(NextResponse.json({ success: true }));
 }
 
-// PATCH: 업무 수정 (평가 등)
+// PATCH: 업무 수정 (field whitelist + scope check)
+const ALLOWED_PATCH_FIELDS = ['status', 'rating', 'rated_by', 'rated_at', 'due_date', 'content', 'content_th', 'assignee_id'];
+
 export async function PATCH(req: NextRequest) {
   const profile = await verifyUser(req);
   if (!profile) {
@@ -229,10 +252,44 @@ export async function PATCH(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { id, ...updates } = body;
+  const { id, ...rawUpdates } = body;
 
   if (!id) {
     return withCors(NextResponse.json({ error: '업무 ID가 필요합니다.' }, { status: 400 }));
+  }
+
+  // Field whitelist — only allow known safe fields
+  const updates: Record<string, any> = {};
+  for (const key of Object.keys(rawUpdates)) {
+    if (ALLOWED_PATCH_FIELDS.includes(key)) {
+      updates[key] = rawUpdates[key];
+    }
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return withCors(NextResponse.json({ error: '수정할 항목이 없습니다.' }, { status: 400 }));
+  }
+
+  // Verify task belongs to the user's client scope
+  const { data: task } = await getSupabaseAdmin()
+    .from('tasks')
+    .select('client_id, assignee_id')
+    .eq('id', id)
+    .single();
+
+  if (!task) {
+    return withCors(NextResponse.json({ error: '업무를 찾을 수 없습니다.' }, { status: 404 }));
+  }
+
+  // Workers can only update rating on their own tasks
+  if (profile.role === 'worker') {
+    const workerAllowed = ['rating', 'rated_by', 'rated_at'];
+    const hasDisallowed = Object.keys(updates).some(k => !workerAllowed.includes(k));
+    if (hasDisallowed || task.assignee_id !== profile.id) {
+      return withCors(NextResponse.json({ error: '수정 권한이 없습니다.' }, { status: 403 }));
+    }
+  } else if (profile.role !== 'bbg_admin' && task.client_id !== profile.client_id) {
+    return withCors(NextResponse.json({ error: '해당 업무에 대한 수정 권한이 없습니다.' }, { status: 403 }));
   }
 
   const { data, error } = await getSupabaseAdmin()

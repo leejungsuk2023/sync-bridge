@@ -84,6 +84,22 @@ g sync/
     ├── chat_mentions.sql       # @멘션 기능 (mentions jsonb 컬럼)
     ├── setup_test_client.sql   # 테스트 데이터 셋업
     └── README.md
+│
+├── brand/                  # SVG 브랜드 아이덴티티 에셋
+│   ├── logo-icon.svg             # SG 모노그램 (아이콘)
+│   ├── logo-full-color.svg       # SG + SyncBridge (밝은 배경용)
+│   ├── logo-full-white.svg       # SG + SyncBridge (어두운 배경용)
+│   ├── logo-text.svg             # SyncBridge 워드마크
+│   ├── logo-icon-circle.svg      # 원형 아이콘 (프로필용)
+│   ├── logo-icon-dark-bg.svg     # 어두운 배경용 아이콘
+│   └── favicon.svg               # 브라우저 파비콘
+│
+├── guides/                 # 사용자 가이드
+│   ├── SyncBridge-Client-Guide-KO.md   # 고객사(병원) 관리자 가이드
+│   └── SyncBridge-Worker-Guide-TH.md   # 태국 직원 가이드 (Desktop + Extension)
+│
+├── SyncBridge-Worker-Manual-TH.md  # 태국 직원 Extension 매뉴얼
+├── chrome-store-guide.md           # Chrome Web Store 심사 제출 가이드
 ```
 
 ---
@@ -185,6 +201,8 @@ VITE_WEB_URL=http://localhost:3000   # 번역/AI API URL
 | 업무 목록 | 실시간 조회, 인라인 채팅, 완료 시 별점 품질 평가(1~5점), 기한초과 경고 |
 | 업무 캘린더 | 월별 업무 현황 달력, 날짜별 업무 수 표시 |
 | 채팅 | 업무별 1:1 채팅, 즉시 전송 + 백그라운드 번역, 실시간 업데이트 |
+| 파일 첨부 | 채팅 내 이미지/문서 업로드, 미리보기, 다운로드 (Supabase Storage) |
+| @멘션 | 채팅에서 @이름으로 팀원 태그, 하이라이트 표시 |
 | 자동답변 관리 | 퀵 리플라이 CRUD (한국어 → 태국어 자동 번역) |
 | 업무 프리셋 관리 | 자주 쓰는 업무 지시 프리셋 등록 (bbg_admin), 병원별 또는 전체 공용 |
 | 근무 리포트 | 오늘 일간 근태 요약, 출근율 프로그레스 바 + 색상 코딩 |
@@ -382,3 +400,8 @@ Desktop App(Electron)과 Extension은 Vercel에 배포된 Client Web API를 cros
 - `supabase/README.md` — DB 스키마/Auth 설정
 - `client-web/README.md` — 대시보드 세부
 - `syncbridge-extension/README.md` — 확장프로그램 세부
+- `guides/SyncBridge-Client-Guide-KO.md` — 고객사(병원) 관리자 사용 가이드
+- `guides/SyncBridge-Worker-Guide-TH.md` — 태국 직원 사용 가이드 (Desktop + Extension)
+- `SyncBridge-Worker-Manual-TH.md` — 태국 직원 Extension 전용 매뉴얼
+- `chrome-store-guide.md` — Chrome Web Store 등록 가이드
+- `brand/` — SVG 브랜드 아이덴티티 에셋

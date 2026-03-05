@@ -103,7 +103,7 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
       content_th: contentTh,
       status: 'pending',
     };
-    if (dueDate) insertData.due_date = dueDate;
+    if (dueDate) insertData.due_date = new Date(dueDate).toISOString();
 
     try {
       const session = (await supabase.auth.getSession()).data.session;
@@ -178,10 +178,10 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
 
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">
-              마감일 <span className="text-slate-400">(선택)</span>
+              마감일시 <span className="text-slate-400">(선택)</span>
             </label>
             <input
-              type="date"
+              type="datetime-local"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
               className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-shadow"

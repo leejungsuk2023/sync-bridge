@@ -1,7 +1,7 @@
 # Chrome Web Store 심사 제출 가이드
- ---
- ㅇㅇㅇㅇ
-          
+
+## 1. 현재 상태 체크
+
 | 항목 | 현재 | 문제 |
 |------|------|------|
 | `host_permissions` | `http://localhost:3000/*` 포함 | localhost는 심사 거절 사유 |

@@ -415,9 +415,9 @@ export async function PATCH(req: NextRequest) {
     return withCors(NextResponse.json({ error: '업무를 찾을 수 없습니다.' }, { status: 404 }));
   }
 
-  // Workers can only update rating on their own tasks
+  // Workers can only update rating or status on their own tasks
   if (profile.role === 'worker') {
-    const workerAllowed = ['rating', 'rated_by', 'rated_at'];
+    const workerAllowed = ['rating', 'rated_by', 'rated_at', 'status'];
     const hasDisallowed = Object.keys(updates).some(k => !workerAllowed.includes(k));
     if (hasDisallowed || task.assignee_id !== profile.id) {
       return withCors(NextResponse.json({ error: '수정 권한이 없습니다.' }, { status: 403 }));

@@ -12,6 +12,7 @@ import ChatLayout from './ChatLayout';
 import TaskPresetManager from './TaskPresetManager';
 import UserManager from './UserManager';
 import WorkerDashboard from './WorkerDashboard';
+import SalesPerformance from './SalesPerformance';
 
 export default function Dashboard({ user }: { user: any }) {
   const [profile, setProfile] = useState<any>(null);
@@ -104,6 +105,9 @@ export default function Dashboard({ user }: { user: any }) {
         )}
         <TaskCalendar workers={workers} clientId={profile?.client_id} />
         <TimeReport workers={workers} />
+        {profile?.role === 'bbg_admin' && (
+          <SalesPerformance />
+        )}
         {profile?.role === 'bbg_admin' && (
           <UserManager clients={clients} />
         )}

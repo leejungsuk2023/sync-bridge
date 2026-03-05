@@ -1,0 +1,300 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { BarChart3, Star, RefreshCw, Users, TrendingUp, AlertTriangle, Search } from 'lucide-react';
+
+interface Overview {
+  totalTickets: number;
+  analyzedTickets: number;
+  avgQualityScore: number;
+  conversionRate: number;
+  followupNeeded: number;
+  unassigned: number;
+}
+
+interface AssigneeStat {
+  name: string;
+  email: string;
+  ticketCount: number;
+  avgQuality: number;
+  conversions: number;
+}
+
+interface RecentTicket {
+  ticket_id: number;
+  subject: string;
+  assignee_name: string | null;
+  quality_score: number | null;
+  reservation_converted: boolean | null;
+  needs_followup: boolean | null;
+  summary: string | null;
+  created_at_zd: string;
+}
+
+interface StatsData {
+  overview: Overview;
+  byAssignee: AssigneeStat[];
+  recentTickets: RecentTicket[];
+}
+
+export default function SalesPerformance() {
+  const [stats, setStats] = useState<StatsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [period, setPeriod] = useState<'week' | 'month'>('month');
+
+  const getAuthHeader = async () => {
+    const session = (await supabase.auth.getSession()).data.session;
+    return { Authorization: `Bearer ${session?.access_token}` };
+  };
+
+  const fetchStats = async () => {
+    try {
+      const headers = await getAuthHeader();
+      const res = await fetch(`/api/zendesk/stats?period=${period}`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setStats(data);
+      }
+    } catch (err) {
+      console.error('[SalesPerformance] Failed to fetch stats:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    setLoading(true);
+    fetchStats();
+  }, [period]);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const headers = await getAuthHeader();
+      await fetch('/api/zendesk/sync', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      await fetchStats();
+    } catch (err) {
+      console.error('[SalesPerformance] Sync failed:', err);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleAnalyze = async () => {
+    setAnalyzing(true);
+    try {
+      const headers = await getAuthHeader();
+      await fetch('/api/zendesk/analyze', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      await fetchStats();
+    } catch (err) {
+      console.error('[SalesPerformance] Analyze failed:', err);
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const qualityBadge = (score: number | null) => {
+    if (score == null) return <span className="text-slate-400">-</span>;
+    if (score <= 2) return <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-medium rounded-full">{score}</span>;
+    if (score === 3) return <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-medium rounded-full">{score}</span>;
+    return <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-medium rounded-full">{score}</span>;
+  };
+
+  const boolBadge = (val: boolean | null) => {
+    if (val == null) return <span className="text-slate-400">-</span>;
+    return val
+      ? <span className="text-emerald-600 font-medium">O</span>
+      : <span className="text-slate-400">X</span>;
+  };
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+        <div className="flex items-center gap-2 text-slate-500">
+          <RefreshCw className="w-4 h-4 animate-spin" />
+          <span>Sales 데이터 로딩 중...</span>
+        </div>
+      </div>
+    );
+  }
+
+  const overview = stats?.overview;
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="w-5 h-5 text-indigo-600" />
+          <h2 className="text-lg font-semibold text-slate-900">Sales 성과 트래킹</h2>
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={period}
+            onChange={e => setPeriod(e.target.value as 'week' | 'month')}
+            className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="week">최근 7일</option>
+            <option value="month">최근 30일</option>
+          </select>
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+            Sync
+          </button>
+          <button
+            onClick={handleAnalyze}
+            disabled={analyzing}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          >
+            <Search className={`w-3.5 h-3.5 ${analyzing ? 'animate-spin' : ''}`} />
+            Analyze
+          </button>
+        </div>
+      </div>
+
+      {/* Overview Cards */}
+      {overview && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-gradient-to-br from-blue-50 to-white border border-blue-100 rounded-xl p-4">
+            <div className="flex items-center gap-2 text-blue-600 mb-1">
+              <Users className="w-4 h-4" />
+              <span className="text-xs font-medium">전체 티켓</span>
+            </div>
+            <p className="text-2xl font-bold text-slate-900">{overview.totalTickets}</p>
+            <p className="text-xs text-slate-500 mt-1">분석 완료: {overview.analyzedTickets}건</p>
+          </div>
+          <div className="bg-gradient-to-br from-amber-50 to-white border border-amber-100 rounded-xl p-4">
+            <div className="flex items-center gap-2 text-amber-600 mb-1">
+              <Star className="w-4 h-4" />
+              <span className="text-xs font-medium">평균 응대 품질</span>
+            </div>
+            <p className="text-2xl font-bold text-slate-900">{overview.avgQualityScore}<span className="text-sm font-normal text-slate-500"> / 5.0</span></p>
+          </div>
+          <div className="bg-gradient-to-br from-emerald-50 to-white border border-emerald-100 rounded-xl p-4">
+            <div className="flex items-center gap-2 text-emerald-600 mb-1">
+              <TrendingUp className="w-4 h-4" />
+              <span className="text-xs font-medium">예약 전환율</span>
+            </div>
+            <p className="text-2xl font-bold text-slate-900">{overview.conversionRate}<span className="text-sm font-normal text-slate-500">%</span></p>
+          </div>
+          <div className="bg-gradient-to-br from-red-50 to-white border border-red-100 rounded-xl p-4">
+            <div className="flex items-center gap-2 text-red-600 mb-1">
+              <AlertTriangle className="w-4 h-4" />
+              <span className="text-xs font-medium">팔로업 필요</span>
+            </div>
+            <p className="text-2xl font-bold text-slate-900">{overview.followupNeeded}</p>
+            <p className="text-xs text-slate-500 mt-1">미배정: {overview.unassigned}건</p>
+          </div>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!stats || stats.byAssignee.length === 0 && stats.recentTickets.length === 0 ? (
+        overview && overview.totalTickets === 0 ? (
+          <div className="text-center py-8 text-slate-500">
+            <BarChart3 className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+            <p>아직 동기화된 티켓이 없습니다.</p>
+            <p className="text-sm mt-1">Sync 버튼을 눌러 Zendesk 데이터를 가져오세요.</p>
+          </div>
+        ) : null
+      ) : (
+        <>
+          {/* Assignee Performance Table */}
+          {stats.byAssignee.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">담당자별 성과</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-600">
+                      <th className="text-left px-3 py-2 font-medium rounded-tl-lg">담당자</th>
+                      <th className="text-center px-3 py-2 font-medium">처리 건수</th>
+                      <th className="text-center px-3 py-2 font-medium">평균 품질</th>
+                      <th className="text-center px-3 py-2 font-medium">전환 건수</th>
+                      <th className="text-center px-3 py-2 font-medium rounded-tr-lg">전환율</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stats.byAssignee.map((a, i) => (
+                      <tr key={a.email || i} className="border-t border-slate-100 hover:bg-slate-50">
+                        <td className="px-3 py-2">
+                          <div className="font-medium text-slate-900">{a.name}</div>
+                          {a.email && <div className="text-xs text-slate-500">{a.email}</div>}
+                        </td>
+                        <td className="text-center px-3 py-2 text-slate-700">{a.ticketCount}</td>
+                        <td className="text-center px-3 py-2">{qualityBadge(a.avgQuality || null)}</td>
+                        <td className="text-center px-3 py-2 text-slate-700">{a.conversions}</td>
+                        <td className="text-center px-3 py-2 text-slate-700">
+                          {a.ticketCount > 0 ? Math.round((a.conversions / a.ticketCount) * 100) : 0}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Recent Tickets Table */}
+          {stats.recentTickets.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">최근 티켓</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-600">
+                      <th className="text-left px-3 py-2 font-medium rounded-tl-lg">제목</th>
+                      <th className="text-left px-3 py-2 font-medium">담당자</th>
+                      <th className="text-center px-3 py-2 font-medium">품질</th>
+                      <th className="text-center px-3 py-2 font-medium">전환</th>
+                      <th className="text-center px-3 py-2 font-medium">팔로업</th>
+                      <th className="text-left px-3 py-2 font-medium rounded-tr-lg">요약</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stats.recentTickets.map(t => (
+                      <tr key={t.ticket_id} className="border-t border-slate-100 hover:bg-slate-50">
+                        <td className="px-3 py-2 max-w-[200px]">
+                          <div className="truncate text-slate-900" title={t.subject || ''}>
+                            {t.subject || '-'}
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            {t.created_at_zd ? new Date(t.created_at_zd).toLocaleDateString('ko-KR') : ''}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">{t.assignee_name || '-'}</td>
+                        <td className="text-center px-3 py-2">{qualityBadge(t.quality_score)}</td>
+                        <td className="text-center px-3 py-2">{boolBadge(t.reservation_converted)}</td>
+                        <td className="text-center px-3 py-2">{boolBadge(t.needs_followup)}</td>
+                        <td className="px-3 py-2 max-w-[250px]">
+                          <div className="truncate text-slate-600" title={t.summary || ''}>
+                            {t.summary || '-'}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

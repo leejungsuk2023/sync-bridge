@@ -24,18 +24,23 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
-async function verifyAdmin(req: NextRequest) {
+async function verifyUser(req: NextRequest): Promise<{ role: string; hospitalPrefix?: string } | null> {
   const authHeader = req.headers.get('authorization');
-  if (!authHeader?.startsWith('Bearer ')) return false;
+  if (!authHeader?.startsWith('Bearer ')) return null;
   const token = authHeader.replace('Bearer ', '');
   const { data: { user } } = await supabaseAdmin.auth.getUser(token);
-  if (!user) return false;
+  if (!user) return null;
   const { data: profile } = await supabaseAdmin
     .from('profiles')
-    .select('role')
+    .select('role, hospital_prefix')
     .eq('id', user.id)
     .single();
-  return profile?.role === 'bbg_admin';
+  if (!profile) return null;
+  if (profile.role === 'bbg_admin') return { role: profile.role };
+  if (profile.role === 'hospital' && profile.hospital_prefix) {
+    return { role: profile.role, hospitalPrefix: profile.hospital_prefix };
+  }
+  return null;
 }
 
 // Hospital tag prefix -> display name mapping
@@ -61,7 +66,8 @@ function getHospitalName(tags: any): string | null {
 }
 
 export async function GET(req: NextRequest) {
-  if (!await verifyAdmin(req)) {
+  const userInfo = await verifyUser(req);
+  if (!userInfo) {
     return withCors(NextResponse.json({ error: 'Unauthorized' }, { status: 403 }));
   }
 
@@ -69,7 +75,12 @@ export async function GET(req: NextRequest) {
   const period = searchParams.get('period') || 'month';
   const limitParam = parseInt(searchParams.get('limit') || '20', 10);
   const limit = Math.min(Math.max(limitParam, 1), 200);
-  const hospitalFilter = searchParams.get('hospital') || ''; // hospital display name filter
+  // Hospital role users can only see their own hospital's tickets
+  let hospitalFilter = searchParams.get('hospital') || '';
+  if (userInfo.role === 'hospital' && userInfo.hospitalPrefix) {
+    const displayName = HOSPITAL_NAMES[userInfo.hospitalPrefix];
+    if (displayName) hospitalFilter = displayName;
+  }
 
   // Calculate date range
   const now = new Date();

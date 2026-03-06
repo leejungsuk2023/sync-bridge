@@ -25,18 +25,21 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
-async function verifyAdmin(req: NextRequest) {
+async function verifyUser(req: NextRequest): Promise<{ role: string; userId: string; hospitalPrefix?: string } | null> {
   const authHeader = req.headers.get('authorization');
-  if (!authHeader?.startsWith('Bearer ')) return false;
+  if (!authHeader?.startsWith('Bearer ')) return null;
   const token = authHeader.replace('Bearer ', '');
   const { data: { user } } = await supabaseAdmin.auth.getUser(token);
-  if (!user) return false;
+  if (!user) return null;
   const { data: profile } = await supabaseAdmin
     .from('profiles')
-    .select('role')
+    .select('role, hospital_prefix')
     .eq('id', user.id)
     .single();
-  return profile?.role === 'bbg_admin';
+  if (!profile) return null;
+  if (profile.role === 'bbg_admin') return { role: profile.role, userId: user.id };
+  if (profile.role === 'hospital' && profile.hospital_prefix) return { role: profile.role, userId: user.id, hospitalPrefix: profile.hospital_prefix };
+  return null;
 }
 
 // Hospital tag prefix -> display name mapping
@@ -72,7 +75,8 @@ function ticketMatchesHospital(tags: any, hospitalPrefix: string): boolean {
 }
 
 export async function POST(req: NextRequest) {
-  if (!await verifyAdmin(req)) {
+  const userInfo = await verifyUser(req);
+  if (!userInfo) {
     return withCors(NextResponse.json({ error: 'Unauthorized' }, { status: 403 }));
   }
 
@@ -81,7 +85,11 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}));
-  const hospitalDisplayName = body.hospital;
+  // Hospital role users can only generate insights for their own hospital
+  let hospitalDisplayName = body.hospital;
+  if (userInfo.role === 'hospital') {
+    hospitalDisplayName = HOSPITAL_NAMES[userInfo.hospitalPrefix!] || userInfo.hospitalPrefix;
+  }
 
   if (!hospitalDisplayName) {
     return withCors(NextResponse.json({ error: 'hospital is required' }, { status: 400 }));
@@ -143,7 +151,7 @@ export async function POST(req: NextRequest) {
       model: 'gemini-2.5-flash',
       generationConfig: {
         responseMimeType: 'application/json',
-        maxOutputTokens: 2048,
+        maxOutputTokens: 4096,
       },
     });
 
@@ -162,17 +170,31 @@ ${summaries.map((s, i) => `${i + 1}. ${s}`).join('\n')}
 
 Respond ONLY with valid JSON, no markdown.`;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
-    const insights = JSON.parse(text);
+    // Try up to 2 times (Gemini may truncate on first attempt)
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const result = await model.generateContent(prompt);
+        let text = result.response.text();
+        // Strip markdown fences if present
+        text = text.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
+        const insights = JSON.parse(text);
 
-    return withCors(NextResponse.json({
-      insights: {
-        hospital_strategy: insights.hospital_strategy,
-        sales_improvement: insights.sales_improvement,
-        hq_management: insights.hq_management,
-      },
-    }));
+        return withCors(NextResponse.json({
+          insights: {
+            hospital_strategy: insights.hospital_strategy,
+            sales_improvement: insights.sales_improvement,
+            hq_management: insights.hq_management,
+          },
+        }));
+      } catch (parseErr: any) {
+        if (attempt === 1) {
+          return withCors(NextResponse.json({ error: `AI response parse failed: ${parseErr.message}` }, { status: 500 }));
+        }
+        // Retry on first failure
+      }
+    }
+
+    return withCors(NextResponse.json({ error: 'Unexpected error' }, { status: 500 }));
   } catch (err: any) {
     return withCors(NextResponse.json({ error: err.message }, { status: 500 }));
   }

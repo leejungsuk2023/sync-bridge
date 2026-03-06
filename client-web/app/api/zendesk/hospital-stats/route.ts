@@ -24,18 +24,21 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
-async function verifyAdmin(req: NextRequest) {
+async function verifyUser(req: NextRequest): Promise<{ role: string; userId: string; hospitalPrefix?: string } | null> {
   const authHeader = req.headers.get('authorization');
-  if (!authHeader?.startsWith('Bearer ')) return false;
+  if (!authHeader?.startsWith('Bearer ')) return null;
   const token = authHeader.replace('Bearer ', '');
   const { data: { user } } = await supabaseAdmin.auth.getUser(token);
-  if (!user) return false;
+  if (!user) return null;
   const { data: profile } = await supabaseAdmin
     .from('profiles')
-    .select('role')
+    .select('role, hospital_prefix')
     .eq('id', user.id)
     .single();
-  return profile?.role === 'bbg_admin';
+  if (!profile) return null;
+  if (profile.role === 'bbg_admin') return { role: profile.role, userId: user.id };
+  if (profile.role === 'hospital' && profile.hospital_prefix) return { role: profile.role, userId: user.id, hospitalPrefix: profile.hospital_prefix };
+  return null;
 }
 
 // Hospital tag prefix -> display name mapping
@@ -98,12 +101,17 @@ function calcGrowth(current: number, previous: number): number {
 }
 
 export async function GET(req: NextRequest) {
-  if (!await verifyAdmin(req)) {
+  const userInfo = await verifyUser(req);
+  if (!userInfo) {
     return withCors(NextResponse.json({ error: 'Unauthorized' }, { status: 403 }));
   }
 
   const { searchParams } = new URL(req.url);
-  const hospital = searchParams.get('hospital'); // tag prefix, optional
+  // Hospital role users can only see their own hospital
+  let hospital = searchParams.get('hospital'); // tag prefix, optional
+  if (userInfo.role === 'hospital') {
+    hospital = userInfo.hospitalPrefix!;
+  }
   const period = searchParams.get('period') || 'month';
   const days = period === 'week' ? 7 : 30;
 
@@ -149,7 +157,12 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => b.ticket_count - a.ticket_count);
 
   // If no specific hospital requested, return just the list
+  // Hospital role users only see their own hospital in the list
   if (!hospital) {
+    if (userInfo.role === 'hospital') {
+      const filtered = hospitals.filter(h => h.tag_prefix === userInfo.hospitalPrefix);
+      return withCors(NextResponse.json({ hospitals: filtered }));
+    }
     return withCors(NextResponse.json({ hospitals }));
   }
 

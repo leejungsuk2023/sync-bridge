@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { X, Send, Paperclip, FileText, Download } from 'lucide-react';
+import { X, Send, Paperclip, FileText, Download, Pencil } from 'lucide-react';
+import ImageAnnotator from './ImageAnnotator';
 
 export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { taskId: string; userId: string; onClose: () => void; locale?: 'ko' | 'th' }) {
   // Locale-aware label map
@@ -34,6 +35,7 @@ export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { t
   const [chatMembers, setChatMembers] = useState<{ id: string; display_name: string }[]>([]);
   const [showMentions, setShowMentions] = useState(false);
   const [mentionFilter, setMentionFilter] = useState('');
+  const [annotatingImage, setAnnotatingImage] = useState<{ url: string; name: string } | null>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -199,15 +201,13 @@ export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { t
     }
   };
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const uploadAndSendFile = async (file: File) => {
     if (file.size > 10 * 1024 * 1024) {
       alert(L.fileSizeError);
       return;
     }
     setUploading(true);
-    const ext = file.name.split('.').pop();
+    const ext = file.name.split('.').pop() || 'png';
     const path = `${taskId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
     const { error } = await supabase.storage.from('chat-files').upload(path, file);
     if (error) {
@@ -216,16 +216,14 @@ export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { t
       return;
     }
     const { data: urlData } = supabase.storage.from('chat-files').getPublicUrl(path);
-    const fileUrl = urlData.publicUrl;
-
     await supabase.from('messages').insert({
       task_id: taskId,
       sender_id: userId,
       content: `📎 ${file.name}`,
       content_ko: `📎 ${file.name}`,
       content_th: `📎 ${file.name}`,
-      sender_lang: 'ko',
-      file_url: fileUrl,
+      sender_lang: locale === 'th' ? 'th' : 'ko',
+      file_url: urlData.publicUrl,
       file_name: file.name,
       file_type: file.type,
     });
@@ -233,10 +231,38 @@ export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { t
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await uploadAndSendFile(file);
+  };
+
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        e.preventDefault();
+        const file = items[i].getAsFile();
+        if (file) {
+          const namedFile = new File([file], `pasted_${Date.now()}.png`, { type: file.type });
+          await uploadAndSendFile(namedFile);
+        }
+        return;
+      }
+    }
+  };
+
+  const handleAnnotationSend = async (blob: Blob, fileName: string) => {
+    const file = new File([blob], fileName, { type: 'image/png' });
+    await uploadAndSendFile(file);
+    setAnnotatingImage(null);
+  };
+
   const isImageType = (type: string) => type?.startsWith('image/');
 
   return (
-    <div className="bg-white rounded-lg border border-slate-300 overflow-hidden flex flex-col" style={{ height: '480px' }}>
+    <div className="bg-white rounded-lg border border-slate-300 overflow-hidden flex flex-col" style={{ height: '480px' }} onPaste={handlePaste}>
       {/* Header */}
       <div className="shrink-0 bg-slate-50 border-b border-slate-200 p-4 flex items-start justify-between">
         <div className="min-w-0 flex-1">
@@ -269,12 +295,23 @@ export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { t
                 {m.file_url ? (
                   isImageType(m.file_type) ? (
                     <div>
-                      <img
-                        src={m.file_url}
-                        alt={m.file_name}
-                        className="max-w-full max-h-48 rounded cursor-pointer"
-                        onClick={() => setPreviewFile({ name: m.file_name, url: m.file_url, type: m.file_type })}
-                      />
+                      <div className="relative group">
+                        <img
+                          src={m.file_url}
+                          alt={m.file_name}
+                          className="max-w-full max-h-48 rounded cursor-pointer"
+                          onClick={() => setPreviewFile({ name: m.file_name, url: m.file_url, type: m.file_type })}
+                        />
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setAnnotatingImage({ url: m.file_url, name: m.file_name }); }}
+                          className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 bg-black/60 hover:bg-black/80 text-white rounded-md px-2 py-1 text-xs flex items-center gap-1 transition-opacity"
+                          title="수정 요청"
+                        >
+                          <Pencil className="w-3 h-3" />
+                          수정
+                        </button>
+                      </div>
                       <p className="text-xs mt-1 opacity-70">{m.file_name}</p>
                     </div>
                   ) : (
@@ -368,6 +405,15 @@ export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { t
           {L.send}
         </button>
       </div>
+
+      {annotatingImage && (
+        <ImageAnnotator
+          imageUrl={annotatingImage.url}
+          imageName={annotatingImage.name}
+          onSend={handleAnnotationSend}
+          onClose={() => setAnnotatingImage(null)}
+        />
+      )}
     </div>
   );
 }

@@ -45,6 +45,7 @@ interface StatsData {
 export default function SalesPerformance() {
   const [stats, setStats] = useState<StatsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
@@ -76,6 +77,9 @@ export default function SalesPerformance() {
       if (res.ok) {
         const data = await res.json();
         setStats(data);
+        setAuthError(false);
+      } else if (res.status === 403) {
+        setAuthError(true);
       }
     } catch (err) {
       console.error('[SalesPerformance] Failed to fetch stats:', err);
@@ -283,6 +287,16 @@ export default function SalesPerformance() {
           <RefreshCw className="w-4 h-4 animate-spin" />
           <span>Sales 데이터 로딩 중...</span>
         </div>
+      </div>
+    );
+  }
+
+  if (authError) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-red-200 p-6 text-center">
+        <AlertTriangle className="w-8 h-8 mx-auto mb-2 text-red-400" />
+        <p className="text-red-600 font-medium">세션이 만료되었습니다</p>
+        <p className="text-sm text-slate-500 mt-1">로그아웃 후 다시 로그인해 주세요.</p>
       </div>
     );
   }

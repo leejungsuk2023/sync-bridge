@@ -36,7 +36,7 @@ async function verifyAdmin(req: NextRequest) {
     .select('role')
     .eq('id', user.id)
     .single();
-  return profile?.role === 'bbg_admin';
+  return profile?.role === 'bbg_admin' || profile?.role === 'hospital';
 }
 
 function buildAnalysisPrompt(ticket: any): string {
@@ -54,8 +54,12 @@ Analyze the following support ticket conversation and return a JSON response wit
 - summary (string): 2-3 sentence summary of the conversation IN KOREAN (한국어로 작성)
 - issues (string[]): List of any problems found in Korean (e.g., 응답 지연, 잘못된 정보, 기회 놓침)
 - hospital_name (string or null): Name of the hospital discussed, if any
+- customer_name (string or null): Customer's name mentioned in conversation (Thai or Korean name)
+- customer_phone (string or null): Customer's phone number if mentioned (any format)
+- interested_procedure (string or null): The medical procedure/surgery the customer is interested in, IN KOREAN (e.g., 눈성형, 코성형, 지방흡입, 가슴성형, 리프팅)
+- customer_age (number or null): Customer's age if mentioned or inferable
 
-IMPORTANT: summary, followup_reason, and issues MUST be written in Korean (한국어).
+IMPORTANT: summary, followup_reason, issues, and interested_procedure MUST be written in Korean (한국어).
 
 Ticket Subject: ${ticket.subject}
 Ticket Status: ${ticket.status}
@@ -160,6 +164,10 @@ export async function POST(req: NextRequest) {
           summary: analysis.summary,
           issues: analysis.issues || [],
           hospital_name: analysis.hospital_name || null,
+          customer_name: analysis.customer_name || null,
+          customer_phone: analysis.customer_phone || null,
+          interested_procedure: analysis.interested_procedure || null,
+          customer_age: analysis.customer_age || null,
           analyzed_at: new Date().toISOString(),
         });
 

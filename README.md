@@ -26,19 +26,24 @@ g sync/
 │
 ├── client-web/              # Next.js 14 관리자 대시보드
 │   ├── app/
-│   │   ├── page.tsx                # 메인 (로그인 + 대시보드)
+│   │   ├── app/page.tsx            # 메인 (로그인 + 대시보드)
 │   │   ├── layout.tsx
 │   │   ├── admin/monitoring/
-│   │   │   └── page.tsx            # God Mode 통합 관제 대시보드
+│   │   │   └── page.tsx            # God Mode 통합 관제 대시보드 (bbg_admin 전용)
+│   │   ├── sales/
+│   │   │   └── page.tsx            # Sales 성과 분석 독립 페이지 (bbg_admin 전용)
 │   │   ├── api/tasks/route.ts      # 업무 CRUD + 전체 톡방 API (service_role)
 │   │   ├── api/translate/route.ts  # 한↔태 번역 API (Gemini)
 │   │   ├── api/ai-assist/route.ts  # AI 상담 어시스턴트 API
-│   │   └── api/admin/users/route.ts # 계정 생성/삭제 API (service_role)
+│   │   ├── api/admin/users/route.ts # 계정 생성/삭제 API (service_role)
+│   │   ├── api/zendesk/sync/route.ts   # Zendesk 티켓 수동 동기화 API
+│   │   ├── api/zendesk/stats/route.ts  # Zendesk 통계 조회 API
+│   │   ├── api/zendesk/analyze/route.ts # Zendesk 티켓 AI 분석 API (active tickets, 10+ comments)
+│   │   └── api/zendesk/cron/route.ts   # Vercel Cron endpoint (자동 sync + analyze)
 │   ├── components/
 │   │   ├── LoginPage.tsx           # 로그인 페이지
-│   │   ├── Dashboard.tsx           # 메인 대시보드 레이아웃
+│   │   ├── Dashboard.tsx           # 메인 대시보드 레이아웃 (헤더에 모니터링/Sales 링크)
 │   │   ├── WorkerStatus.tsx        # 실시간 직원 상태 카드 (파란색)
-│   │   ├── GeneralChat.tsx         # 전체 톡방 (인디고)
 │   │   ├── TaskAssign.tsx          # 업무 할당 폼 (초록색)
 │   │   ├── TaskList.tsx            # 업무 목록 + 별점 평가 (노란색)
 │   │   ├── TaskChat.tsx            # 업무별 채팅
@@ -46,8 +51,10 @@ g sync/
 │   │   ├── TaskPresetManager.tsx   # 업무 프리셋 CRUD (분홍색, bbg_admin)
 │   │   ├── TimeReport.tsx          # 근무 리포트 (청록색)
 │   │   ├── UserManager.tsx         # 계정 관리 CRUD (회색, bbg_admin)
-│   │   └── QuickReplyManager.tsx   # 자동답변 CRUD
-│   └── lib/supabase.ts
+│   │   ├── QuickReplyManager.tsx   # 자동답변 CRUD
+│   │   └── SalesPerformance.tsx    # Zendesk Sales 성과 분석 (/sales 페이지용)
+│   ├── lib/supabase.ts
+│   └── vercel.json                 # Vercel Cron 스케줄 설정 (00:00 UTC + 07:00 UTC)
 │
 ├── syncbridge-desktop/      # Electron 데스크톱 앱 (macOS/Windows)
 │   ├── electron/
@@ -138,13 +145,18 @@ NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 SUPABASE_SERVICE_ROLE_KEY=eyJ...   # 업무 API + 계정 관리 (서버사이드 전용)
 GEMINI_API_KEY=AIza...               # 번역 + AI 어시스트 (Google Gemini)
+CRON_SECRET=...                      # Vercel Cron 인증 시크릿 (zendesk/cron 보호용)
+ZENDESK_SUBDOMAIN=...                # Zendesk 서브도메인 (예: bbg)
+ZENDESK_EMAIL=...                    # Zendesk API 인증 이메일
+ZENDESK_API_TOKEN=...                # Zendesk API 토큰
 ```
 
 ```bash
 npm run dev
 ```
 
-- 메인 대시보드: `http://localhost:3000` (client 계정)
+- 메인 대시보드: `http://localhost:3000/app` (client 계정)
+- Sales 분석: `http://localhost:3000/sales` (bbg_admin 전용)
 - God Mode 관제: `http://localhost:3000/admin/monitoring` (bbg_admin 전용)
 
 배포: `vercel --prod` (Vercel CLI)
@@ -210,6 +222,15 @@ VITE_WEB_URL=http://localhost:3000   # 번역/AI API URL
 | 근무 리포트 | 오늘 일간 근태 요약, 출근율 프로그레스 바 + 색상 코딩 |
 | 계정 관리 | 병원/직원 계정 생성·삭제 (bbg_admin 전용, service_role API) |
 | AI 어시스트 API | 환자 메시지 분석 → 한국어 번역 + 의도 파악 + 추천 답변 3개 |
+| Sales 성과 분석 | `/sales` — Zendesk 티켓 기반 AI 분석, 담당자별 품질 평가, 예약 전환율, 팔로업 필요 고객 관리 |
+
+### 3개 관리자 페이지 구조
+
+| 경로 | 용도 |
+|------|------|
+| `/app` | 메인 대시보드 (업무관리, 채팅, 계정 관리) |
+| `/sales` | Sales 성과 분석 — Zendesk 티켓 AI 분석 (bbg_admin 전용) |
+| `/admin/monitoring` | God Mode 통합 관제 (bbg_admin 전용) |
 
 ### God Mode 통합 관제 (`/admin/monitoring`)
 
@@ -217,7 +238,7 @@ bbg_admin 전용 실시간 모니터링 대시보드입니다.
 
 | 기능 | 설명 |
 |------|------|
-| 권한 체크 | bbg_admin이 아니면 메인 페이지로 리다이렉트 |
+| 권한 체크 | bbg_admin이 아니면 `/app`으로 리다이렉트 |
 | 통계 바 | 총 업무, 진행중, 완료, 완료율 실시간 표시 |
 | 필터 바 | 병원/담당자/상태/기간별 필터링 |
 | 워커 그리드 | 각 워커의 상태 배지 + 완료/대기 업무 통계 |
@@ -339,7 +360,7 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 
 | 파일 | 변수 |
 |------|------|
-| `client-web/.env.local` | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY` |
+| `client-web/.env.local` | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, `CRON_SECRET`, `ZENDESK_SUBDOMAIN`, `ZENDESK_EMAIL`, `ZENDESK_API_TOKEN` |
 | `syncbridge-desktop/.env.local` | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_WEB_URL` |
 | `syncbridge-extension/.env.local` | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_WEB_URL` |
 

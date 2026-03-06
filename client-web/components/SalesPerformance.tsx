@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { BarChart3, Star, RefreshCw, Users, TrendingUp, AlertTriangle, Search } from 'lucide-react';
+import { BarChart3, Star, RefreshCw, Users, TrendingUp, AlertTriangle, Search, Building2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 
 interface Overview {
   totalTickets: number;
@@ -53,6 +53,11 @@ export default function SalesPerformance() {
   const [selectedWorker, setSelectedWorker] = useState('');
   const [assigning, setAssigning] = useState(false);
   const [ticketLimit, setTicketLimit] = useState(20);
+  const [hospitals, setHospitals] = useState<{tag_prefix: string; display_name: string; ticket_count: number}[]>([]);
+  const [selectedHospital, setSelectedHospital] = useState('');
+  const [hospitalStats, setHospitalStats] = useState<any>(null);
+  const [hospitalLoading, setHospitalLoading] = useState(false);
+  const [hospitalPeriod, setHospitalPeriod] = useState<'week' | 'month'>('month');
 
   const getAuthHeader = async () => {
     const session = (await supabase.auth.getSession()).data.session;
@@ -86,6 +91,47 @@ export default function SalesPerformance() {
     };
     fetchWorkers();
   }, []);
+
+  // Fetch hospital list on mount
+  useEffect(() => {
+    const fetchHospitals = async () => {
+      try {
+        const headers = await getAuthHeader();
+        const res = await fetch('/api/zendesk/hospital-stats', { headers });
+        if (res.ok) {
+          const data = await res.json();
+          setHospitals(data.hospitals || []);
+        }
+      } catch (err) {
+        console.error('[SalesPerformance] Failed to fetch hospitals:', err);
+      }
+    };
+    fetchHospitals();
+  }, []);
+
+  // Fetch hospital stats when selection or period changes
+  useEffect(() => {
+    if (!selectedHospital) {
+      setHospitalStats(null);
+      return;
+    }
+    const fetchHospitalStats = async () => {
+      setHospitalLoading(true);
+      try {
+        const headers = await getAuthHeader();
+        const res = await fetch(`/api/zendesk/hospital-stats?hospital=${encodeURIComponent(selectedHospital)}&period=${hospitalPeriod}`, { headers });
+        if (res.ok) {
+          const data = await res.json();
+          setHospitalStats(data.stats || null);
+        }
+      } catch (err) {
+        console.error('[SalesPerformance] Failed to fetch hospital stats:', err);
+      } finally {
+        setHospitalLoading(false);
+      }
+    };
+    fetchHospitalStats();
+  }, [selectedHospital, hospitalPeriod]);
 
   const handleAssignFollowup = async (ticket: RecentTicket) => {
     if (!selectedWorker) return;
@@ -457,6 +503,160 @@ export default function SalesPerformance() {
           )}
         </>
       )}
+      {/* Hospital BI Section */}
+      <div className="border-t border-slate-200 pt-6 space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-2">
+            <Building2 className="w-5 h-5 text-indigo-600" />
+            <h2 className="text-lg font-semibold text-slate-900">병원별 성과 분석</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={selectedHospital}
+              onChange={e => setSelectedHospital(e.target.value)}
+              className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">병원 선택</option>
+              {hospitals.map(h => (
+                <option key={h.tag_prefix} value={h.tag_prefix}>
+                  {h.display_name} ({h.ticket_count})
+                </option>
+              ))}
+            </select>
+            <select
+              value={hospitalPeriod}
+              onChange={e => setHospitalPeriod(e.target.value as 'week' | 'month')}
+              className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="week">최근 7일</option>
+              <option value="month">최근 30일</option>
+            </select>
+          </div>
+        </div>
+
+        {!selectedHospital ? (
+          <div className="text-center py-8 text-slate-500">
+            <Building2 className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+            <p>병원을 선택하세요</p>
+          </div>
+        ) : hospitalLoading ? (
+          <div className="flex items-center gap-2 text-slate-500 py-4">
+            <RefreshCw className="w-4 h-4 animate-spin" />
+            <span>데이터 로딩 중...</span>
+          </div>
+        ) : hospitalStats ? (
+          <div className="space-y-6">
+            {/* BI Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {(() => {
+                const conversionRate = hospitalStats.meaningfulInquiries > 0
+                  ? Math.round((hospitalStats.conversions / hospitalStats.meaningfulInquiries) * 100)
+                  : 0;
+                const prevMeaningful = hospitalStats.meaningfulInquiries > 0 && hospitalStats.growth?.conversions != null && hospitalStats.growth?.meaningfulInquiries != null
+                  ? hospitalStats.meaningfulInquiries / (1 + (hospitalStats.growth.meaningfulInquiries || 0) / 100)
+                  : 0;
+                const prevConversions = hospitalStats.conversions > 0 && hospitalStats.growth?.conversions != null
+                  ? hospitalStats.conversions / (1 + (hospitalStats.growth.conversions || 0) / 100)
+                  : 0;
+                const prevRate = prevMeaningful > 0 ? (prevConversions / prevMeaningful) * 100 : 0;
+                const rateGrowth = prevRate > 0 ? Math.round(((conversionRate - prevRate) / prevRate) * 100) : 0;
+
+                const growthBadge = (g: number) => {
+                  if (g > 0) return (
+                    <span className="inline-flex items-center gap-0.5 text-xs text-emerald-600">
+                      <ArrowUpRight className="w-3 h-3" />{g}%
+                    </span>
+                  );
+                  if (g < 0) return (
+                    <span className="inline-flex items-center gap-0.5 text-xs text-red-600">
+                      <ArrowDownRight className="w-3 h-3" />{Math.abs(g)}%
+                    </span>
+                  );
+                  return <span className="text-xs text-slate-400">-</span>;
+                };
+
+                return (
+                  <>
+                    <div className="bg-gradient-to-br from-blue-50 to-white border border-blue-100 rounded-xl p-4">
+                      <span className="text-xs font-medium text-blue-600">총 문의</span>
+                      <p className="text-2xl font-bold text-slate-900 mt-1">{hospitalStats.totalInquiries}</p>
+                      <div className="mt-1">{growthBadge(hospitalStats.growth?.totalInquiries ?? 0)}</div>
+                    </div>
+                    <div className="bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 rounded-xl p-4">
+                      <span className="text-xs font-medium text-indigo-600">의미있는 문의 (10+대화)</span>
+                      <p className="text-2xl font-bold text-slate-900 mt-1">{hospitalStats.meaningfulInquiries}</p>
+                      <div className="mt-1">{growthBadge(hospitalStats.growth?.meaningfulInquiries ?? 0)}</div>
+                    </div>
+                    <div className="bg-gradient-to-br from-emerald-50 to-white border border-emerald-100 rounded-xl p-4">
+                      <span className="text-xs font-medium text-emerald-600">예약 전환</span>
+                      <p className="text-2xl font-bold text-slate-900 mt-1">{hospitalStats.conversions}</p>
+                      <div className="mt-1">{growthBadge(hospitalStats.growth?.conversions ?? 0)}</div>
+                    </div>
+                    <div className="bg-gradient-to-br from-amber-50 to-white border border-amber-100 rounded-xl p-4">
+                      <span className="text-xs font-medium text-amber-600">전환율</span>
+                      <p className="text-2xl font-bold text-slate-900 mt-1">{conversionRate}%</p>
+                      <div className="mt-1">{growthBadge(rateGrowth)}</div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+
+            {/* Daily Trend Chart */}
+            {hospitalStats.dailyTrend && hospitalStats.dailyTrend.length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700 mb-3">일별 추이</h3>
+                {/* Legend */}
+                <div className="flex items-center gap-4 mb-3 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded bg-blue-500" />
+                    <span className="text-slate-600">전체</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded bg-indigo-500" />
+                    <span className="text-slate-600">의미있는 문의</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded bg-emerald-500" />
+                    <span className="text-slate-600">전환</span>
+                  </div>
+                </div>
+                {/* Bar chart */}
+                <div className="flex items-end gap-2 h-40">
+                  {(() => {
+                    const maxVal = Math.max(...hospitalStats.dailyTrend.map((d: any) => d.total), 1);
+                    return hospitalStats.dailyTrend.map((day: any, i: number) => {
+                      const dateStr = new Date(day.date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
+                      return (
+                        <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                          <div className="flex items-end gap-0.5 w-full h-32">
+                            <div
+                              className="flex-1 bg-blue-500 rounded-t"
+                              style={{ height: `${(day.total / maxVal) * 100}%`, minHeight: day.total > 0 ? '4px' : '0' }}
+                              title={`전체: ${day.total}`}
+                            />
+                            <div
+                              className="flex-1 bg-indigo-500 rounded-t"
+                              style={{ height: `${(day.meaningful / maxVal) * 100}%`, minHeight: day.meaningful > 0 ? '4px' : '0' }}
+                              title={`의미있는: ${day.meaningful}`}
+                            />
+                            <div
+                              className="flex-1 bg-emerald-500 rounded-t"
+                              style={{ height: `${(day.conversions / maxVal) * 100}%`, minHeight: day.conversions > 0 ? '4px' : '0' }}
+                              title={`전환: ${day.conversions}`}
+                            />
+                          </div>
+                          <span className="text-[10px] text-slate-500">{dateStr}</span>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

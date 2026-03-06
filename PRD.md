@@ -60,11 +60,26 @@
 | 번역 도우미 | ✅ | `TranslationHelper.tsx` — 태국어↔한국어 즉석 번역 패널, `/api/translate` 활용 |
 | 내 업무 / 팀 전체 분리 | ✅ | TaskList에서 본인 할당 업무와 팀 전체 업무를 탭으로 구분 |
 
+### 3.1c Client Web — Sales 성과 분석 (`/sales`)
+
+| 기능 | 상태 | 설명 |
+|------|------|------|
+| 권한 체크 | ✅ | bbg_admin 외 접근 시 `/app`으로 리다이렉트 |
+| Zendesk 동기화 | ✅ | Zendesk 티켓 증분 동기화 (`zendesk_tickets` 테이블 upsert) |
+| AI 분석 | ✅ | active tickets (open/pending/new) 중 10+ comments 티켓 자동 분석 (Gemini, 한국어 출력) |
+| 품질 평가 | ✅ | 티켓별 1~5점 품질 점수, 담당자별 평균 품질 통계 |
+| 예약 전환율 | ✅ | AI 판단 기반 예약 전환 여부 + 전환율 통계 |
+| 팔로업 관리 | ✅ | 팔로업 필요 고객 식별 + 팔로업 배정 UI |
+| 미분석 사유 표시 | ✅ | 분석 제외 사유 표시 (댓글 수 부족, 비활성 상태 등) |
+| 더보기 페이지네이션 | ✅ | 티켓 목록 더보기 방식 페이지네이션 (`limit` 파라미터) |
+| 자동 배치 실행 | ✅ | Vercel Cron — 매일 09:00 KST, 16:00 KST 자동 sync + analyze |
+| 수동 배치 실행 | ✅ | 수동 동기화/분석 버튼 (API 직접 호출) |
+
 ### 3.2 Client Web — God Mode 관제 (`/admin/monitoring`)
 
 | 기능 | 상태 | 설명 |
 |------|------|------|
-| 권한 체크 | ✅ | bbg_admin 외 접근 시 메인 페이지로 리다이렉트 |
+| 권한 체크 | ✅ | bbg_admin 외 접근 시 `/app`으로 리다이렉트 |
 | 통계 바 | ✅ | 총 업무, 진행중, 완료, 완료율 실시간 표시 |
 | 필터 바 | ✅ | 병원/담당자/상태/기간별 필터링 |
 | 워커 그리드 | ✅ | 각 워커별 상태 배지 + 완료/대기 업무 카운트 |
@@ -179,6 +194,10 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | `/api/translate` | POST | 한↔태 양방향 번역 (Gemini API) |
 | `/api/ai-assist` | POST | AI 상담 어시스턴트 (의도 파악 + 추천 답변) |
 | `/api/admin/users` | POST/DELETE | 계정 생성/삭제 (bbg_admin, service_role) |
+| `/api/zendesk/sync` | POST | Zendesk 티켓 수동 동기화 (bbg_admin) |
+| `/api/zendesk/stats` | GET | Zendesk 통계 조회 — period, limit 파라미터, comment_count/status 필드 포함 (bbg_admin) |
+| `/api/zendesk/analyze` | POST | active tickets (open/pending/new) 중 미분석 10+ comments 티켓 AI 분석, limit 파라미터 (bbg_admin) |
+| `/api/zendesk/cron` | GET | Vercel Cron endpoint — sync + analyze 자동 실행 (CRON_SECRET 인증) |
 
 ---
 
@@ -189,6 +208,7 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | WebSocket 단절 | Supabase Realtime 자동 재연결 + Service Worker keep-alive |
 | 근태 어뷰징 | Activity Ping (10분 무활동 → 자리비움), 향후 키보드/마우스 이벤트 감지 확장 가능 |
 | service_role 키 노출 | 서버사이드 API Route에서만 사용, 클라이언트 코드에 미노출 |
+| Cron 무단 실행 | `/api/zendesk/cron`은 `CRON_SECRET` Bearer 토큰 검증으로 보호 |
 | Whisper 정보 유출 | RLS CASE 표현식으로 client 역할에게 is_whisper=true 메시지 필터링 |
 | 번역 실패 | 즉시 전송 패턴으로 원본은 항상 표시, 번역은 백그라운드에서 재시도 |
 | CORS 차단 | API Route에 CORS 헤더 + OPTIONS preflight 처리 (Desktop/Extension cross-origin 허용) |
@@ -229,4 +249,4 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 
 ---
 
-**문서 버전:** 3.5 · 업무 상세 설명 필드 분리 반영 (description/description_th 컬럼 추가, TaskAssign 제목+가이드 분리 입력, TaskList 접기/펼치기 표시, PATCH whitelist 업데이트)
+**문서 버전:** 3.6 · Zendesk Sales 성과 분석 시스템 반영 (Sales 분석 페이지 /sales, Zendesk API 4개 route, Vercel Cron, SalesPerformance 컴포넌트, CRON_SECRET/Zendesk 환경변수, Dashboard Sales 링크 추가)

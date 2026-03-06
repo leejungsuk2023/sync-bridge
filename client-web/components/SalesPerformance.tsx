@@ -63,6 +63,7 @@ export default function SalesPerformance() {
   const [hospitalStats, setHospitalStats] = useState<any>(null);
   const [hospitalLoading, setHospitalLoading] = useState(false);
   const [hospitalPeriod, setHospitalPeriod] = useState<'week' | 'month'>('month');
+  const [activeTab, setActiveTab] = useState<'sales' | 'hospital' | 'followup'>('sales');
 
   const getAuthHeader = async () => {
     const session = (await supabase.auth.getSession()).data.session;
@@ -311,21 +312,13 @@ export default function SalesPerformance() {
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-6">
-      {/* Header */}
+      {/* Header + Actions */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <BarChart3 className="w-5 h-5 text-indigo-600" />
           <h2 className="text-lg font-semibold text-slate-900">Sales 성과 트래킹</h2>
         </div>
         <div className="flex items-center gap-2">
-          <select
-            value={period}
-            onChange={e => setPeriod(e.target.value as 'week' | 'month')}
-            className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="week">최근 7일</option>
-            <option value="month">최근 30일</option>
-          </select>
           <button
             onClick={handleSync}
             disabled={syncing}
@@ -346,6 +339,63 @@ export default function SalesPerformance() {
             <span className="text-xs text-slate-500">{syncProgress}</span>
           )}
         </div>
+      </div>
+
+      {/* Tab Navigation */}
+      <div className="flex border-b border-slate-200">
+        <button
+          onClick={() => setActiveTab('sales')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'sales'
+              ? 'border-indigo-600 text-indigo-600'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <span className="flex items-center gap-1.5">
+            <BarChart3 className="w-4 h-4" />
+            Sales 성과
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveTab('hospital')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'hospital'
+              ? 'border-indigo-600 text-indigo-600'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <span className="flex items-center gap-1.5">
+            <Building2 className="w-4 h-4" />
+            병원별 분석
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveTab('followup')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'followup'
+              ? 'border-indigo-600 text-indigo-600'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <span className="flex items-center gap-1.5">
+            <Users className="w-4 h-4" />
+            팔로업 고객
+          </span>
+        </button>
+      </div>
+
+      {/* Tab: Sales Performance */}
+      {activeTab === 'sales' && (<>
+      {/* Period Selector */}
+      <div className="flex items-center gap-2">
+        <select
+          value={period}
+          onChange={e => setPeriod(e.target.value as 'week' | 'month')}
+          className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        >
+          <option value="week">최근 7일</option>
+          <option value="month">최근 30일</option>
+        </select>
       </div>
 
       {/* Overview Cards */}
@@ -577,35 +627,32 @@ export default function SalesPerformance() {
           )}
         </>
       )}
-      {/* Hospital BI Section */}
-      <div className="border-t border-slate-200 pt-6 space-y-4">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-2">
-            <Building2 className="w-5 h-5 text-indigo-600" />
-            <h2 className="text-lg font-semibold text-slate-900">병원별 성과 분석</h2>
-          </div>
-          <div className="flex items-center gap-2">
-            <select
-              value={selectedHospital}
-              onChange={e => setSelectedHospital(e.target.value)}
-              className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="">병원 선택</option>
-              {hospitals.map(h => (
-                <option key={h.tag_prefix} value={h.tag_prefix}>
-                  {h.display_name} ({h.ticket_count})
-                </option>
-              ))}
-            </select>
-            <select
-              value={hospitalPeriod}
-              onChange={e => setHospitalPeriod(e.target.value as 'week' | 'month')}
-              className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="week">최근 7일</option>
-              <option value="month">최근 30일</option>
-            </select>
-          </div>
+      </>)}
+
+      {/* Tab: Hospital BI */}
+      {activeTab === 'hospital' && (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <select
+            value={selectedHospital}
+            onChange={e => setSelectedHospital(e.target.value)}
+            className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="">병원 선택</option>
+            {hospitals.map(h => (
+              <option key={h.tag_prefix} value={h.tag_prefix}>
+                {h.display_name} ({h.ticket_count})
+              </option>
+            ))}
+          </select>
+          <select
+            value={hospitalPeriod}
+            onChange={e => setHospitalPeriod(e.target.value as 'week' | 'month')}
+            className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="week">최근 7일</option>
+            <option value="month">최근 30일</option>
+          </select>
         </div>
 
         {!selectedHospital ? (
@@ -731,6 +778,88 @@ export default function SalesPerformance() {
           </div>
         ) : null}
       </div>
+      )}
+
+      {/* Tab: Followup Customers */}
+      {activeTab === 'followup' && (
+      <div className="space-y-4">
+        <p className="text-sm text-slate-500">팔로업이 필요한 고객의 정보를 자동으로 추출합니다. (AI 분석 시 대화에서 추출)</p>
+        <FollowupCustomerTable getAuthHeader={getAuthHeader} />
+      </div>
+      )}
+    </div>
+  );
+}
+
+function FollowupCustomerTable({ getAuthHeader }: { getAuthHeader: () => Promise<{ Authorization: string }> }) {
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchFollowups = async () => {
+      try {
+        const headers = await getAuthHeader();
+        const res = await fetch('/api/zendesk/followup-customers', { headers });
+        if (res.ok) {
+          const data = await res.json();
+          setCustomers(data.customers || []);
+        }
+      } catch (err) {
+        console.error('[SalesPerformance] Failed to fetch followup customers:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchFollowups();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 text-slate-500 py-4">
+        <RefreshCw className="w-4 h-4 animate-spin" />
+        <span>고객 데이터 로딩 중...</span>
+      </div>
+    );
+  }
+
+  if (customers.length === 0) {
+    return (
+      <div className="text-center py-8 text-slate-500">
+        <Users className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+        <p>팔로업 고객 데이터가 없습니다.</p>
+        <p className="text-xs mt-1">Analyze 실행 시 대화에서 고객 정보가 자동 추출됩니다.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-slate-50 text-slate-600">
+            <th className="text-left px-3 py-2 font-medium rounded-tl-lg">고객명</th>
+            <th className="text-left px-3 py-2 font-medium">연락처</th>
+            <th className="text-left px-3 py-2 font-medium">관심 시술</th>
+            <th className="text-center px-3 py-2 font-medium">나이</th>
+            <th className="text-left px-3 py-2 font-medium">병원</th>
+            <th className="text-left px-3 py-2 font-medium">팔로업 사유</th>
+            <th className="text-left px-3 py-2 font-medium rounded-tr-lg">티켓</th>
+          </tr>
+        </thead>
+        <tbody>
+          {customers.map((c, i) => (
+            <tr key={c.ticket_id || i} className="border-t border-slate-100 hover:bg-slate-50">
+              <td className="px-3 py-2 font-medium text-slate-900">{c.customer_name || '-'}</td>
+              <td className="px-3 py-2 text-slate-700">{c.customer_phone || '-'}</td>
+              <td className="px-3 py-2 text-slate-700">{c.interested_procedure || '-'}</td>
+              <td className="text-center px-3 py-2 text-slate-700">{c.customer_age || '-'}</td>
+              <td className="px-3 py-2 text-slate-700 text-xs">{c.hospital_name || '-'}</td>
+              <td className="px-3 py-2 text-slate-600 text-xs">{c.followup_reason || '-'}</td>
+              <td className="px-3 py-2 text-xs text-slate-500">{c.subject || `#${c.ticket_id}`}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

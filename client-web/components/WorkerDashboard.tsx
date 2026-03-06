@@ -7,8 +7,9 @@ import TaskList from './TaskList';
 import TaskPropose from './TaskPropose';
 import ChatLayout from './ChatLayout';
 import TranslationHelper from './TranslationHelper';
+import WorkerFollowup from './WorkerFollowup';
 
-type Tab = 'งาน' | 'แชท' | 'เครื่องมือ';
+type Tab = 'งาน' | 'แชท' | 'ติดตาม' | 'เครื่องมือ';
 
 export default function WorkerDashboard({ user, profile }: { user: any; profile: any }) {
   const [activeTab, setActiveTab] = useState<Tab>('งาน');
@@ -34,7 +35,7 @@ export default function WorkerDashboard({ user, profile }: { user: any; profile:
     await supabase.auth.signOut();
   };
 
-  const tabs: Tab[] = ['งาน', 'แชท', 'เครื่องมือ'];
+  const tabs: Tab[] = ['งาน', 'แชท', 'ติดตาม', 'เครื่องมือ'];
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -103,6 +104,9 @@ export default function WorkerDashboard({ user, profile }: { user: any; profile:
         )}
         {activeTab === 'แชท' && (
           <ChatLayout userId={user.id} clientId={profile.client_id} locale="th" assigneeId={user.id} />
+        )}
+        {activeTab === 'ติดตาม' && (
+          <WorkerFollowup userId={user.id} />
         )}
         {activeTab === 'เครื่องมือ' && (
           <TranslationHelper />

@@ -50,10 +50,6 @@ export default function SalesPerformance() {
   const [syncProgress, setSyncProgress] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [period, setPeriod] = useState<'week' | 'month'>('month');
-  const [workers, setWorkers] = useState<{id: string, display_name: string, email: string}[]>([]);
-  const [assigningTicketId, setAssigningTicketId] = useState<number | null>(null);
-  const [selectedWorker, setSelectedWorker] = useState('');
-  const [assigning, setAssigning] = useState(false);
   const [ticketLimit, setTicketLimit] = useState(20);
   const [ticketHospitalFilter, setTicketHospitalFilter] = useState('');
   const [analyzingTicketId, setAnalyzingTicketId] = useState<number | null>(null);
@@ -94,13 +90,6 @@ export default function SalesPerformance() {
     fetchStats();
   }, [period, ticketLimit, ticketHospitalFilter, refreshKey]);
 
-  useEffect(() => {
-    const fetchWorkers = async () => {
-      const { data } = await supabase.from('profiles').select('id, display_name, email').eq('role', 'worker');
-      setWorkers(data || []);
-    };
-    fetchWorkers();
-  }, []);
 
   // Fetch hospital list on mount
   useEffect(() => {
@@ -143,63 +132,23 @@ export default function SalesPerformance() {
     fetchHospitalStats();
   }, [selectedHospital, hospitalPeriod]);
 
-  const handleAssignFollowup = async (ticket: RecentTicket) => {
-    if (!selectedWorker) return;
-    setAssigning(true);
+  const handleMarkFollowup = async (ticketId: number) => {
     try {
       const headers = await getAuthHeader();
-      // Translate ticket subject to Thai
-      let contentTh = '';
-      try {
-        const trRes = await fetch('/api/translate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: `[팔로업] ${ticket.subject}`, targetLang: 'th' }),
-        });
-        if (trRes.ok) {
-          const trData = await trRes.json();
-          contentTh = trData.translated || '';
-        }
-      } catch {}
-
-      // Translate description (summary) to Thai
-      let descTh = '';
-      const desc = ticket.summary || '';
-      if (desc) {
-        try {
-          const trRes = await fetch('/api/translate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: desc, targetLang: 'th' }),
-          });
-          if (trRes.ok) {
-            const trData = await trRes.json();
-            descTh = trData.translated || '';
-          }
-        } catch {}
-      }
-
-      const res = await fetch('/api/tasks', {
-        method: 'POST',
+      const res = await fetch('/api/zendesk/followup-customers', {
+        method: 'PATCH',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          assignee_id: selectedWorker,
-          content: `[팔로업] ${ticket.subject}`,
-          content_th: contentTh,
-          description: desc,
-          description_th: descTh,
-          source: 'zendesk_followup',
-        }),
+        body: JSON.stringify({ ticket_id: ticketId, status: 'pending' }),
       });
-
       if (res.ok) {
-        setAssigningTicketId(null);
-        setSelectedWorker('');
+        setRefreshKey(prev => prev + 1);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`팔로우업 등록 실패: ${err.error || res.status}`);
       }
     } catch (err) {
-      console.error('[SalesPerformance] Followup assign failed:', err);
-    } finally {
-      setAssigning(false);
+      console.error('[SalesPerformance] Followup mark failed:', err);
+      alert('팔로우업 등록 중 오류가 발생했습니다.');
     }
   };
 
@@ -564,50 +513,18 @@ export default function SalesPerformance() {
                             )}
                           </td>
                           <td className="text-center px-3 py-2">
-                            {t.needs_followup === true ? (
+                            {t.quality_score != null ? (
                               <button
-                                onClick={() => setAssigningTicketId(assigningTicketId === t.ticket_id ? null : t.ticket_id)}
+                                onClick={() => handleMarkFollowup(t.ticket_id)}
                                 className="px-2 py-1 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
                               >
-                                배정
+                                팔로우업
                               </button>
                             ) : (
                               <span className="text-slate-400">-</span>
                             )}
                           </td>
                         </tr>
-                        {assigningTicketId === t.ticket_id && (
-                          <tr className="bg-indigo-50">
-                            <td colSpan={8} className="px-3 py-3">
-                              <div className="flex items-center gap-3">
-                                <span className="text-sm text-slate-700 font-medium">담당자 배정:</span>
-                                <select
-                                  value={selectedWorker}
-                                  onChange={e => setSelectedWorker(e.target.value)}
-                                  className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                >
-                                  <option value="">선택하세요</option>
-                                  {workers.map(w => (
-                                    <option key={w.id} value={w.id}>{w.display_name || w.email}</option>
-                                  ))}
-                                </select>
-                                <button
-                                  onClick={() => handleAssignFollowup(t)}
-                                  disabled={!selectedWorker || assigning}
-                                  className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
-                                >
-                                  {assigning ? '배정 중...' : '배정'}
-                                </button>
-                                <button
-                                  onClick={() => { setAssigningTicketId(null); setSelectedWorker(''); }}
-                                  className="px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700"
-                                >
-                                  취소
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
                       </React.Fragment>
                     ))}
                   </tbody>

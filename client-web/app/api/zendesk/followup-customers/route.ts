@@ -52,8 +52,8 @@ export async function GET(req: NextRequest) {
     let query = supabaseAdmin
       .from('zendesk_analyses')
       .select('ticket_id, customer_name, customer_phone, interested_procedure, customer_age, hospital_name, followup_reason, needs_followup, followup_status, followup_note, followup_updated_by, followup_updated_at')
-      .eq('needs_followup', true)
-      .order('analyzed_at', { ascending: false });
+      .not('followup_status', 'is', null)
+      .order('followup_updated_at', { ascending: false });
 
     if (statusFilter) {
       query = query.eq('followup_status', statusFilter);

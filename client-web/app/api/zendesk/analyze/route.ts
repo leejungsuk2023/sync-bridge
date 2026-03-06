@@ -75,6 +75,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}));
+  const singleTicketId = body.ticket_id ? Number(body.ticket_id) : null;
   const limit = Math.min(body.limit || 10, 50);
 
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -90,41 +91,58 @@ export async function POST(req: NextRequest) {
   let analyzed = 0;
 
   try {
-    // Find active tickets with meaningful conversations (>= 4 comments)
-    const { data: tickets, error: fetchErr } = await supabaseAdmin
-      .from('zendesk_tickets')
-      .select('*')
-      .in('status', ['open', 'pending', 'new'])
-      .order('updated_at_zd', { ascending: false });
+    let batch: any[] = [];
 
-    if (fetchErr) {
-      return withCors(NextResponse.json({ error: fetchErr.message }, { status: 500 }));
+    if (singleTicketId) {
+      // Single ticket analysis mode
+      const { data: ticket, error: fetchErr } = await supabaseAdmin
+        .from('zendesk_tickets')
+        .select('*')
+        .eq('ticket_id', singleTicketId)
+        .single();
+
+      if (fetchErr || !ticket) {
+        return withCors(NextResponse.json({ error: 'Ticket not found' }, { status: 404 }));
+      }
+
+      // Remove existing analysis if re-analyzing
+      await supabaseAdmin.from('zendesk_analyses').delete().eq('ticket_id', singleTicketId);
+      batch = [ticket];
+    } else {
+      // Batch analysis mode: find active tickets with 4+ comments
+      const { data: tickets, error: fetchErr } = await supabaseAdmin
+        .from('zendesk_tickets')
+        .select('*')
+        .in('status', ['open', 'pending', 'new'])
+        .order('updated_at_zd', { ascending: false });
+
+      if (fetchErr) {
+        return withCors(NextResponse.json({ error: fetchErr.message }, { status: 500 }));
+      }
+
+      if (!tickets || tickets.length === 0) {
+        return withCors(NextResponse.json({ analyzed: 0, message: 'No tickets to analyze' }));
+      }
+
+      const ticketIds = tickets.map(t => t.ticket_id);
+      const { data: existingAnalyses } = await supabaseAdmin
+        .from('zendesk_analyses')
+        .select('ticket_id')
+        .in('ticket_id', ticketIds);
+
+      const analyzedIds = new Set((existingAnalyses || []).map(a => a.ticket_id));
+      const unanalyzed = tickets.filter(t => {
+        if (analyzedIds.has(t.ticket_id)) return false;
+        const commentCount = Array.isArray(t.comments) ? t.comments.length : 0;
+        return commentCount >= 4;
+      });
+
+      if (unanalyzed.length === 0) {
+        return withCors(NextResponse.json({ analyzed: 0, message: 'No active tickets with 4+ comments to analyze' }));
+      }
+
+      batch = unanalyzed.slice(0, limit);
     }
-
-    if (!tickets || tickets.length === 0) {
-      return withCors(NextResponse.json({ analyzed: 0, message: 'No tickets to analyze' }));
-    }
-
-    // Get existing analyses to find unanalyzed tickets
-    const ticketIds = tickets.map(t => t.ticket_id);
-    const { data: existingAnalyses } = await supabaseAdmin
-      .from('zendesk_analyses')
-      .select('ticket_id')
-      .in('ticket_id', ticketIds);
-
-    const analyzedIds = new Set((existingAnalyses || []).map(a => a.ticket_id));
-    const unanalyzed = tickets.filter(t => {
-      if (analyzedIds.has(t.ticket_id)) return false;
-      const commentCount = Array.isArray(t.comments) ? t.comments.length : 0;
-      return commentCount >= 4;
-    });
-
-    if (unanalyzed.length === 0) {
-      return withCors(NextResponse.json({ analyzed: 0, message: 'No active tickets with 4+ comments to analyze' }));
-    }
-
-    // Process sequentially, up to limit
-    const batch = unanalyzed.slice(0, limit);
 
     for (const ticket of batch) {
       try {

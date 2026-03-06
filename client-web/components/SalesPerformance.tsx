@@ -55,6 +55,8 @@ export default function SalesPerformance() {
   const [assigning, setAssigning] = useState(false);
   const [ticketLimit, setTicketLimit] = useState(20);
   const [ticketHospitalFilter, setTicketHospitalFilter] = useState('');
+  const [analyzingTicketId, setAnalyzingTicketId] = useState<number | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [hospitals, setHospitals] = useState<{tag_prefix: string; display_name: string; ticket_count: number}[]>([]);
   const [selectedHospital, setSelectedHospital] = useState('');
   const [hospitalStats, setHospitalStats] = useState<any>(null);
@@ -69,7 +71,8 @@ export default function SalesPerformance() {
   const fetchStats = async () => {
     try {
       const headers = await getAuthHeader();
-      const res = await fetch(`/api/zendesk/stats?period=${period}&limit=${ticketLimit}`, { headers });
+      const hospitalParam = ticketHospitalFilter ? `&hospital=${encodeURIComponent(ticketHospitalFilter)}` : '';
+      const res = await fetch(`/api/zendesk/stats?period=${period}&limit=${ticketLimit}${hospitalParam}`, { headers });
       if (res.ok) {
         const data = await res.json();
         setStats(data);
@@ -84,7 +87,7 @@ export default function SalesPerformance() {
   useEffect(() => {
     setLoading(true);
     fetchStats();
-  }, [period, ticketLimit]);
+  }, [period, ticketLimit, ticketHospitalFilter, refreshKey]);
 
   useEffect(() => {
     const fetchWorkers = async () => {
@@ -216,7 +219,7 @@ export default function SalesPerformance() {
         page++;
       }
       setSyncProgress(`${totalSynced}건 동기화 완료`);
-      await fetchStats();
+      setRefreshKey(prev => prev + 1);
     } catch (err) {
       console.error('[SalesPerformance] Sync failed:', err);
       setSyncProgress('동기화 실패');
@@ -234,11 +237,28 @@ export default function SalesPerformance() {
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       });
-      await fetchStats();
+      setRefreshKey(prev => prev + 1);
     } catch (err) {
       console.error('[SalesPerformance] Analyze failed:', err);
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const handleAnalyzeSingle = async (ticketId: number) => {
+    setAnalyzingTicketId(ticketId);
+    try {
+      const headers = await getAuthHeader();
+      await fetch('/api/zendesk/analyze', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticket_id: ticketId }),
+      });
+      setRefreshKey(prev => prev + 1);
+    } catch (err) {
+      console.error('[SalesPerformance] Single analyze failed:', err);
+    } finally {
+      setAnalyzingTicketId(null);
     }
   };
 
@@ -396,16 +416,23 @@ export default function SalesPerformance() {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-slate-700">최근 티켓</h3>
-                <select
-                  value={ticketHospitalFilter}
-                  onChange={e => setTicketHospitalFilter(e.target.value)}
-                  className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  <option value="">전체 병원</option>
-                  {[...new Set(stats.recentTickets.map(t => t.hospital_name).filter(Boolean))].sort().map(name => (
-                    <option key={name} value={name!}>{name}</option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-2">
+                  {ticketHospitalFilter && (
+                    <span className="text-xs text-slate-500">
+                      의미있는 문의 ({stats.totalCount}건)
+                    </span>
+                  )}
+                  <select
+                    value={ticketHospitalFilter}
+                    onChange={e => { setTicketHospitalFilter(e.target.value); setTicketLimit(20); }}
+                    className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">전체 병원</option>
+                    {hospitals.map(h => (
+                      <option key={h.tag_prefix} value={h.display_name}>{h.display_name} ({h.ticket_count})</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -422,7 +449,7 @@ export default function SalesPerformance() {
                     </tr>
                   </thead>
                   <tbody>
-                    {stats.recentTickets.filter(t => !ticketHospitalFilter || t.hospital_name === ticketHospitalFilter).map(t => (
+                    {stats.recentTickets.map(t => (
                       <React.Fragment key={t.ticket_id}>
                         <tr className="border-t border-slate-100 hover:bg-slate-50">
                           <td className="px-3 py-2 max-w-[200px]">
@@ -452,7 +479,16 @@ export default function SalesPerformance() {
                                 종결 ({t.status})
                               </span>
                             ) : (
-                              <span className="text-xs text-amber-500">분석 대기</span>
+                              <span className="inline-flex items-center gap-2">
+                                <span className="text-xs text-amber-500">분석 대기</span>
+                                <button
+                                  onClick={() => handleAnalyzeSingle(t.ticket_id)}
+                                  disabled={analyzingTicketId === t.ticket_id}
+                                  className="px-2 py-0.5 text-xs bg-amber-500 text-white rounded hover:bg-amber-600 disabled:opacity-50 transition-colors"
+                                >
+                                  {analyzingTicketId === t.ticket_id ? '분석중...' : '분석'}
+                                </button>
+                              </span>
                             )}
                           </td>
                           <td className="text-center px-3 py-2">
@@ -505,7 +541,7 @@ export default function SalesPerformance() {
                   </tbody>
                 </table>
               </div>
-              {stats.recentTickets.length >= ticketLimit && (
+              {!ticketHospitalFilter && stats.recentTickets.length >= ticketLimit && (
                 <div className="text-center mt-4">
                   <button
                     onClick={() => setTicketLimit(prev => prev + 20)}

@@ -69,6 +69,7 @@ export async function GET(req: NextRequest) {
   const period = searchParams.get('period') || 'month';
   const limitParam = parseInt(searchParams.get('limit') || '20', 10);
   const limit = Math.min(Math.max(limitParam, 1), 200);
+  const hospitalFilter = searchParams.get('hospital') || ''; // hospital display name filter
 
   // Calculate date range
   const now = new Date();
@@ -181,8 +182,21 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => b.ticketCount - a.ticketCount);
 
   // Recent tickets (with analysis joined)
-  const totalCount = (tickets || []).length;
-  const recentTickets = (tickets || []).slice(0, limit).map(t => {
+  // When hospital filter is active: return all meaningful (4+ comments) tickets for that hospital
+  // When no filter: paginated as before
+  let filteredTickets = tickets || [];
+  if (hospitalFilter) {
+    filteredTickets = filteredTickets.filter(t => {
+      const name = getHospitalName(t.tags);
+      if (name !== hospitalFilter) return false;
+      const commentCount = Array.isArray(t.comments) ? t.comments.length : 0;
+      return commentCount >= 4;
+    });
+  }
+
+  const totalCount = filteredTickets.length;
+  const sliced = hospitalFilter ? filteredTickets : filteredTickets.slice(0, limit);
+  const recentTickets = sliced.map(t => {
     const analysis = analysisMap.get(t.ticket_id);
     return {
       ticket_id: t.ticket_id,

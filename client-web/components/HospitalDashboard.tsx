@@ -37,6 +37,8 @@ interface RecentTicket {
   reservation_converted: boolean | null;
   summary: string | null;
   created_at_zd: string;
+  comment_count: number;
+  status: string;
 }
 
 export default function HospitalDashboard({ user, profile }: { user: any; profile: any }) {
@@ -49,6 +51,8 @@ export default function HospitalDashboard({ user, profile }: { user: any; profil
   const [insightsKey, setInsightsKey] = useState(0);
   const [tickets, setTickets] = useState<RecentTicket[]>([]);
   const [ticketsLoading, setTicketsLoading] = useState(true);
+  const [analyzingTicketId, setAnalyzingTicketId] = useState<number | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const hospitalPrefix = profile?.hospital_prefix || '';
   const displayName = HOSPITAL_NAMES[hospitalPrefix] || hospitalPrefix;
@@ -128,7 +132,29 @@ export default function HospitalDashboard({ user, profile }: { user: any; profil
       }
     };
     fetchTickets();
-  }, [displayName, period]);
+  }, [displayName, period, refreshKey]);
+
+  const handleAnalyzeSingle = async (ticketId: number) => {
+    setAnalyzingTicketId(ticketId);
+    try {
+      const headers = await getAuthHeader();
+      const res = await fetch('/api/zendesk/analyze', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticket_id: ticketId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(`분석 실패: ${err.error || res.status}`);
+      } else {
+        setRefreshKey(prev => prev + 1);
+      }
+    } catch {
+      alert('분석 중 오류가 발생했습니다.');
+    } finally {
+      setAnalyzingTicketId(null);
+    }
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -370,7 +396,8 @@ export default function HospitalDashboard({ user, profile }: { user: any; profil
                     <th className="text-left px-3 py-2 font-medium rounded-tl-lg">제목</th>
                     <th className="text-center px-3 py-2 font-medium">품질</th>
                     <th className="text-center px-3 py-2 font-medium">전환</th>
-                    <th className="text-left px-3 py-2 font-medium rounded-tr-lg">요약</th>
+                    <th className="text-left px-3 py-2 font-medium">요약</th>
+                    <th className="text-center px-3 py-2 font-medium rounded-tr-lg">분석</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -391,6 +418,21 @@ export default function HospitalDashboard({ user, profile }: { user: any; profil
                           <div className="text-slate-600 text-xs leading-relaxed whitespace-pre-wrap">{t.summary}</div>
                         ) : (
                           <span className="text-xs text-slate-400">-</span>
+                        )}
+                      </td>
+                      <td className="text-center px-3 py-2">
+                        {t.summary ? (
+                          <span className="text-xs text-emerald-600">완료</span>
+                        ) : t.comment_count < 4 ? (
+                          <span className="text-xs text-slate-400">{t.comment_count}건</span>
+                        ) : (
+                          <button
+                            onClick={() => handleAnalyzeSingle(t.ticket_id)}
+                            disabled={analyzingTicketId === t.ticket_id}
+                            className="px-2 py-0.5 text-xs bg-amber-500 text-white rounded hover:bg-amber-600 disabled:opacity-50 transition-colors"
+                          >
+                            {analyzingTicketId === t.ticket_id ? '분석중...' : '분석'}
+                          </button>
                         )}
                       </td>
                     </tr>

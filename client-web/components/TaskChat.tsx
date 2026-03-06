@@ -302,15 +302,17 @@ export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { t
                           className="max-w-full max-h-48 rounded cursor-pointer"
                           onClick={() => setPreviewFile({ name: m.file_name, url: m.file_url, type: m.file_type })}
                         />
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setAnnotatingImage({ url: m.file_url, name: m.file_name }); }}
-                          className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 bg-black/60 hover:bg-black/80 text-white rounded-md px-2 py-1 text-xs flex items-center gap-1 transition-opacity"
-                          title="수정 요청"
-                        >
-                          <Pencil className="w-3 h-3" />
-                          수정
-                        </button>
+                        {!isMine && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setAnnotatingImage({ url: m.file_url, name: m.file_name }); }}
+                            className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 bg-black/60 hover:bg-black/80 text-white rounded-md px-2 py-1 text-xs flex items-center gap-1 transition-opacity"
+                            title="수정 요청"
+                          >
+                            <Pencil className="w-3 h-3" />
+                            수정
+                          </button>
+                        )}
                       </div>
                       <p className="text-xs mt-1 opacity-70">{m.file_name}</p>
                     </div>

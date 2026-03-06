@@ -66,14 +66,41 @@
 |------|------|------|
 | 권한 체크 | ✅ | bbg_admin 외 접근 시 `/app`으로 리다이렉트 |
 | Zendesk 동기화 | ✅ | Zendesk 티켓 증분 동기화 (`zendesk_tickets` 테이블 upsert) |
-| AI 분석 | ✅ | active tickets (open/pending/new) 중 10+ comments 티켓 자동 분석 (Gemini, 한국어 출력) |
+| AI 분석 | ✅ | active tickets (open/pending/new) 중 4+ comments 티켓 개별 분석 버튼, bbg_admin + hospital 역할 가능 |
 | 품질 평가 | ✅ | 티켓별 1~5점 품질 점수, 담당자별 평균 품질 통계 |
 | 예약 전환율 | ✅ | AI 판단 기반 예약 전환 여부 + 전환율 통계 |
-| 팔로업 관리 | ✅ | 팔로업 필요 고객 식별 + 팔로업 배정 UI |
+| 병원 필터 | ✅ | 티켓 목록 병원별 필터 드롭다운 |
+| 팔로업 고객 탭 | ✅ | 어드민이 "팔로업" 버튼으로 수동 지정 → pending/contacted/scheduled/converted/lost 상태 워크플로 |
+| 병원별 분석 탭 | ✅ | 병원별 통계 (총 문의, 의미 있는 문의, 예약 전환, 성장률, 일별 트렌드) |
+| AI 인사이트 | ✅ | 병원별 3종 인사이트: 병원전략, Sales팀 개선방향, 본사관리방향 (Gemini, 한국어, /api/zendesk/insights) |
 | 미분석 사유 표시 | ✅ | 분석 제외 사유 표시 (댓글 수 부족, 비활성 상태 등) |
 | 더보기 페이지네이션 | ✅ | 티켓 목록 더보기 방식 페이지네이션 (`limit` 파라미터) |
 | 자동 배치 실행 | ✅ | Vercel Cron — 매일 09:00 KST, 16:00 KST 자동 sync + analyze |
 | 수동 배치 실행 | ✅ | 수동 동기화/분석 버튼 (API 직접 호출) |
+| 3탭 구성 | ✅ | Sales 성과 / 병원별 분석 / 팔로업 고객 탭 |
+
+### 3.1d Client Web — 병원 파트너 대시보드
+
+| 기능 | 상태 | 설명 |
+|------|------|------|
+| 역할 기반 라우팅 | ✅ | `hospital` role 로그인 → Dashboard.tsx에서 HospitalDashboard 자동 분기 |
+| 자사 데이터 필터 | ✅ | `profiles.hospital_prefix` 기반 — 해당 병원 데이터만 조회 |
+| 통계 조회 | ✅ | `/api/zendesk/hospital-stats` — 문의 수, 예약 전환율, 성장률, 일별 트렌드 |
+| AI 인사이트 | ✅ | `/api/zendesk/insights` — 병원전략 / Sales팀 개선방향 / 본사관리방향 3종 |
+| 병원 계정 목록 | ✅ | 16개 병원 파트너 계정 (`{prefix}@hospital.com` / `1234`) |
+
+**16개 병원 파트너 계정 (prefix@hospital.com / 비밀번호: 1234):**
+thebb, delphic, will, mikclinicthai, jyclinicthai, du, koreandiet, ourpthai, everbreastthai, clyveps_th, mycell, nbclinici, dr.song, lacela, artline, kleam
+
+### 3.1e Client Web — 팔로업 고객 추적
+
+| 기능 | 상태 | 설명 |
+|------|------|------|
+| 팔로업 지정 | ✅ | 어드민이 분석된 티켓에 "팔로업" 버튼 클릭 → `followup_status = 'pending'` 저장 |
+| 상태 워크플로 | ✅ | pending → contacted → scheduled → converted / lost |
+| 워커 팔로업 탭 | ✅ | WorkerDashboard "ติดตาม" 탭 — `WorkerFollowup.tsx`, 상태 업데이트 가능 |
+| API | ✅ | `GET /api/zendesk/followup-customers` (bbg_admin + worker) / `PATCH` (상태 업데이트) |
+| 고객 정보 | ✅ | customer_name, customer_phone, interested_procedure, customer_age 컬럼 (zendesk_analyses)
 
 ### 3.2 Client Web — God Mode 관제 (`/admin/monitoring`)
 
@@ -126,12 +153,14 @@
 | 테이블 | 용도 |
 |--------|------|
 | `clients` | 고객사(병원) 정보 |
-| `profiles` | 사용자 프로필 (role, client_id, display_name) |
+| `profiles` | 사용자 프로필 (role, client_id, display_name, **hospital_prefix**) — role: bbg_admin / client / worker / **hospital** |
 | `time_logs` | 근태 기록 (worker_id, status, created_at) |
 | `tasks` | 업무 (content, content_th, description, description_th, assignee_id, due_date, rating, source, status, created_by) |
 | `messages` | 업무별 채팅 (content_ko, content_th, is_whisper, sender_lang, file_url, file_name, file_type, mentions) |
 | `quick_replies` | 자동답변 템플릿 (title/body × ko/th, client_id) |
 | `task_presets` | 업무 프리셋 (title/content × ko/th, client_id) |
+| `zendesk_tickets` | Zendesk 티켓 동기화 (ticket_id, subject, status, tags, comments, created_at_zd, updated_at_zd) |
+| `zendesk_analyses` | Zendesk 티켓 AI 분석 결과 (quality_score, reservation_converted, summary, hospital_name, needs_followup, followup_reason, **followup_status**, **followup_note**, **followup_updated_by**, **followup_updated_at**, **customer_name**, **customer_phone**, **interested_procedure**, **customer_age**) |
 
 **RLS 정책:**
 - bbg_admin: 전체 CRUD
@@ -177,9 +206,10 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 
 | role | 접근 범위 |
 |------|-----------|
-| `bbg_admin` | 모든 기능 + God Mode + 프리셋 관리 + 계정 관리 + Whisper 전송 |
+| `bbg_admin` | 모든 기능 + God Mode + 프리셋 관리 + 계정 관리 + Whisper 전송 + Sales 분석 전체 + Zendesk 전체 API |
 | `client` | 자사 직원/업무/자동답변, 프리셋 사용(조회만), 업무 완료/취소/되돌리기, 전체 톡방 참여, Whisper 볼 수 없음 |
-| `worker` | 워커 웹 대시보드, 본인 업무/채팅, 업무 제안, 전체 톡방 참여, 상태 토글, 번역 도우미, 템플릿 읽기, time_logs 기록 |
+| `worker` | 워커 웹 대시보드, 본인 업무/채팅, 업무 제안, 전체 톡방 참여, 상태 토글, 번역 도우미, 템플릿 읽기, time_logs 기록, 팔로업 고객 조회/상태 업데이트 (`ติดตาม` 탭) |
+| `hospital` | 병원 파트너 대시보드 전용 — 자사 hospital_prefix 기반 데이터만 조회, AI 인사이트 요청, hospital-stats 조회 |
 
 ---
 
@@ -195,8 +225,12 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | `/api/ai-assist` | POST | AI 상담 어시스턴트 (의도 파악 + 추천 답변) |
 | `/api/admin/users` | POST/DELETE | 계정 생성/삭제 (bbg_admin, service_role) |
 | `/api/zendesk/sync` | POST | Zendesk 티켓 수동 동기화 (bbg_admin) |
-| `/api/zendesk/stats` | GET | Zendesk 통계 조회 — period, limit 파라미터, comment_count/status 필드 포함 (bbg_admin) |
-| `/api/zendesk/analyze` | POST | active tickets (open/pending/new) 중 미분석 10+ comments 티켓 AI 분석, limit 파라미터 (bbg_admin) |
+| `/api/zendesk/stats` | GET | Zendesk 통계 조회 — period, limit 파라미터, comment_count/status 필드 포함 (bbg_admin + hospital) |
+| `/api/zendesk/analyze` | GET/POST | active tickets AI 분석 (bbg_admin + hospital). GET: 미분석 티켓 목록; POST: 특정 ticket_id 분석 또는 일괄 분석 |
+| `/api/zendesk/hospital-stats` | GET | 병원별 상세 통계 (문의 수, 예약 전환율, 성장률, 일별 트렌드) — ?hospital=prefix&period=week|month (bbg_admin + hospital) |
+| `/api/zendesk/insights` | POST | 병원별 AI 인사이트 3종 생성 — hospital_strategy, sales_improvement, hq_management (bbg_admin + hospital) |
+| `/api/zendesk/followup-customers` | GET | 팔로업 고객 목록 — ?status= 필터 가능 (bbg_admin + worker) |
+| `/api/zendesk/followup-customers` | PATCH | 팔로업 상태 업데이트 — ticket_id, status, note (bbg_admin + worker) |
 | `/api/zendesk/cron` | GET | Vercel Cron endpoint — sync + analyze 자동 실행 (CRON_SECRET 인증) |
 
 ---
@@ -249,4 +283,4 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 
 ---
 
-**문서 버전:** 3.6 · Zendesk Sales 성과 분석 시스템 반영 (Sales 분석 페이지 /sales, Zendesk API 4개 route, Vercel Cron, SalesPerformance 컴포넌트, CRON_SECRET/Zendesk 환경변수, Dashboard Sales 링크 추가)
+**문서 버전:** 4.0 · 병원 파트너 대시보드 / 팔로업 고객 추적 / AI 인사이트 시스템 반영 (hospital role + hospital_prefix, HospitalDashboard.tsx, WorkerFollowup.tsx, /api/zendesk/hospital-stats, /api/zendesk/insights, /api/zendesk/followup-customers, SalesPerformance 3탭 구성, DB 스키마 zendesk_analyses 팔로업/고객정보 컬럼, 16개 병원 파트너 계정)

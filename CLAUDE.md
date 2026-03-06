@@ -58,6 +58,18 @@
 - `[TaskChat]` — 업무별 채팅
 - `[Propose]` — 업무 제안
 
+### 역할(role) 체계
+
+| role | 설명 |
+|------|------|
+| `bbg_admin` | BBG 전체 관리자 |
+| `client` | 고객사(병원) 담당자 |
+| `worker` | 태국 직원 |
+| `hospital` | 병원 파트너 대시보드 전용 계정 (`hospital_prefix` 필수) |
+
+`hospital` 역할 사용자는 `profiles.hospital_prefix`에 병원 태그 프리픽스(예: `thebb`)가 설정되어야 함.
+Dashboard.tsx에서 `hospital` role 감지 → `HospitalDashboard` 컴포넌트로 자동 분기.
+
 ### 환경 변수
 
 - Desktop/Extension의 `VITE_WEB_URL`은 실제 배포된 client-web URL과 일치해야 함
@@ -99,7 +111,7 @@ client-web/app/api/              # 모든 API route (CORS 필수)
 client-web/app/app/page.tsx      # 메인 앱 (로그인 + 대시보드)
 client-web/app/sales/page.tsx    # Sales 성과 분석 (bbg_admin 전용, /sales)
 client-web/app/admin/monitoring/ # God Mode 관제 (bbg_admin 전용)
-client-web/app/api/zendesk/      # Zendesk 연동 API (sync, stats, analyze, cron)
+client-web/app/api/zendesk/      # Zendesk 연동 API (sync, stats, analyze, cron, hospital-stats, insights, followup-customers)
 client-web/vercel.json           # Vercel Cron 스케줄 (09:00 KST, 16:00 KST)
 client-web/lib/chat-rooms.ts     # 채팅방 상수, 센티넬 값, 타입 정의
 client-web/components/
@@ -109,13 +121,18 @@ client-web/components/
   TaskAssign.tsx                 # 업무 할당 폼 — 제목(content) + 상세 가이드(description) 분리 입력, 각각 한→태 자동번역
   TaskList.tsx                   # 업무 목록 — 제목 굵게 표시, description 접기/펼치기, description_th 번역 동시 표시
   TaskChat.tsx                   # 업무별 채팅 (기존 유지)
-  Dashboard.tsx                  # 클라이언트 대시보드 (ChatLayout 사용, 헤더에 모니터링/Sales 링크)
-  WorkerDashboard.tsx            # 워커 대시보드 (ChatLayout 사용)
-  SalesPerformance.tsx           # Zendesk Sales 분석 UI (/sales 페이지 전용)
+  Dashboard.tsx                  # 클라이언트 대시보드 (ChatLayout 사용, hospital role → HospitalDashboard 분기)
+  WorkerDashboard.tsx            # 워커 대시보드 (ChatLayout 사용, "ติดตาม" 탭 WorkerFollowup 포함)
+  HospitalDashboard.tsx          # 병원 파트너 전용 대시보드 (hospital role, hospital_prefix 기반 데이터 필터)
+  WorkerFollowup.tsx             # 워커 팔로업 고객 관리 탭 (ติดตาม)
+  SalesPerformance.tsx           # Zendesk Sales 분석 UI (/sales 페이지 전용, 3탭: Sales성과/병원별분석/팔로업고객)
 syncbridge-desktop/src/          # Electron 앱 (Vite + React)
 syncbridge-extension/src/        # Chrome Extension
 supabase/                        # SQL 마이그레이션
 supabase/task_description.sql    # tasks 테이블 description, description_th 컬럼 추가
+supabase/hospital_role.sql       # profiles 테이블 hospital_prefix 컬럼 추가
+supabase/followup_status.sql     # zendesk_analyses 팔로업 추적 컬럼 추가
+supabase/zendesk_customer_fields.sql  # zendesk_analyses 고객 정보 컬럼 추가 (customer_name, customer_phone 등)
 ```
 
 관련 문서: `README.md`, `PRD.md`, `DEBUGGING.md`

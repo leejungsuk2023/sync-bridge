@@ -37,12 +37,15 @@ g sync/
 │   │   ├── api/ai-assist/route.ts  # AI 상담 어시스턴트 API
 │   │   ├── api/admin/users/route.ts # 계정 생성/삭제 API (service_role)
 │   │   ├── api/zendesk/sync/route.ts   # Zendesk 티켓 수동 동기화 API
-│   │   ├── api/zendesk/stats/route.ts  # Zendesk 통계 조회 API
-│   │   ├── api/zendesk/analyze/route.ts # Zendesk 티켓 AI 분석 API (active tickets, 10+ comments)
+│   │   ├── api/zendesk/stats/route.ts  # Zendesk 통계 조회 API (bbg_admin + hospital)
+│   │   ├── api/zendesk/analyze/route.ts # Zendesk 티켓 AI 분석 API (bbg_admin + hospital)
+│   │   ├── api/zendesk/hospital-stats/route.ts # 병원별 상세 통계 API (bbg_admin + hospital)
+│   │   ├── api/zendesk/insights/route.ts # 병원별 AI 인사이트 3종 (bbg_admin + hospital)
+│   │   ├── api/zendesk/followup-customers/route.ts # 팔로업 고객 관리 API (bbg_admin + worker)
 │   │   └── api/zendesk/cron/route.ts   # Vercel Cron endpoint (자동 sync + analyze)
 │   ├── components/
 │   │   ├── LoginPage.tsx           # 로그인 페이지
-│   │   ├── Dashboard.tsx           # 메인 대시보드 레이아웃 (헤더에 모니터링/Sales 링크)
+│   │   ├── Dashboard.tsx           # 메인 대시보드 (hospital role → HospitalDashboard 분기)
 │   │   ├── WorkerStatus.tsx        # 실시간 직원 상태 카드 (파란색)
 │   │   ├── TaskAssign.tsx          # 업무 할당 폼 (초록색)
 │   │   ├── TaskList.tsx            # 업무 목록 + 별점 평가 (노란색)
@@ -52,7 +55,9 @@ g sync/
 │   │   ├── TimeReport.tsx          # 근무 리포트 (청록색)
 │   │   ├── UserManager.tsx         # 계정 관리 CRUD (회색, bbg_admin)
 │   │   ├── QuickReplyManager.tsx   # 자동답변 CRUD
-│   │   └── SalesPerformance.tsx    # Zendesk Sales 성과 분석 (/sales 페이지용)
+│   │   ├── HospitalDashboard.tsx   # 병원 파트너 전용 대시보드 (hospital role)
+│   │   ├── WorkerFollowup.tsx      # 팔로업 고객 관리 탭 (워커 대시보드 ติดตาม)
+│   │   └── SalesPerformance.tsx    # Zendesk Sales 성과 분석 (/sales, 3탭: Sales성과/병원별분석/팔로업고객)
 │   ├── lib/supabase.ts
 │   └── vercel.json                 # Vercel Cron 스케줄 설정 (00:00 UTC + 07:00 UTC)
 │
@@ -90,6 +95,11 @@ g sync/
     ├── chat_file_attachment.sql # 채팅 파일 첨부 (file_url, file_name, file_type + Storage)
     ├── chat_mentions.sql       # @멘션 기능 (mentions jsonb 컬럼)
     ├── task_description.sql    # tasks 상세 설명 컬럼 (description, description_th)
+    ├── zendesk_tables.sql      # Zendesk 연동 테이블 (zendesk_tickets, zendesk_analyses)
+    ├── zendesk_customer_fields.sql # zendesk_analyses 고객 정보 컬럼 (customer_name, customer_phone, interested_procedure, customer_age)
+    ├── hospital_role.sql       # profiles 테이블 hospital_prefix 컬럼 추가
+    ├── followup_status.sql     # zendesk_analyses 팔로업 추적 컬럼 (followup_status, followup_note, followup_updated_by, followup_updated_at)
+    ├── v1.4_improvements.sql   # 기타 개선사항
     ├── setup_test_client.sql   # 테스트 데이터 셋업
     └── README.md
 │
@@ -130,6 +140,11 @@ g sync/
    10. `supabase/chat_file_attachment.sql` — 채팅 파일 첨부 (file_url, Storage RLS)
    11. `supabase/chat_mentions.sql` — @멘션 (mentions jsonb 컬럼)
    12. `supabase/task_description.sql` — 업무 상세 설명 컬럼 (description, description_th)
+   13. `supabase/zendesk_tables.sql` — Zendesk 연동 테이블 (zendesk_tickets, zendesk_analyses)
+   14. `supabase/zendesk_customer_fields.sql` — zendesk_analyses 고객 정보 컬럼
+   15. `supabase/hospital_role.sql` — profiles hospital_prefix 컬럼
+   16. `supabase/followup_status.sql` — zendesk_analyses 팔로업 추적 컬럼
+   17. `supabase/v1.4_improvements.sql` — 기타 개선사항
 3. **Authentication** → Providers → **Email** 활성화
 
 ### 2. Client Web 실행
@@ -222,14 +237,15 @@ VITE_WEB_URL=http://localhost:3000   # 번역/AI API URL
 | 근무 리포트 | 오늘 일간 근태 요약, 출근율 프로그레스 바 + 색상 코딩 |
 | 계정 관리 | 병원/직원 계정 생성·삭제 (bbg_admin 전용, service_role API) |
 | AI 어시스트 API | 환자 메시지 분석 → 한국어 번역 + 의도 파악 + 추천 답변 3개 |
-| Sales 성과 분석 | `/sales` — Zendesk 티켓 기반 AI 분석, 담당자별 품질 평가, 예약 전환율, 팔로업 필요 고객 관리 |
+| Sales 성과 분석 | `/sales` — Zendesk 티켓 기반 AI 분석, 담당자별 품질 평가, 예약 전환율, 팔로업 고객 관리 (3탭: Sales 성과 / 병원별 분석 / 팔로업 고객) |
+| 병원 파트너 대시보드 | hospital role 로그인 시 전용 대시보드 — 자사 병원 데이터만 조회, AI 인사이트(병원전략/Sales개선/본사관리) 확인 |
 
-### 3개 관리자 페이지 구조
+### 관리자/파트너 페이지 구조
 
 | 경로 | 용도 |
 |------|------|
-| `/app` | 메인 대시보드 (업무관리, 채팅, 계정 관리) |
-| `/sales` | Sales 성과 분석 — Zendesk 티켓 AI 분석 (bbg_admin 전용) |
+| `/app` | 메인 대시보드 (업무관리, 채팅, 계정 관리). hospital role → 병원 파트너 대시보드로 자동 분기 |
+| `/sales` | Sales 성과 분석 — Zendesk 티켓 AI 분석, 병원별 분석, 팔로업 고객 관리 (bbg_admin 전용) |
 | `/admin/monitoring` | God Mode 통합 관제 (bbg_admin 전용) |
 
 ### God Mode 통합 관제 (`/admin/monitoring`)
@@ -350,9 +366,10 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 
 | role | 권한 |
 |------|------|
-| `bbg_admin` | 전체 관리: 직원/고객사/업무/자동답변/프리셋/계정 관리, **God Mode 관제**, Whisper 전송 |
+| `bbg_admin` | 전체 관리: 직원/고객사/업무/자동답변/프리셋/계정 관리, **God Mode 관제**, Whisper 전송, Sales 분석 전체 조회 |
 | `client` | 자사 직원/업무/자동답변만 조회, 업무 할당(프리셋 사용), 전체 톡방 참여, Whisper 메시지 볼 수 없음 |
-| `worker` | 본인 업무 조회/완료/제안, 채팅, 전체 톡방 참여, 템플릿 읽기, time_logs 기록 |
+| `worker` | 본인 업무 조회/완료/제안, 채팅, 전체 톡방 참여, 템플릿 읽기, time_logs 기록, 팔로업 고객 조회/상태 업데이트 |
+| `hospital` | 병원 파트너 전용 대시보드 — 자사 병원 데이터만 조회 (`hospital_prefix` 기반 필터), AI 인사이트 요청 가능 |
 
 ---
 

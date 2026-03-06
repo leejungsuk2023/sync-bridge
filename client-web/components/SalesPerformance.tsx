@@ -32,6 +32,7 @@ interface RecentTicket {
   created_at_zd: string;
   comment_count: number;
   status: string;
+  hospital_name: string | null;
 }
 
 interface StatsData {
@@ -53,6 +54,7 @@ export default function SalesPerformance() {
   const [selectedWorker, setSelectedWorker] = useState('');
   const [assigning, setAssigning] = useState(false);
   const [ticketLimit, setTicketLimit] = useState(20);
+  const [ticketHospitalFilter, setTicketHospitalFilter] = useState('');
   const [hospitals, setHospitals] = useState<{tag_prefix: string; display_name: string; ticket_count: number}[]>([]);
   const [selectedHospital, setSelectedHospital] = useState('');
   const [hospitalStats, setHospitalStats] = useState<any>(null);
@@ -392,12 +394,25 @@ export default function SalesPerformance() {
           {/* Recent Tickets Table */}
           {stats.recentTickets.length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold text-slate-700 mb-3">최근 티켓</h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-slate-700">최근 티켓</h3>
+                <select
+                  value={ticketHospitalFilter}
+                  onChange={e => setTicketHospitalFilter(e.target.value)}
+                  className="text-sm border border-slate-300 rounded-lg px-3 py-1.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">전체 병원</option>
+                  {[...new Set(stats.recentTickets.map(t => t.hospital_name).filter(Boolean))].sort().map(name => (
+                    <option key={name} value={name!}>{name}</option>
+                  ))}
+                </select>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-slate-50 text-slate-600">
                       <th className="text-left px-3 py-2 font-medium rounded-tl-lg">제목</th>
+                      <th className="text-left px-3 py-2 font-medium">병원</th>
                       <th className="text-left px-3 py-2 font-medium">담당자</th>
                       <th className="text-center px-3 py-2 font-medium">품질</th>
                       <th className="text-center px-3 py-2 font-medium">전환</th>
@@ -407,7 +422,7 @@ export default function SalesPerformance() {
                     </tr>
                   </thead>
                   <tbody>
-                    {stats.recentTickets.map(t => (
+                    {stats.recentTickets.filter(t => !ticketHospitalFilter || t.hospital_name === ticketHospitalFilter).map(t => (
                       <React.Fragment key={t.ticket_id}>
                         <tr className="border-t border-slate-100 hover:bg-slate-50">
                           <td className="px-3 py-2 max-w-[200px]">
@@ -418,6 +433,7 @@ export default function SalesPerformance() {
                               {t.created_at_zd ? new Date(t.created_at_zd).toLocaleDateString('ko-KR') : ''}
                             </div>
                           </td>
+                          <td className="px-3 py-2 text-slate-700 text-xs">{t.hospital_name || '-'}</td>
                           <td className="px-3 py-2 text-slate-700">{t.assignee_name || '-'}</td>
                           <td className="text-center px-3 py-2">{qualityBadge(t.quality_score)}</td>
                           <td className="text-center px-3 py-2">{boolBadge(t.reservation_converted)}</td>
@@ -454,7 +470,7 @@ export default function SalesPerformance() {
                         </tr>
                         {assigningTicketId === t.ticket_id && (
                           <tr className="bg-indigo-50">
-                            <td colSpan={7} className="px-3 py-3">
+                            <td colSpan={8} className="px-3 py-3">
                               <div className="flex items-center gap-3">
                                 <span className="text-sm text-slate-700 font-medium">담당자 배정:</span>
                                 <select

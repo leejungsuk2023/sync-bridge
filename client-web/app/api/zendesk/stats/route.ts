@@ -38,6 +38,28 @@ async function verifyAdmin(req: NextRequest) {
   return profile?.role === 'bbg_admin';
 }
 
+// Hospital tag prefix -> display name mapping
+const HOSPITAL_NAMES: Record<string, string> = {
+  thebb: 'TheBB', delphic: 'Delphic Clinic', will: 'Will Plastic Surgery',
+  mikclinicthai: 'MikClinic', jyclinicthai: 'JY Clinic', du: 'DU Plastic Surgery',
+  koreandiet: 'Korean Diet', ourpthai: 'OURP', everbreastthai: 'EverBreast',
+  clyveps_th: 'Clyveps', mycell: 'Mycell Clinic', nbclinici: 'NB Clinic',
+  'dr.song': 'Dr. Song', lacela: 'Lacela', artline: 'Artline', kleam: 'Kleam',
+};
+const KNOWN_PREFIXES = Object.keys(HOSPITAL_NAMES).sort((a, b) => b.length - a.length);
+
+function getHospitalName(tags: any): string | null {
+  if (!Array.isArray(tags)) return null;
+  for (const tag of tags) {
+    for (const prefix of KNOWN_PREFIXES) {
+      if (tag === prefix || tag.startsWith(prefix + '_')) {
+        return HOSPITAL_NAMES[prefix];
+      }
+    }
+  }
+  return null;
+}
+
 export async function GET(req: NextRequest) {
   if (!await verifyAdmin(req)) {
     return withCors(NextResponse.json({ error: 'Unauthorized' }, { status: 403 }));
@@ -61,7 +83,7 @@ export async function GET(req: NextRequest) {
   // Fetch tickets in period
   const { data: tickets, error: ticketsErr } = await supabaseAdmin
     .from('zendesk_tickets')
-    .select('ticket_id, subject, assignee_email, assignee_name, created_at_zd, comments, status')
+    .select('ticket_id, subject, assignee_email, assignee_name, created_at_zd, comments, status, tags')
     .gte('created_at_zd', sinceISO)
     .order('created_at_zd', { ascending: false });
 
@@ -173,6 +195,7 @@ export async function GET(req: NextRequest) {
       created_at_zd: t.created_at_zd,
       comment_count: Array.isArray(t.comments) ? t.comments.length : 0,
       status: t.status,
+      hospital_name: getHospitalName(t.tags),
     };
   });
 

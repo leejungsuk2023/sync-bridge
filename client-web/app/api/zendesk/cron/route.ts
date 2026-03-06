@@ -123,7 +123,7 @@ export async function GET(req: NextRequest) {
         },
       });
 
-      // Find active tickets with 10+ comments, not yet analyzed
+      // Find active tickets with 4+ comments, not yet analyzed
       const { data: tickets } = await supabaseAdmin
         .from('zendesk_tickets')
         .select('*')
@@ -143,7 +143,7 @@ export async function GET(req: NextRequest) {
         const unanalyzed = tickets.filter(t => {
           if (analyzedIds.has(t.ticket_id)) return false;
           const commentCount = Array.isArray(t.comments) ? t.comments.length : 0;
-          return commentCount >= 10;
+          return commentCount >= 4;
         });
 
         let analyzed = 0;

@@ -427,9 +427,9 @@ export default function SalesPerformance() {
                               <div className="text-slate-600 text-xs leading-relaxed whitespace-pre-wrap">
                                 {t.summary}
                               </div>
-                            ) : t.comment_count < 10 ? (
+                            ) : t.comment_count < 4 ? (
                               <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
-                                대화 {t.comment_count}건 (10건 미만)
+                                대화 {t.comment_count}건 (4건 미만)
                               </span>
                             ) : !['open', 'pending', 'new'].includes(t.status) ? (
                               <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
@@ -583,7 +583,7 @@ export default function SalesPerformance() {
                       <div className="mt-1">{growthBadge(hospitalStats.growth?.totalInquiries ?? 0)}</div>
                     </div>
                     <div className="bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 rounded-xl p-4">
-                      <span className="text-xs font-medium text-indigo-600">의미있는 문의 (10+대화)</span>
+                      <span className="text-xs font-medium text-indigo-600">의미있는 문의 (4+대화)</span>
                       <p className="text-2xl font-bold text-slate-900 mt-1">{hospitalStats.meaningfulInquiries}</p>
                       <div className="mt-1">{growthBadge(hospitalStats.growth?.meaningfulInquiries ?? 0)}</div>
                     </div>

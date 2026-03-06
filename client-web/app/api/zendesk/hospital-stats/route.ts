@@ -184,8 +184,8 @@ export async function GET(req: NextRequest) {
     prevAnalyses = data || [];
   }
 
-  // Count meaningful inquiries (10+ comments)
-  const isMeaningful = (t: any) => Array.isArray(t.comments) && t.comments.length >= 10;
+  // Count meaningful inquiries (4+ comments)
+  const isMeaningful = (t: any) => Array.isArray(t.comments) && t.comments.length >= 4;
 
   const totalInquiries = currentHospital.length;
   const meaningfulInquiries = currentHospital.filter(isMeaningful).length;

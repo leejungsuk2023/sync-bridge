@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
   let analyzed = 0;
 
   try {
-    // Find active tickets with meaningful conversations (>= 10 comments)
+    // Find active tickets with meaningful conversations (>= 4 comments)
     const { data: tickets, error: fetchErr } = await supabaseAdmin
       .from('zendesk_tickets')
       .select('*')
@@ -116,11 +116,11 @@ export async function POST(req: NextRequest) {
     const unanalyzed = tickets.filter(t => {
       if (analyzedIds.has(t.ticket_id)) return false;
       const commentCount = Array.isArray(t.comments) ? t.comments.length : 0;
-      return commentCount >= 10;
+      return commentCount >= 4;
     });
 
     if (unanalyzed.length === 0) {
-      return withCors(NextResponse.json({ analyzed: 0, message: 'No active tickets with 10+ comments to analyze' }));
+      return withCors(NextResponse.json({ analyzed: 0, message: 'No active tickets with 4+ comments to analyze' }));
     }
 
     // Process sequentially, up to limit

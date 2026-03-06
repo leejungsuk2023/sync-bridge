@@ -253,14 +253,20 @@ export default function SalesPerformance() {
     setAnalyzingTicketId(ticketId);
     try {
       const headers = await getAuthHeader();
-      await fetch('/api/zendesk/analyze', {
+      const res = await fetch('/api/zendesk/analyze', {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ ticket_id: ticketId }),
       });
-      setRefreshKey(prev => prev + 1);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(`분석 실패: ${err.error || res.status}`);
+      } else {
+        setRefreshKey(prev => prev + 1);
+      }
     } catch (err) {
       console.error('[SalesPerformance] Single analyze failed:', err);
+      alert('분석 중 오류가 발생했습니다.');
     } finally {
       setAnalyzingTicketId(null);
     }
@@ -484,17 +490,19 @@ export default function SalesPerformance() {
                               <div className="text-slate-600 text-xs leading-relaxed whitespace-pre-wrap">
                                 {t.summary}
                               </div>
-                            ) : t.comment_count < 4 ? (
-                              <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
-                                대화 {t.comment_count}건 (4건 미만)
-                              </span>
-                            ) : !['open', 'pending', 'new'].includes(t.status) ? (
-                              <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
-                                종결 ({t.status})
-                              </span>
                             ) : (
                               <span className="inline-flex items-center gap-2">
-                                <span className="text-xs text-amber-500">분석 대기</span>
+                                {t.comment_count < 4 ? (
+                                  <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                                    대화 {t.comment_count}건 (4건 미만)
+                                  </span>
+                                ) : !['open', 'pending', 'new'].includes(t.status) ? (
+                                  <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                                    종결 ({t.status})
+                                  </span>
+                                ) : (
+                                  <span className="text-xs text-amber-500">분석 대기</span>
+                                )}
                                 <button
                                   onClick={() => handleAnalyzeSingle(t.ticket_id)}
                                   disabled={analyzingTicketId === t.ticket_id}

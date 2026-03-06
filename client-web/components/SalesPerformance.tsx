@@ -490,13 +490,13 @@ export default function SalesPerformance() {
                               <div className="text-slate-600 text-xs leading-relaxed whitespace-pre-wrap">
                                 {t.summary}
                               </div>
+                            ) : t.comment_count < 4 ? (
+                              <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                                대화 {t.comment_count}건 (4건 미만)
+                              </span>
                             ) : (
                               <span className="inline-flex items-center gap-2">
-                                {t.comment_count < 4 ? (
-                                  <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
-                                    대화 {t.comment_count}건 (4건 미만)
-                                  </span>
-                                ) : !['open', 'pending', 'new'].includes(t.status) ? (
+                                {!['open', 'pending', 'new'].includes(t.status) ? (
                                   <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
                                     종결 ({t.status})
                                   </span>

@@ -174,23 +174,25 @@ export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { t
       content: original,
       content_ko: original,
       content_th: original,
-      sender_lang: 'ko',
+      sender_lang: locale === 'th' ? 'th' : 'ko',
       mentions: mentionedIds,
     }).select('id').single();
     setSending(false);
 
     // 2. 번역은 백그라운드에서 처리 후 업데이트
     if (inserted?.id) {
+      const targetLang = locale === 'th' ? 'ko' : 'th';
       fetch('/api/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: original, targetLang: 'th' }),
+        body: JSON.stringify({ text: original, targetLang }),
       }).then(res => {
         if (!res.ok) { console.error('[TaskChat] translate API error:', res.status); return null; }
         return res.json();
       }).then(d => {
         if (d?.translated) {
-          supabase.from('messages').update({ content_th: d.translated }).eq('id', inserted.id)
+          const updateField = targetLang === 'th' ? 'content_th' : 'content_ko';
+          supabase.from('messages').update({ [updateField]: d.translated }).eq('id', inserted.id)
             .then(({ error }) => { if (error) console.error('[TaskChat] update error:', error.message); });
         }
       }).catch(err => console.error('[TaskChat] translate fetch error:', err));
@@ -284,7 +286,7 @@ export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { t
                     </a>
                   )
                 ) : (
-                  <p className="text-sm">{renderContent(m.content_ko || m.content, isMine)}</p>
+                  <p className="text-sm">{renderContent(m[locale === 'th' ? 'content_th' : 'content_ko'] || m.content, isMine)}</p>
                 )}
               </div>
               <span className={`text-[10px] mt-1 ${isMine ? 'text-emerald-700' : 'text-slate-500'}`}>

@@ -60,6 +60,8 @@ export default function SalesPerformance() {
   const [hospitalLoading, setHospitalLoading] = useState(false);
   const [hospitalPeriod, setHospitalPeriod] = useState<'week' | 'month'>('month');
   const [activeTab, setActiveTab] = useState<'sales' | 'hospital' | 'followup'>('sales');
+  const [insights, setInsights] = useState<{hospital_strategy: string; sales_improvement: string; hq_management: string} | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
 
   const getAuthHeader = async () => {
     const session = (await supabase.auth.getSession()).data.session;
@@ -131,6 +133,35 @@ export default function SalesPerformance() {
     };
     fetchHospitalStats();
   }, [selectedHospital, hospitalPeriod]);
+
+  // Fetch AI insights when ticket hospital filter changes
+  useEffect(() => {
+    if (!ticketHospitalFilter) {
+      setInsights(null);
+      return;
+    }
+    const fetchInsights = async () => {
+      setInsightsLoading(true);
+      setInsights(null);
+      try {
+        const headers = await getAuthHeader();
+        const res = await fetch('/api/zendesk/insights', {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hospital: ticketHospitalFilter }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setInsights(data.insights || null);
+        }
+      } catch (err) {
+        console.error('[SalesPerformance] Failed to fetch insights:', err);
+      } finally {
+        setInsightsLoading(false);
+      }
+    };
+    fetchInsights();
+  }, [ticketHospitalFilter]);
 
   const handleMarkFollowup = async (ticketId: number) => {
     try {
@@ -453,6 +484,40 @@ export default function SalesPerformance() {
                   </select>
                 </div>
               </div>
+
+              {/* AI Insights Cards */}
+              {ticketHospitalFilter && insightsLoading && (
+                <div className="flex items-center gap-2 text-slate-500 py-4">
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span className="text-sm">인사이트 분석 중...</span>
+                </div>
+              )}
+              {ticketHospitalFilter && insights && !insightsLoading && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <div className="border border-slate-200 border-l-4 border-l-blue-500 rounded-xl shadow-sm p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                      <span className="text-sm font-semibold text-blue-700">병원 전략 제안</span>
+                    </div>
+                    <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{insights.hospital_strategy}</p>
+                  </div>
+                  <div className="border border-slate-200 border-l-4 border-l-amber-500 rounded-xl shadow-sm p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                      <span className="text-sm font-semibold text-amber-700">Sales팀 개선 방향</span>
+                    </div>
+                    <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{insights.sales_improvement}</p>
+                  </div>
+                  <div className="border border-slate-200 border-l-4 border-l-indigo-500 rounded-xl shadow-sm p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
+                      <span className="text-sm font-semibold text-indigo-700">본사 관리 방향</span>
+                    </div>
+                    <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{insights.hq_management}</p>
+                  </div>
+                </div>
+              )}
+
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>

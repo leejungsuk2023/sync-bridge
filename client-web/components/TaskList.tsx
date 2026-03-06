@@ -228,7 +228,7 @@ export default function TaskList({ clientId, userId, canComplete = false, assign
 
   return (
     <div className="space-y-4">
-      <div className="bg-gradient-to-r from-amber-50/70 to-white rounded-xl shadow-sm border border-amber-100 border-l-4 border-l-amber-400 p-6">
+      <div className="bg-gradient-to-r from-amber-50/70 to-white rounded-xl shadow-sm border border-amber-100 border-l-4 border-l-amber-400 p-4 sm:p-6">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold text-slate-900">{title || L.defaultTitle}</h2>
           {doneTasks.length > 0 && (
@@ -248,7 +248,7 @@ export default function TaskList({ clientId, userId, canComplete = false, assign
         ) : (
           <div className="space-y-4 max-h-[800px] overflow-y-auto pr-2">
             {[...pendingTasks, ...(showDone ? doneTasks : [])].map((task) => (
-              <div key={task.id} className="border border-slate-200 rounded-lg p-4 space-y-3">
+              <div key={task.id} className="border border-slate-200 rounded-lg p-3 sm:p-4 space-y-3">
                 {/* Content + Status + Chat */}
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
@@ -264,7 +264,7 @@ export default function TaskList({ clientId, userId, canComplete = false, assign
                       </button>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0 flex-wrap">
                     <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                       task.status === 'done' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
                     }`}>
@@ -354,7 +354,7 @@ export default function TaskList({ clientId, userId, canComplete = false, assign
                 )}
 
                 {/* Metadata */}
-                <div className="flex items-center gap-2 text-xs text-slate-500">
+                <div className="flex items-center gap-1.5 sm:gap-2 text-xs text-slate-500 flex-wrap">
                   {task.assigner && (
                     <>
                       <span>{L.assignedBy} {task.assigner.display_name || task.assigner.email}</span>

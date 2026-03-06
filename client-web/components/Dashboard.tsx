@@ -85,21 +85,21 @@ export default function Dashboard({ user }: { user: any }) {
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
-        <div className="max-w-[1440px] mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="max-w-[1440px] mx-auto px-3 sm:px-6 h-14 sm:h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <LinkIcon className="w-5 h-5 text-emerald-600" />
             <h1 className="text-lg font-semibold text-slate-900">SyncBridge 관리자</h1>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-slate-600">{profile?.email || user.email}</span>
+          <div className="flex items-center gap-2 sm:gap-4">
+            <span className="text-sm text-slate-600 hidden sm:inline">{profile?.email || user.email}</span>
             {getRoleBadge(profile?.role || 'unknown')}
             {profile?.role === 'bbg_admin' && (
-              <a href="/admin/monitoring" className="text-sm text-indigo-600 hover:text-indigo-800 transition-colors font-medium">
+              <a href="/admin/monitoring" className="text-xs sm:text-sm text-indigo-600 hover:text-indigo-800 transition-colors font-medium">
                 모니터링
               </a>
             )}
             {profile?.role === 'bbg_admin' && (
-              <a href="/sales" className="text-sm text-indigo-600 hover:text-indigo-800 transition-colors font-medium">
+              <a href="/sales" className="text-xs sm:text-sm text-indigo-600 hover:text-indigo-800 transition-colors font-medium">
                 Sales
               </a>
             )}
@@ -111,7 +111,7 @@ export default function Dashboard({ user }: { user: any }) {
       </header>
 
       {/* Main */}
-      <main className="max-w-[1440px] mx-auto p-6 space-y-6">
+      <main className="max-w-[1440px] mx-auto px-3 py-4 sm:p-6 space-y-4 sm:space-y-6">
         <WorkerStatus workers={workers} />
         <ChatLayout userId={user.id} clientId={profile?.client_id} />
         <TaskAssign workers={workers} clientId={profile?.client_id} />

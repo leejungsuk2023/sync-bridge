@@ -169,7 +169,7 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
   };
 
   return (
-    <div className="bg-gradient-to-r from-emerald-50/70 to-white rounded-xl shadow-sm border border-emerald-100 border-l-4 border-l-emerald-400 p-6">
+    <div className="bg-gradient-to-r from-emerald-50/70 to-white rounded-xl shadow-sm border border-emerald-100 border-l-4 border-l-emerald-400 p-4 sm:p-6">
       <h2 className="text-lg font-semibold text-slate-900 mb-4">업무 할당</h2>
       <form onSubmit={handleSubmit}>
         {/* 1행: 담당자 + 프리셋 + 마감일 */}
@@ -223,7 +223,7 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
         </div>
 
         {/* 2행: 업무 제목 + 할당 버튼 */}
-        <div className="flex gap-3 items-end mb-3">
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-end mb-3">
           <div className="flex-1">
             <label className="block text-xs font-medium text-slate-600 mb-1">업무 제목 (한국어 → 태국어 자동번역)</label>
             <input
@@ -246,7 +246,7 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
           <button
             type="submit"
             disabled={loading || workers.length === 0}
-            className="shrink-0 h-10 px-6 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+            className="w-full sm:w-auto shrink-0 h-10 px-6 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
           >
             {loading ? (
               <>

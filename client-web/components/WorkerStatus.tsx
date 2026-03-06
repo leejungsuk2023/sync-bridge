@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Star } from 'lucide-react';
+import { Star, ChevronDown } from 'lucide-react';
 
 export default function WorkerStatus({ workers }: { workers: any[] }) {
   const [statuses, setStatuses] = useState<Record<string, string>>({});
   const [avgRatings, setAvgRatings] = useState<Record<string, { avg: number; count: number }>>({});
+  const [collapsed, setCollapsed] = useState(true);
 
   useEffect(() => {
     if (workers.length === 0) return;
@@ -87,14 +88,42 @@ export default function WorkerStatus({ workers }: { workers: any[] }) {
     }
   };
 
+  const statusCounts = (() => {
+    let online = 0, away = 0, offline = 0;
+    workers.forEach((w) => {
+      const s = statuses[w.id] || 'offline';
+      if (s === 'online') online++;
+      else if (s === 'away') away++;
+      else offline++;
+    });
+    return { online, away, offline };
+  })();
+
   return (
     <div className="bg-gradient-to-r from-blue-50/70 to-white rounded-xl shadow-sm border border-blue-100 border-l-4 border-l-blue-400 p-6">
-      <h2 className="text-lg font-semibold text-slate-900 mb-6">실시간 직원 상태</h2>
-      {workers.length === 0 ? (
-        <p className="text-center text-slate-500 py-12">할당된 직원이 없습니다.</p>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {workers.map((worker) => {
+      <button
+        type="button"
+        onClick={() => setCollapsed(!collapsed)}
+        className="w-full flex items-center justify-between cursor-pointer mb-0"
+      >
+        <h2 className="text-lg font-semibold text-slate-900">실시간 직원 상태</h2>
+        <div className="flex items-center gap-3">
+          {workers.length > 0 && (
+            <span className="flex items-center gap-3 text-sm text-slate-600">
+              <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-emerald-600" />{statusCounts.online}</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-amber-500" />{statusCounts.away}</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-slate-400" />{statusCounts.offline}</span>
+            </span>
+          )}
+          <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${collapsed ? '' : 'rotate-180'}`} />
+        </div>
+      </button>
+      {!collapsed && (
+        workers.length === 0 ? (
+          <p className="text-center text-slate-500 py-12 mt-6">할당된 직원이 없습니다.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+            {workers.map((worker) => {
             const status = statuses[worker.id] || 'offline';
             const config = getStatusConfig(status);
             return (
@@ -121,7 +150,8 @@ export default function WorkerStatus({ workers }: { workers: any[] }) {
               </div>
             );
           })}
-        </div>
+          </div>
+        )
       )}
     </div>
   );

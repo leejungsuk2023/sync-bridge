@@ -8,9 +8,7 @@
 
 | 구분 | 용도 |
 |------|------|
-| **Client Web** | 고객사/BBG 관리자 대시보드. 업무 할당(프리셋 지원), 실시간 모니터링, 업무별 채팅, 전체 톡방, 캘린더, 자동답변 관리, 계정 관리, AI 어시스트 API, **God Mode 관제** |
-| **Desktop App** | 태국 직원용 Electron 데스크톱 앱. 출퇴근, 업무 수신/완료, 업무별 채팅, 전체 톡방, 번역 (macOS/Windows) |
-| **Worker Extension** | 태국 직원용 Chrome 확장프로그램. 출퇴근, 업무 수신/완료, 업무 제안, 번역, 채팅, AI 드래그 분석 |
+| **Client Web** | 고객사/BBG 관리자/워커 웹 대시보드. 업무 할당(프리셋 지원), 실시간 모니터링, 업무별 채팅, 전체 톡방, 캘린더, 자동답변 관리, 계정 관리, AI 어시스트 API, **God Mode 관제**, 이미지 어노테이션 |
 | **Supabase** | Auth, PostgreSQL, Realtime (실시간 동기화), RLS 기반 권한 관리 |
 
 ---
@@ -24,7 +22,7 @@ g sync/
 ├── CLAUDE.md                # 프로젝트 규칙 (Claude Code용)
 ├── DEBUGGING.md             # 디버깅 가이드
 │
-├── client-web/              # Next.js 14 관리자 대시보드
+├── client-web/              # Next.js 14 대시보드 (클라이언트/어드민/워커 통합)
 │   ├── app/
 │   │   ├── app/page.tsx            # 메인 (로그인 + 대시보드)
 │   │   ├── layout.tsx
@@ -32,7 +30,7 @@ g sync/
 │   │   │   └── page.tsx            # God Mode 통합 관제 대시보드 (bbg_admin 전용)
 │   │   ├── sales/
 │   │   │   └── page.tsx            # Sales 성과 분석 독립 페이지 (bbg_admin 전용)
-│   │   ├── api/tasks/route.ts      # 업무 CRUD + 전체 톡방 API (service_role)
+│   │   ├── api/tasks/route.ts      # 업무 CRUD + 채팅방 API (service_role)
 │   │   ├── api/translate/route.ts  # 한↔태 번역 API (Gemini)
 │   │   ├── api/ai-assist/route.ts  # AI 상담 어시스턴트 API
 │   │   ├── api/admin/users/route.ts # 계정 생성/삭제 API (service_role)
@@ -45,42 +43,28 @@ g sync/
 │   │   └── api/zendesk/cron/route.ts   # Vercel Cron endpoint (자동 sync + analyze)
 │   ├── components/
 │   │   ├── LoginPage.tsx           # 로그인 페이지
-│   │   ├── Dashboard.tsx           # 메인 대시보드 (hospital role → HospitalDashboard 분기)
-│   │   ├── WorkerStatus.tsx        # 실시간 직원 상태 카드 (파란색)
-│   │   ├── TaskAssign.tsx          # 업무 할당 폼 (초록색)
-│   │   ├── TaskList.tsx            # 업무 목록 + 별점 평가 (노란색)
-│   │   ├── TaskChat.tsx            # 업무별 채팅
+│   │   ├── Dashboard.tsx           # 메인 대시보드 (hospital role → HospitalDashboard 분기), 모바일 반응형 헤더
+│   │   ├── WorkerStatus.tsx        # 실시간 직원 상태 카드 (파란색), 모바일 접기/펼치기 토글
+│   │   ├── TaskAssign.tsx          # 업무 할당 폼 (초록색), 모바일 세로 배치
+│   │   ├── TaskList.tsx            # 업무 목록 + 별점 평가 (노란색), 모바일 줄바꿈
+│   │   ├── TaskChat.tsx            # 업무별 채팅 — locale prop으로 한↔태 동적 결정
+│   │   ├── ImageAnnotator.tsx      # 이미지 어노테이션 모달 — 프리핸드 드로잉(빨간 선), 우클릭 텍스트 포스트잇, 합성 후 채팅 전송
+│   │   ├── ChatLayout.tsx          # 사이드바 + 패널 오케스트레이터 (반응형)
+│   │   ├── ChatSidebar.tsx         # 좌측 사이드바 (방 4개 + 업무 목록)
+│   │   ├── ChatPanel.tsx           # 방/업무 겸용 채팅 패널 — Ctrl+V 이미지 붙여넣기, ImageAnnotator 연동
 │   │   ├── TaskCalendar.tsx        # 업무 캘린더 (보라색)
 │   │   ├── TaskPresetManager.tsx   # 업무 프리셋 CRUD (분홍색, bbg_admin)
 │   │   ├── TimeReport.tsx          # 근무 리포트 (청록색)
 │   │   ├── UserManager.tsx         # 계정 관리 CRUD (회색, bbg_admin)
 │   │   ├── QuickReplyManager.tsx   # 자동답변 CRUD
 │   │   ├── HospitalDashboard.tsx   # 병원 파트너 전용 대시보드 (hospital role)
+│   │   ├── WorkerDashboard.tsx     # 워커 대시보드 (ChatLayout 사용, "ติดตาม" 탭 WorkerFollowup 포함)
 │   │   ├── WorkerFollowup.tsx      # 팔로업 고객 관리 탭 (워커 대시보드 ติดตาม)
 │   │   └── SalesPerformance.tsx    # Zendesk Sales 성과 분석 (/sales, 3탭: Sales성과/병원별분석/팔로업고객)
-│   ├── lib/supabase.ts
+│   ├── lib/
+│   │   ├── supabase.ts
+│   │   └── chat-rooms.ts           # 채팅방 상수, 센티넬 값, 타입 정의
 │   └── vercel.json                 # Vercel Cron 스케줄 설정 (00:00 UTC + 07:00 UTC)
-│
-├── syncbridge-desktop/      # Electron 데스크톱 앱 (macOS/Windows)
-│   ├── electron/
-│   │   ├── main.js          # Electron 메인 프로세스
-│   │   └── preload.js       # 프리로드 스크립트
-│   ├── src/
-│   │   ├── App.jsx          # 메인 UI (업무, 채팅, 전체 톡방, 번역, AI)
-│   │   ├── main.jsx         # React 엔트리
-│   │   └── lib/
-│   │       ├── supabase.js  # Supabase 클라이언트
-│   │       └── platform.js  # 플랫폼 추상화 (Electron/Chrome 분기)
-│   └── package.json
-│
-├── syncbridge-extension/    # Chrome Extension (Manifest V3)
-│   ├── public/manifest.json
-│   ├── src/
-│   │   ├── App.jsx          # 팝업 메인 UI (업무, 채팅, 번역, 템플릿, 업무 제안)
-│   │   ├── content.js       # Activity Ping + AI 드래그 어시스트 (Shadow DOM)
-│   │   ├── background.js    # 서비스 워커 (유휴 감지, 배지, AI 중계)
-│   │   └── lib/supabase.js  # Supabase 클라이언트 + proposeTask 헬퍼
-│   └── dist/                # 빌드 결과물 (Chrome에 로드)
 │
 └── supabase/
     ├── schema.sql              # clients, profiles, time_logs, tasks + RLS
@@ -176,45 +160,6 @@ npm run dev
 
 배포: `vercel --prod` (Vercel CLI)
 
-### 3. Desktop App 실행
-
-```bash
-cd syncbridge-desktop
-npm install
-```
-
-`.env.local` 생성:
-```
-VITE_SUPABASE_URL=https://xxx.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJ...
-VITE_WEB_URL=https://your-deployed-url.vercel.app   # 번역 API URL
-```
-
-```bash
-npm run dev       # 개발
-npm run build:mac # macOS 빌드
-npm run build:win # Windows 빌드
-```
-
-릴리즈: GitHub에 `v*` 태그 push → GitHub Actions에서 자동 빌드 + 릴리즈
-
-### 4. Extension 설치
-
-```bash
-cd syncbridge-extension
-npm install
-npm run build
-```
-
-Chrome에서 `chrome://extensions` → 개발자 모드 → `syncbridge-extension/dist` 폴더 로드
-
-`.env.local` 생성:
-```
-VITE_SUPABASE_URL=https://xxx.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJ...
-VITE_WEB_URL=http://localhost:3000   # 번역/AI API URL
-```
-
 ---
 
 ## 주요 기능
@@ -230,7 +175,8 @@ VITE_WEB_URL=http://localhost:3000   # 번역/AI API URL
 | 업무 목록 | 업무 제목(굵게) + 상세 가이드 접기/펼치기, 태국어 제목·가이드 번역 동시 표시, 실시간 조회, 인라인 채팅, 완료 시 별점 품질 평가(1~5점), 기한초과 경고 |
 | 업무 캘린더 | 월별 업무 현황 달력, 날짜별 업무 수 표시 |
 | 채팅 | 업무별 1:1 채팅, 즉시 전송 + 백그라운드 번역, 실시간 업데이트 |
-| 파일 첨부 | 채팅 내 이미지/문서 업로드, 미리보기, 다운로드 (Supabase Storage) |
+| 파일 첨부 | 채팅 내 이미지/문서 업로드, Ctrl+V 클립보드 붙여넣기, 미리보기, 다운로드 (Supabase Storage) |
+| 이미지 어노테이션 | 다른 사람 이미지에 hover 시 "수정" 버튼 표시 → 프리핸드 드로잉(빨간 선) + 우클릭 텍스트 포스트잇 → 합성 이미지 채팅 전송 |
 | @멘션 | 채팅에서 @이름으로 팀원 태그, 하이라이트 표시 |
 | 자동답변 관리 | 퀵 리플라이 CRUD (한국어 → 태국어 자동 번역) |
 | 업무 프리셋 관리 | 자주 쓰는 업무 지시 프리셋 등록 (bbg_admin), 병원별 또는 전체 공용 |
@@ -267,54 +213,11 @@ bbg_admin 전용 실시간 모니터링 대시보드입니다.
 | Whisper (본사 지시) | 보라색 버블 + 잠금 라벨, 담당 직원에게만 표시 (client에게 RLS로 숨김) |
 | Realtime | tasks/messages/time_logs 변경 시 자동 갱신 |
 
-### Desktop App (태국어)
-
-태국 직원용 Electron 기반 데스크톱 앱입니다. macOS와 Windows를 지원합니다.
-
-| 탭 | 기능 |
-|------|------|
-| **업무** | 담당 태스크 목록, 마감일 표시(색상 코딩), 완료 처리, **업무 제안(Propose Task)** |
-| **채팅** | 전체 톡방 + 업무별 채팅, 태국어 입력 → 한국어 백그라운드 번역, **파일 첨부**, **@멘션** |
-| **번역/AI** | 태국어 → 한국어 즉석 번역 + AI 상담 어시스트 (의도 파악 + 추천 답변) |
-
-- 즉시 전송 + 백그라운드 번역 (Gemini API)
-- Realtime 구독으로 번역 결과 실시간 반영
-- 전체 톡방: 그룹 채팅 (발신자 이름 표시, 멤버 온라인 상태)
-- 파일 첨부: 이미지/문서 업로드, 미리보기
-- @멘션: 팀원 태그, 멘션 시 푸시 알림
-- 푸시 알림: 새 메시지/멘션 수신 시 데스크톱 알림
-- GitHub Actions CI/CD로 자동 빌드/릴리즈
-
-### Worker Extension (태국어/한국어 병기)
-
-| 탭 | 기능 |
-|------|------|
-| **업무** | 담당 태스크 목록, 마감일 표시(색상 코딩), 완료 처리, **업무 제안(Propose Task)** |
-| **채팅** | 업무별 채팅, 태국어 입력 → 한국어로 클라이언트 전달 |
-| **번역** | 태국어 → 한국어 번역 헬퍼 |
-| **템플릿** | DB에서 로드한 퀵 리플라이 복사 |
-
-**업무 제안 (Propose Task)**
-- Worker가 직접 업무를 제안하여 등록 (태국어 입력 → 한국어 자동 번역)
-- 미완료 클라이언트 지시가 있으면 경고 메시지 표시 (등록 자체는 가능)
-- 리스트에서 "자체 제안" 뱃지로 구분
-
-**AI 드래그 어시스트**
-- 웹페이지에서 텍스트 드래그 → "AI" 버튼 표시
-- 클릭 시 환자 메시지 분석: 한국어 번역 + 의도 파악 + 태국어 추천 답변 3개
-- 추천 답변 클릭 → 클립보드 복사
-- Shadow DOM으로 호스트 페이지 CSS 충돌 방지
-
-**기타**
-- 출퇴근 토글 → `time_logs` 기록
-- 품질 평균 표시 (클라이언트가 평가한 완료 업무의 평균)
-- Activity Ping: 10분 무활동 시 자동 "자리 비움"
-
 ---
 
 ## 번역 패턴
 
-모든 채팅에서 **즉시 전송 + 백그라운드 번역** 패턴을 사용합니다:
+Client Web의 모든 채팅에서 **즉시 전송 + 백그라운드 번역** 패턴을 사용합니다:
 
 1. 메시지를 원본 텍스트로 즉시 DB에 저장 (content_ko, content_th 모두 원본)
 2. 백그라운드에서 Gemini API로 번역 요청
@@ -332,7 +235,7 @@ bbg_admin 전용 실시간 모니터링 대시보드입니다.
 - **일반 목록 숨김:** 업무 목록/캘린더 쿼리에서 `.neq('content', '__GENERAL_CHAT__')` 필터로 제외
 - **UI:** 접기/펼치기, 발신자 이름 표시, 실시간 수신
 - **필수 조건:** 워커의 `profiles.client_id`가 반드시 설정되어 있어야 함 (없으면 UI에 안내 메시지 표시)
-- **에러 핸들링:** Desktop App에서 `[GeneralChat]` 프리픽스 로그로 초기화 실패 원인 추적 가능
+- **에러 핸들링:** `[GeneralChat]` 프리픽스 로그로 초기화 실패 원인 추적 가능
 
 ---
 
@@ -378,8 +281,6 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | 파일 | 변수 |
 |------|------|
 | `client-web/.env.local` | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, `CRON_SECRET`, `ZENDESK_SUBDOMAIN`, `ZENDESK_EMAIL`, `ZENDESK_API_TOKEN` |
-| `syncbridge-desktop/.env.local` | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_WEB_URL` |
-| `syncbridge-extension/.env.local` | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_WEB_URL` |
 
 ---
 
@@ -388,46 +289,16 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | 구분 | 방법 |
 |------|------|
 | **Client Web** | `vercel --prod` (Vercel CLI) |
-| **Desktop App** | GitHub에 `v*` 태그 push → GitHub Actions 자동 빌드 (macOS/Windows) |
-| **Extension** | `npm run build` → Chrome 웹 스토어 등록 또는 수동 로드 |
-
----
-
-## 릴리즈 이력 (Desktop App)
-
-| 버전 | 내용 |
-|------|------|
-| v1.0.0 | 초기 릴리즈 |
-| v1.1.0 | 마감일 날짜만 표시 (시간 제거) |
-| v1.2.0 | 전체 톡방 추가 |
-| v1.2.1 | 번역 수정 (즉시 전송 + 백그라운드 번역, Realtime UPDATE 수신) |
-| v1.2.2 | 채팅 발신자 이름 표시 |
-| v1.2.3 | 발신자 이름 데스크톱 릴리즈 |
-| v1.2.4 | 전체 톡방 디버깅 강화, CORS 수정, 에러 피드백 UI 추가 |
-| v1.3.0 | 파일 첨부, @멘션, 푸시 알림, 멤버 온라인 상태, NSIS 바로가기 수정 |
-
----
-
-## CORS 설정
-
-Desktop App(Electron)과 Extension은 Vercel에 배포된 Client Web API를 cross-origin으로 호출합니다.
-`/api/tasks`, `/api/translate`에 CORS 헤더가 설정되어 있습니다. (`/api/ai-assist`, `/api/admin/users`는 미적용 — 필요 시 동일 패턴 추가)
-
-- `Access-Control-Allow-Origin: *`
-- `Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS`
-- `Access-Control-Allow-Headers: Content-Type, Authorization`
-- `OPTIONS` preflight 요청 처리 포함
 
 ---
 
 ## 트러블슈팅 (General Chat)
 
-데스크톱에서 전체 톡방이 보이지 않는 경우 아래 순서로 확인:
+전체 톡방이 보이지 않는 경우 아래 순서로 확인:
 
 1. **`profiles.client_id` 확인** — Supabase Dashboard에서 해당 워커의 `client_id`가 비어있으면 톡방 로드 불가
-2. **`VITE_WEB_URL` 확인** — `syncbridge-desktop/.env`의 URL이 실제 배포된 client-web 주소와 일치하는지
-3. **Vercel 환경 변수** — `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`가 설정되어 있는지
-4. **DevTools 콘솔** — `[GeneralChat]` 프리픽스 로그로 어떤 단계에서 실패하는지 확인
+2. **Vercel 환경 변수** — `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`가 설정되어 있는지
+3. **DevTools 콘솔** — `[GeneralChat]` 프리픽스 로그로 어떤 단계에서 실패하는지 확인
 
 자세한 내용은 `DEBUGGING.md` 참고.
 
@@ -439,9 +310,5 @@ Desktop App(Electron)과 Extension은 Vercel에 배포된 Client Web API를 cros
 - `DEBUGGING.md` — 디버깅 가이드 및 트러블슈팅
 - `supabase/README.md` — DB 스키마/Auth 설정
 - `client-web/README.md` — 대시보드 세부
-- `syncbridge-extension/README.md` — 확장프로그램 세부
 - `guides/SyncBridge-Client-Guide-KO.md` — 고객사(병원) 관리자 사용 가이드
-- `guides/SyncBridge-Worker-Guide-TH.md` — 태국 직원 사용 가이드 (Desktop + Extension)
-- `SyncBridge-Worker-Manual-TH.md` — 태국 직원 Extension 전용 매뉴얼
-- `chrome-store-guide.md` — Chrome Web Store 등록 가이드
 - `brand/` — SVG 브랜드 아이덴티티 에셋

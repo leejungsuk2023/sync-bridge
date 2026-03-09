@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+export const maxDuration = 60;
+
 // CORS: Desktop App (Electron) and Extension cross-origin requests
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -347,8 +349,17 @@ export async function PATCH(req: NextRequest) {
           const zdData = await zdRes.json();
           const comments = (zdData.comments || []).reverse();
           recentComments = comments
-            .map((c: any) => `[${c.created_at}] ${c.body?.substring(0, 300) || ''}`)
+            .map((c: any) => {
+              // Strip HTML tags and control characters to avoid JSON parse issues
+              const body = (c.body || '')
+                .replace(/<[^>]*>/g, '')
+                .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '')
+                .substring(0, 300);
+              return `[${c.created_at}] ${body}`;
+            })
             .join('\n');
+        } else {
+          console.error(`[followup-customers] Zendesk API error: ${zdRes.status} for ticket ${ticket_id}`);
         }
 
         // Get ticket info for context
@@ -399,27 +410,35 @@ Return JSON:
           }
         );
 
-        if (geminiRes.ok) {
-          const geminiData = await geminiRes.json();
-          const summaryText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-          if (summaryText) {
-            const summary = JSON.parse(summaryText);
-
-            // Insert AI-generated summary as worker_action
-            await supabaseAdmin.from('followup_actions').insert({
-              ticket_id,
-              action_type: 'worker_action',
-              content: summary.summary_ko || 'Worker completed action',
-              content_th: summary.summary_th || 'ดำเนินการเรียบร้อย',
-              status_before: statusBefore,
-              status_after: targetStatus,
-              created_by: authUser.userId,
-            });
-          }
+        if (!geminiRes.ok) {
+          console.error(`[followup-customers] Gemini API error: ${geminiRes.status} for ticket ${ticket_id}`);
+          throw new Error(`Gemini ${geminiRes.status}`);
         }
-      } catch (aiErr) {
-        console.error('[followup-customers] AI summary error:', aiErr);
-        // Fallback: insert a simple action record
+
+        const geminiData = await geminiRes.json();
+        let summaryText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (!summaryText) {
+          throw new Error('Empty Gemini response');
+        }
+
+        // Clean control characters that break JSON.parse
+        summaryText = summaryText.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '');
+        const summary = JSON.parse(summaryText);
+
+        // Insert AI-generated summary as worker_action
+        await supabaseAdmin.from('followup_actions').insert({
+          ticket_id,
+          action_type: 'worker_action',
+          content: summary.summary_ko || 'Worker completed action',
+          content_th: summary.summary_th || 'ดำเนินการเรียบร้อย',
+          status_before: statusBefore,
+          status_after: targetStatus,
+          created_by: authUser.userId,
+        });
+      } catch (aiErr: any) {
+        const errMsg = aiErr?.message || String(aiErr);
+        console.error('[followup-customers] AI summary error:', errMsg);
+        // Fallback: insert a simple action record with error info
         await supabaseAdmin.from('followup_actions').insert({
           ticket_id,
           action_type: 'worker_action',
@@ -428,7 +447,9 @@ Return JSON:
           status_before: statusBefore,
           status_after: targetStatus,
           created_by: authUser.userId,
+          zendesk_changes: { ai_error: errMsg },
         });
+        // Continue to return updated data even when AI fails
       }
     }
 

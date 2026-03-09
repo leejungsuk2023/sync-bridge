@@ -83,7 +83,13 @@ async function handleSummary(req: NextRequest) {
               const zdData = await zdRes.json();
               const comments = (zdData.comments || []).reverse();
               recentComments = comments
-                .map((c: any) => `[${c.created_at}] ${c.body?.substring(0, 300) || ''}`)
+                .map((c: any) => {
+                  const body = (c.body || '')
+                    .replace(/<[^>]*>/g, '')
+                    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '')
+                    .substring(0, 300);
+                  return `[${c.created_at}] ${body}`;
+                })
                 .join('\n');
             }
           } catch (zdErr: any) {
@@ -164,13 +170,15 @@ Return JSON:
         }
 
         const geminiData = await geminiRes.json();
-        const text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        let text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         if (!text) {
           errors.push(`Ticket ${ticket.ticket_id}: Empty Gemini response`);
           results.push({ ticket_id: ticket.ticket_id, status: 'empty_response' });
           continue;
         }
 
+        // Clean control characters that break JSON.parse
+        text = text.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '');
         const result = JSON.parse(text);
 
         // Insert AI instruction action

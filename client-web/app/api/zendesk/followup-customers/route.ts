@@ -168,7 +168,7 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { ticket_id, status, note, action_comment, lost_reason, lost_reason_detail } = body;
+    const { ticket_id, status, note, action_comment, action_trigger, lost_reason, lost_reason_detail } = body;
 
     if (!ticket_id) {
       return withCors(NextResponse.json({ error: 'ticket_id is required' }, { status: 400 }));
@@ -267,48 +267,154 @@ export async function PATCH(req: NextRequest) {
       competitor: 'เลือกคู่แข่ง', price_issue: 'ปัญหาเรื่องราคา', other: 'อื่นๆ',
     };
 
-    // Translate worker's Thai comment to Korean for admin view
-    let contentKo = action_comment || `Status changed to ${targetStatus}`;
-    let contentTh = action_comment || `เปลี่ยนสถานะเป็น ${STATUS_LABELS_TH[targetStatus] || targetStatus}`;
+    // Insert action record: either manual comment or AI auto-summary
+    if (!action_trigger) {
+      // Translate worker's Thai comment to Korean for admin view
+      let contentKo = action_comment || `Status changed to ${targetStatus}`;
+      let contentTh = action_comment || `เปลี่ยนสถานะเป็น ${STATUS_LABELS_TH[targetStatus] || targetStatus}`;
 
-    if (action_comment && authUser.role === 'worker' && process.env.GEMINI_API_KEY) {
+      if (action_comment && authUser.role === 'worker' && process.env.GEMINI_API_KEY) {
+        try {
+          const translateRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: `Translate the following Thai text to Korean. Return ONLY the Korean translation, nothing else.\n\n${action_comment}` }] }],
+                generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
+              }),
+            }
+          );
+          if (translateRes.ok) {
+            const translateData = await translateRes.json();
+            const translated = translateData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+            if (translated) contentKo = translated;
+          }
+        } catch (translateErr) {
+          console.error('[followup-customers] Translation error:', translateErr);
+        }
+      }
+
+      const actionRecord: Record<string, any> = {
+        ticket_id,
+        action_type: isRevert ? 'system_note' : 'worker_action',
+        content: isRevert
+          ? `Admin reverted status from lost to contacted (previous reason: ${current.lost_reason || 'unknown'})`
+          : contentKo,
+        content_th: isRevert
+          ? `แอดมินเปลี่ยนสถานะจาก ไม่สำเร็จ เป็น ติดต่อแล้ว (เหตุผลเดิม: ${LOST_REASON_LABELS_TH[current.lost_reason] || current.lost_reason || '-'})`
+          : contentTh,
+        status_before: statusBefore,
+        status_after: targetStatus,
+        created_by: authUser.userId,
+      };
+
+      await supabaseAdmin.from('followup_actions').insert(actionRecord);
+    }
+
+    // If action_trigger, fetch Zendesk comments and auto-summarize with AI
+    if (action_trigger && process.env.GEMINI_API_KEY && process.env.ZENDESK_SUBDOMAIN) {
       try {
-        const translateRes = await fetch(
+        const ZENDESK_AUTH = Buffer.from(
+          `${process.env.ZENDESK_EMAIL}/token:${process.env.ZENDESK_API_TOKEN}`
+        ).toString('base64');
+
+        // Fetch recent Zendesk comments
+        const zdRes = await fetch(
+          `https://${process.env.ZENDESK_SUBDOMAIN}.zendesk.com/api/v2/tickets/${ticket_id}/comments?sort_order=desc&per_page=10`,
+          { headers: { Authorization: `Basic ${ZENDESK_AUTH}` } }
+        );
+
+        let recentComments = '';
+        if (zdRes.ok) {
+          const zdData = await zdRes.json();
+          const comments = (zdData.comments || []).reverse();
+          recentComments = comments
+            .map((c: any) => `[${c.created_at}] ${c.body?.substring(0, 300) || ''}`)
+            .join('\n');
+        }
+
+        // Get ticket info for context
+        const { data: ticketInfo } = await supabaseAdmin
+          .from('zendesk_tickets')
+          .select('subject')
+          .eq('ticket_id', ticket_id)
+          .single();
+
+        // Get analysis info for context
+        const { data: analysisInfo } = await supabaseAdmin
+          .from('zendesk_analyses')
+          .select('customer_name, hospital_name, interested_procedure, followup_reason')
+          .eq('ticket_id', ticket_id)
+          .single();
+
+        // AI summarize
+        const summaryPrompt = `You are an AI assistant that summarizes customer service interactions.
+
+## Context
+- Customer: ${analysisInfo?.customer_name || 'Unknown'}
+- Hospital: ${analysisInfo?.hospital_name || 'Unknown'}
+- Interested procedure: ${analysisInfo?.interested_procedure || 'Unknown'}
+- Followup reason: ${analysisInfo?.followup_reason || 'Unknown'}
+- Ticket subject: ${ticketInfo?.subject || 'Unknown'}
+
+## Recent conversation:
+${recentComments || 'No recent comments available'}
+
+## Task
+The sales worker has marked this followup as "action completed". Based on the recent conversation, write a brief summary of what actions were taken and the current status.
+
+Return JSON:
+{
+  "summary_ko": "Korean summary (2-3 sentences, for admin)",
+  "summary_th": "Thai summary (2-3 sentences, for worker confirmation)"
+}`;
+
+        const geminiRes = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              contents: [{ parts: [{ text: `Translate the following Thai text to Korean. Return ONLY the Korean translation, nothing else.\n\n${action_comment}` }] }],
-              generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
+              contents: [{ parts: [{ text: summaryPrompt }] }],
+              generationConfig: { temperature: 0.2, maxOutputTokens: 1024, responseMimeType: 'application/json' },
             }),
           }
         );
-        if (translateRes.ok) {
-          const translateData = await translateRes.json();
-          const translated = translateData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-          if (translated) contentKo = translated;
+
+        if (geminiRes.ok) {
+          const geminiData = await geminiRes.json();
+          const summaryText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+          if (summaryText) {
+            const summary = JSON.parse(summaryText);
+
+            // Insert AI-generated summary as worker_action
+            await supabaseAdmin.from('followup_actions').insert({
+              ticket_id,
+              action_type: 'worker_action',
+              content: summary.summary_ko || 'Worker completed action',
+              content_th: summary.summary_th || 'ดำเนินการเรียบร้อย',
+              status_before: statusBefore,
+              status_after: targetStatus,
+              created_by: authUser.userId,
+            });
+          }
         }
-      } catch (translateErr) {
-        console.error('[followup-customers] Translation error:', translateErr);
+      } catch (aiErr) {
+        console.error('[followup-customers] AI summary error:', aiErr);
+        // Fallback: insert a simple action record
+        await supabaseAdmin.from('followup_actions').insert({
+          ticket_id,
+          action_type: 'worker_action',
+          content: '워커가 조치 완료를 보고했습니다.',
+          content_th: 'ดำเนินการเรียบร้อยแล้ว',
+          status_before: statusBefore,
+          status_after: targetStatus,
+          created_by: authUser.userId,
+        });
       }
     }
-
-    const actionRecord: Record<string, any> = {
-      ticket_id,
-      action_type: isRevert ? 'system_note' : 'worker_action',
-      content: isRevert
-        ? `Admin reverted status from lost to contacted (previous reason: ${current.lost_reason || 'unknown'})`
-        : contentKo,
-      content_th: isRevert
-        ? `แอดมินเปลี่ยนสถานะจาก ไม่สำเร็จ เป็น ติดต่อแล้ว (เหตุผลเดิม: ${LOST_REASON_LABELS_TH[current.lost_reason] || current.lost_reason || '-'})`
-        : contentTh,
-      status_before: statusBefore,
-      status_after: targetStatus,
-      created_by: authUser.userId,
-    };
-
-    await supabaseAdmin.from('followup_actions').insert(actionRecord);
 
     return withCors(NextResponse.json({ updated: data }));
   } catch (err: any) {

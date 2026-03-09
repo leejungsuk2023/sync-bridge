@@ -194,7 +194,7 @@ export default function WorkerFollowup({ userId, onNotificationsRead }: { userId
   const [customers, setCustomers] = useState<FollowupCustomer[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<number | null>(null);
-  const [comments, setComments] = useState<Record<number, string>>({});
+  const [completedTickets, setCompletedTickets] = useState<Record<number, boolean>>({});
   const [error, setError] = useState<string | null>(null);
 
   // Notification state
@@ -324,12 +324,9 @@ export default function WorkerFollowup({ userId, onNotificationsRead }: { userId
     }
   };
 
-  // ─── Submit comment ──────────────────────────────────────────
+  // ─── Action trigger (AI auto-summary) ───────────────────────
 
-  const handleSubmitComment = async (ticketId: number) => {
-    const comment = comments[ticketId]?.trim();
-    if (!comment) return;
-
+  const handleActionTrigger = async (ticketId: number) => {
     setUpdating(ticketId);
     try {
       const session = await getSession();
@@ -341,26 +338,25 @@ export default function WorkerFollowup({ userId, onNotificationsRead }: { userId
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({
-          ticket_id: ticketId,
-          action_comment: comment,
-        }),
+        body: JSON.stringify({ ticket_id: ticketId, action_trigger: true }),
       });
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-      // Clear comment
-      setComments((prev) => {
-        const next = { ...prev };
-        delete next[ticketId];
-        return next;
-      });
+      // Show completion state briefly
+      setCompletedTickets(prev => ({ ...prev, [ticketId]: true }));
+      setTimeout(() => {
+        setCompletedTickets(prev => {
+          const next = { ...prev };
+          delete next[ticketId];
+          return next;
+        });
+      }, 3000);
 
-      // Refresh
       await fetchCustomers();
     } catch (err) {
-      console.error('[WorkerFollowup] Failed to submit comment:', err);
-      setError('ไม่สามารถบันทึกได้ กรุณาลองใหม่');
+      console.error('[WorkerFollowup] Action trigger failed:', err);
+      setError('ไม่สามารถดำเนินการได้ กรุณาลองใหม่');
     } finally {
       setUpdating(null);
     }
@@ -536,24 +532,25 @@ export default function WorkerFollowup({ userId, onNotificationsRead }: { userId
           </div>
         )}
 
-        {/* Action comment */}
-        <div className="flex gap-2">
-          <textarea
-            placeholder="สรุปสิ่งที่ทำ เช่น โทรหาลูกค้าแล้ว รอตอบกลับ / ส่งข้อมูลเพิ่มเติมให้ลูกค้าแล้ว..."
-            value={comments[customer.ticket_id] || ''}
-            onChange={(e) => setComments((prev) => ({ ...prev, [customer.ticket_id]: e.target.value }))}
-            rows={2}
-            className="flex-1 text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 resize-none"
-            disabled={isUpdating}
-          />
-          <button
-            onClick={() => handleSubmitComment(customer.ticket_id)}
-            disabled={isUpdating || !comments[customer.ticket_id]?.trim()}
-            className="self-end px-4 py-2 text-xs font-medium bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
-          >
-            {isUpdating ? '...' : 'บันทึก'}
-          </button>
-        </div>
+        {/* Action trigger button */}
+        <button
+          onClick={() => handleActionTrigger(customer.ticket_id)}
+          disabled={isUpdating || terminal}
+          className="w-full py-2.5 text-sm font-medium bg-blue-500 hover:bg-blue-600 text-white rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          {isUpdating ? (
+            <>
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+              AI กำลังสรุป...
+            </>
+          ) : completedTickets[customer.ticket_id] ? (
+            <>
+              ✓ รายงานเรียบร้อย
+            </>
+          ) : (
+            'ดำเนินการแล้ว'
+          )}
+        </button>
 
         {/* Timeline toggle */}
         <button

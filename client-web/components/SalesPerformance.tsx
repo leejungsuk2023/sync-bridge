@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { BarChart3, Star, RefreshCw, Users, TrendingUp, AlertTriangle, Search, Building2, ArrowUpRight, ArrowDownRight, RotateCcw } from 'lucide-react';
+import { BarChart3, Star, RefreshCw, Users, TrendingUp, AlertTriangle, Search, Building2, ArrowUpRight, ArrowDownRight, RotateCcw, X, Send, Trash2, Eye, Clock, Info } from 'lucide-react';
 
 interface Overview {
   totalTickets: number;
@@ -809,14 +809,32 @@ const LOST_REASON_LABELS: Record<string, string> = {
   other: '기타',
 };
 
+interface FollowupAction {
+  id: string;
+  ticket_id: number;
+  action_type: 'worker_action' | 'ai_instruction' | 'system_note';
+  content: string;
+  content_th: string | null;
+  status_before: string | null;
+  status_after: string | null;
+  created_by: string | null;
+  created_at: string;
+  read_at: string | null;
+}
+
 function FollowupCustomerTable({ getAuthHeader }: { getAuthHeader: () => Promise<{ Authorization: string }> }) {
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('');
-  const [lostReasonFilter, setLostReasonFilter] = useState<string>('');
-  const [reverting, setReverting] = useState<number | null>(null);
-  const [changingStatus, setChangingStatus] = useState<number | null>(null);
   const [fetchKey, setFetchKey] = useState(0);
+  const [changingStatus, setChangingStatus] = useState<number | null>(null);
+
+  // Modal state
+  const [selectedTicket, setSelectedTicket] = useState<number | null>(null);
+  const [actions, setActions] = useState<FollowupAction[]>([]);
+  const [actionsLoading, setActionsLoading] = useState(false);
+  const [pushMessage, setPushMessage] = useState('');
+  const [pushing, setPushing] = useState(false);
 
   useEffect(() => {
     const fetchFollowups = async () => {
@@ -840,34 +858,27 @@ function FollowupCustomerTable({ getAuthHeader }: { getAuthHeader: () => Promise
     fetchFollowups();
   }, [statusFilter, fetchKey]);
 
-  // Revert a lost item back to contacted
-  const handleRevert = async (ticketId: number) => {
-    if (!confirm('Lost 처리를 되돌리고 팔로업을 재개합니까?')) return;
-    setReverting(ticketId);
-    try {
-      const headers = await getAuthHeader();
-      const res = await fetch('/api/zendesk/followup-customers', {
-        method: 'PATCH',
-        headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ticket_id: ticketId,
-          status: 'contacted',
-          action_comment: 'Admin reverted from lost',
-        }),
-      });
-      if (res.ok) {
-        setFetchKey(prev => prev + 1);
-      } else {
-        const err = await res.json().catch(() => ({}));
-        alert(`되돌리기 실패: ${err.error || res.status}`);
+  // Fetch actions when modal opens
+  useEffect(() => {
+    if (selectedTicket === null) return;
+    const fetchActions = async () => {
+      setActionsLoading(true);
+      try {
+        const headers = await getAuthHeader();
+        const res = await fetch(`/api/zendesk/followup-actions?ticket_id=${selectedTicket}`, { headers });
+        if (res.ok) {
+          const data = await res.json();
+          // API returns desc order, reverse for chronological (oldest first)
+          setActions((data.actions || []).reverse());
+        }
+      } catch (err) {
+        console.error('[SalesPerformance] Failed to fetch actions:', err);
+      } finally {
+        setActionsLoading(false);
       }
-    } catch (err) {
-      console.error('[SalesPerformance] Revert failed:', err);
-      alert('되돌리기 중 오류가 발생했습니다.');
-    } finally {
-      setReverting(null);
-    }
-  };
+    };
+    fetchActions();
+  }, [selectedTicket]);
 
   const handleStatusChange = async (ticketId: number, newStatus: string) => {
     setChangingStatus(ticketId);
@@ -896,29 +907,96 @@ function FollowupCustomerTable({ getAuthHeader }: { getAuthHeader: () => Promise
     }
   };
 
-  // Compute status counts from the full (unfiltered) customer list
-  // When a filter is active, counts are based on current result
+  const handleRevert = async (ticketId: number) => {
+    if (!confirm('Lost 처리를 되돌리고 팔로업을 재개합니까?')) return;
+    try {
+      const headers = await getAuthHeader();
+      const res = await fetch('/api/zendesk/followup-customers', {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ticket_id: ticketId,
+          status: 'contacted',
+          action_comment: 'Admin reverted from lost',
+        }),
+      });
+      if (res.ok) {
+        setFetchKey(prev => prev + 1);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`되돌리기 실패: ${err.error || res.status}`);
+      }
+    } catch (err) {
+      console.error('[SalesPerformance] Revert failed:', err);
+      alert('되돌리기 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handlePush = async (ticketId: number) => {
+    if (!pushMessage.trim()) return;
+    setPushing(true);
+    try {
+      const headers = await getAuthHeader();
+      const res = await fetch('/api/zendesk/followup-actions', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticket_id: ticketId, content: pushMessage.trim() }),
+      });
+      if (res.ok) {
+        setPushMessage('');
+        // Refresh actions
+        const actionsRes = await fetch(`/api/zendesk/followup-actions?ticket_id=${ticketId}`, { headers });
+        if (actionsRes.ok) {
+          const data = await actionsRes.json();
+          setActions((data.actions || []).reverse());
+        }
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`Push 실패: ${err.error || res.status}`);
+      }
+    } catch (err) {
+      console.error('[SalesPerformance] Push failed:', err);
+      alert('Push 중 오류가 발생했습니다.');
+    } finally {
+      setPushing(false);
+    }
+  };
+
+  const handleDrop = async (ticketId: number) => {
+    if (!confirm('이 고객을 Lost 처리하시겠습니까?')) return;
+    try {
+      const headers = await getAuthHeader();
+      const res = await fetch('/api/zendesk/followup-customers', {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ticket_id: ticketId,
+          status: 'lost',
+          lost_reason: 'other',
+          lost_reason_detail: 'Admin dropped',
+        }),
+      });
+      if (res.ok) {
+        setSelectedTicket(null);
+        setFetchKey(prev => prev + 1);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`Drop 실패: ${err.error || res.status}`);
+      }
+    } catch (err) {
+      console.error('[SalesPerformance] Drop failed:', err);
+      alert('Drop 처리 중 오류가 발생했습니다.');
+    }
+  };
+
+  // Compute status counts
   const statusCounts = customers.reduce<Record<string, number>>((acc, c) => {
     const s = c.followup_status || 'pending';
     acc[s] = (acc[s] || 0) + 1;
     return acc;
   }, {});
 
-  // Filter customers by lost reason (client-side sub-filter)
-  const filteredCustomers = statusFilter === 'lost' && lostReasonFilter
-    ? customers.filter(c => c.lost_reason === lostReasonFilter)
-    : customers;
-
-  // Compute lost reason counts for the summary bar
-  const lostReasonCounts = statusFilter === 'lost'
-    ? customers.reduce<Record<string, number>>((acc, c) => {
-        const reason = c.lost_reason || 'other';
-        acc[reason] = (acc[reason] || 0) + 1;
-        return acc;
-      }, {})
-    : {};
-
-  // Format datetime for display
+  // Format datetime
   const formatDateTime = (dateStr: string | null) => {
     if (!dateStr) return '-';
     const d = new Date(dateStr);
@@ -936,9 +1014,18 @@ function FollowupCustomerTable({ getAuthHeader }: { getAuthHeader: () => Promise
     );
   };
 
-  // Status filter buttons
-  const statusFilterButtons = [
-    { key: '', label: '전체' },
+  // BI summary card config
+  const biCards = [
+    { key: 'pending', label: '대기', color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', icon: 'bg-amber-100' },
+    { key: 'contacted', label: '연락완료', color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200', icon: 'bg-blue-100' },
+    { key: 'scheduled', label: '예약됨', color: 'text-indigo-700', bg: 'bg-indigo-50', border: 'border-indigo-200', icon: 'bg-indigo-100' },
+    { key: 'converted', label: '성공', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', icon: 'bg-emerald-100' },
+    { key: 'lost', label: 'Lost', color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200', icon: 'bg-red-100' },
+  ];
+
+  // Status filter pills
+  const filterPills = [
+    { key: '', label: '전체', activeClass: 'bg-slate-800 text-white border-slate-800' },
     { key: 'pending', label: '대기', activeClass: 'bg-amber-100 text-amber-700 border-amber-300' },
     { key: 'contacted', label: '연락완료', activeClass: 'bg-blue-100 text-blue-700 border-blue-300' },
     { key: 'scheduled', label: '예약됨', activeClass: 'bg-indigo-100 text-indigo-700 border-indigo-300' },
@@ -946,88 +1033,49 @@ function FollowupCustomerTable({ getAuthHeader }: { getAuthHeader: () => Promise
     { key: 'lost', label: 'Lost', activeClass: 'bg-red-100 text-red-700 border-red-300' },
   ];
 
+  const selectedCustomer = selectedTicket !== null
+    ? customers.find(c => c.ticket_id === selectedTicket)
+    : null;
+
   return (
     <div className="space-y-4">
-      {/* Status Filter Bar */}
+      {/* 1. BI Summary Cards */}
+      <div className="grid grid-cols-5 gap-3">
+        {biCards.map(card => (
+          <div key={card.key} className={`${card.bg} ${card.border} border rounded-xl px-4 py-3 text-center`}>
+            <div className={`text-2xl font-bold ${card.color}`}>
+              {loading ? '-' : (statusCounts[card.key] || 0)}
+            </div>
+            <div className={`text-xs font-medium ${card.color} mt-0.5`}>{card.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* 2. Status Filter Pills */}
       <div className="flex flex-wrap gap-2">
-        {statusFilterButtons.map(btn => {
-          const isActive = statusFilter === btn.key;
-          const count = btn.key === '' ? customers.length : (statusCounts[btn.key] || 0);
+        {filterPills.map(pill => {
+          const isActive = statusFilter === pill.key;
           return (
             <button
-              key={btn.key}
-              onClick={() => { setStatusFilter(btn.key); setLostReasonFilter(''); }}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
-                isActive
-                  ? (btn.activeClass || 'bg-slate-800 text-white border-slate-800')
-                  : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+              key={pill.key}
+              onClick={() => setStatusFilter(pill.key)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
+                isActive ? pill.activeClass : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
               }`}
             >
-              {btn.label}
-              {!loading && (
-                <span className={`ml-1.5 ${isActive ? 'opacity-80' : 'text-slate-400'}`}>
-                  {btn.key === '' && !statusFilter ? customers.length : count}
-                </span>
-              )}
+              {pill.label}
             </button>
           );
         })}
       </div>
 
-      {/* Lost Reason Sub-filter (only when lost filter is active) */}
-      {statusFilter === 'lost' && (
-        <div className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => setLostReasonFilter('')}
-              className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
-                !lostReasonFilter
-                  ? 'bg-red-600 text-white border-red-600'
-                  : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
-              }`}
-            >
-              전체 lost
-            </button>
-            {Object.entries(LOST_REASON_LABELS).map(([key, label]) => (
-              <button
-                key={key}
-                onClick={() => setLostReasonFilter(key)}
-                className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
-                  lostReasonFilter === key
-                    ? 'bg-red-600 text-white border-red-600'
-                    : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {/* Lost Statistics Summary */}
-          {Object.keys(lostReasonCounts).length > 0 && (
-            <div className="flex flex-wrap gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
-              {Object.entries(LOST_REASON_LABELS).map(([key, label]) => {
-                const count = lostReasonCounts[key] || 0;
-                if (count === 0) return null;
-                return (
-                  <span key={key} className="inline-flex items-center gap-1 text-xs text-red-700">
-                    <span className="font-medium">{label}</span>
-                    <span className="px-1.5 py-0.5 bg-red-200 rounded-full text-red-800 font-bold">{count}</span>
-                  </span>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Loading state */}
+      {/* 3. Ticket List */}
       {loading ? (
         <div className="flex items-center gap-2 text-slate-500 py-4">
           <RefreshCw className="w-4 h-4 animate-spin" />
           <span>고객 데이터 로딩 중...</span>
         </div>
-      ) : filteredCustomers.length === 0 ? (
+      ) : customers.length === 0 ? (
         <div className="text-center py-8 text-slate-500">
           <Users className="w-8 h-8 mx-auto mb-2 text-slate-300" />
           <p>팔로업 고객 데이터가 없습니다.</p>
@@ -1039,74 +1087,206 @@ function FollowupCustomerTable({ getAuthHeader }: { getAuthHeader: () => Promise
             <thead>
               <tr className="bg-slate-50 text-slate-600">
                 <th className="text-left px-3 py-2 font-medium rounded-tl-lg">고객명</th>
-                <th className="text-left px-3 py-2 font-medium">연락처</th>
-                <th className="text-left px-3 py-2 font-medium">관심 시술</th>
                 <th className="text-left px-3 py-2 font-medium">병원</th>
                 <th className="text-center px-3 py-2 font-medium">상태</th>
-                {statusFilter === 'lost' && (
-                  <th className="text-left px-3 py-2 font-medium">Lost 사유</th>
-                )}
-                <th className="text-center px-3 py-2 font-medium">체크 횟수</th>
-                <th className="text-center px-3 py-2 font-medium">다음 체크</th>
                 <th className="text-left px-3 py-2 font-medium">팔로업 사유</th>
-                <th className="text-left px-3 py-2 font-medium">티켓</th>
-                <th className="text-center px-3 py-2 font-medium rounded-tr-lg">작업</th>
+                <th className="text-center px-3 py-2 font-medium rounded-tr-lg">상세보기</th>
               </tr>
             </thead>
             <tbody>
-              {filteredCustomers.map((c, i) => {
+              {customers.map((c, i) => {
                 const status = c.followup_status || 'pending';
                 const isLost = status === 'lost';
+                const reason = c.followup_reason || '-';
+                const truncatedReason = reason.length > 50 ? reason.slice(0, 50) + '...' : reason;
                 return (
                   <tr
                     key={c.ticket_id || i}
                     className={`border-t border-slate-100 hover:bg-slate-50 ${isLost ? 'opacity-60' : ''}`}
                   >
-                    <td className="px-3 py-2 font-medium text-slate-900">{c.customer_name || '-'}</td>
-                    <td className="px-3 py-2 text-slate-700">{c.customer_phone || '-'}</td>
-                    <td className="px-3 py-2 text-slate-700">{c.interested_procedure || '-'}</td>
-                    <td className="px-3 py-2 text-slate-700 text-xs">{c.hospital_name || '-'}</td>
-                    <td className="text-center px-3 py-2">{statusBadge(status)}</td>
-                    {statusFilter === 'lost' && (
-                      <td className="px-3 py-2 text-xs text-slate-600">
-                        {c.lost_reason ? LOST_REASON_LABELS[c.lost_reason] || c.lost_reason : '-'}
-                        {c.lost_reason === 'other' && c.lost_reason_detail && (
-                          <span className="block text-slate-400 mt-0.5">{c.lost_reason_detail}</span>
-                        )}
-                      </td>
-                    )}
-                    <td className="text-center px-3 py-2 text-slate-700">{c.check_count ?? 0}</td>
-                    <td className="text-center px-3 py-2 text-xs text-slate-600">
-                      {formatDateTime(c.next_check_at)}
-                    </td>
-                    <td className="px-3 py-2 text-slate-600 text-xs">{c.followup_reason || '-'}</td>
-                    <td className="px-3 py-2 text-xs text-slate-500">{c.subject || `#${c.ticket_id}`}</td>
-                    <td className="text-center px-3 py-2">
-                      <select
-                        value={status}
-                        onChange={(e) => {
-                          const newStatus = e.target.value;
-                          if (newStatus !== status) {
-                            if (confirm(`상태를 "${FOLLOWUP_STATUS_CONFIG[newStatus]?.label || newStatus}"(으)로 변경하시겠습니까?`)) {
-                              handleStatusChange(c.ticket_id, newStatus);
-                            }
-                          }
+                    <td className="px-3 py-2.5 font-medium text-slate-900">{c.customer_name || '-'}</td>
+                    <td className="px-3 py-2.5 text-slate-700 text-xs">{c.hospital_name || '-'}</td>
+                    <td className="text-center px-3 py-2.5">{statusBadge(status)}</td>
+                    <td className="px-3 py-2.5 text-slate-600 text-xs" title={reason}>{truncatedReason}</td>
+                    <td className="text-center px-3 py-2.5">
+                      <button
+                        onClick={() => {
+                          setSelectedTicket(c.ticket_id);
+                          setPushMessage('');
                         }}
-                        disabled={changingStatus === c.ticket_id}
-                        className="text-xs border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:opacity-50"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors"
                       >
-                        <option value="pending">대기</option>
-                        <option value="contacted">연락완료</option>
-                        <option value="scheduled">예약됨</option>
-                        <option value="converted">성공</option>
-                        <option value="lost">Lost</option>
-                      </select>
+                        <Eye className="w-3 h-3" />
+                        상세
+                      </button>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* 4. Detail Modal */}
+      {selectedTicket !== null && selectedCustomer && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={(e) => { if (e.target === e.currentTarget) setSelectedTicket(null); }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col mx-4">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-slate-200 flex-shrink-0">
+              <div className="flex items-start justify-between">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-slate-900">{selectedCustomer.customer_name || '-'}</h3>
+                    <span className="text-xs text-slate-400">#{selectedCustomer.ticket_id}</span>
+                    {statusBadge(selectedCustomer.followup_status || 'pending')}
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-slate-500">
+                    <span>{selectedCustomer.hospital_name || '-'}</span>
+                    {selectedCustomer.customer_phone && (
+                      <span>{selectedCustomer.customer_phone}</span>
+                    )}
+                    {selectedCustomer.interested_procedure && (
+                      <span>{selectedCustomer.interested_procedure}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {/* Status Change Select */}
+                  <select
+                    value={selectedCustomer.followup_status || 'pending'}
+                    onChange={(e) => {
+                      const newStatus = e.target.value;
+                      const currentStatus = selectedCustomer.followup_status || 'pending';
+                      if (newStatus !== currentStatus) {
+                        if (confirm(`상태를 "${FOLLOWUP_STATUS_CONFIG[newStatus]?.label || newStatus}"(으)로 변경하시겠습니까?`)) {
+                          handleStatusChange(selectedCustomer.ticket_id, newStatus);
+                        }
+                      }
+                    }}
+                    disabled={changingStatus === selectedCustomer.ticket_id}
+                    className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:opacity-50"
+                  >
+                    <option value="pending">대기</option>
+                    <option value="contacted">연락완료</option>
+                    <option value="scheduled">예약됨</option>
+                    <option value="converted">성공</option>
+                    <option value="lost">Lost</option>
+                  </select>
+                  <button
+                    onClick={() => setSelectedTicket(null)}
+                    className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Scrollable content */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+              {/* Followup Reason */}
+              {selectedCustomer.followup_reason && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                  <div className="text-xs font-medium text-amber-700 mb-1">팔로업 사유</div>
+                  <div className="text-sm text-amber-900">{selectedCustomer.followup_reason}</div>
+                </div>
+              )}
+
+              {/* Chronological Timeline */}
+              <div>
+                <div className="text-xs font-medium text-slate-500 mb-2 flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  타임라인
+                </div>
+                {actionsLoading ? (
+                  <div className="flex items-center gap-2 text-slate-400 py-4 text-sm">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>로딩 중...</span>
+                  </div>
+                ) : actions.length === 0 ? (
+                  <div className="text-center py-6 text-slate-400 text-sm">
+                    아직 기록이 없습니다.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {actions.map((action) => {
+                      const isWorker = action.action_type === 'worker_action';
+                      const isAI = action.action_type === 'ai_instruction';
+                      // system_note is the default
+                      return (
+                        <div key={action.id} className="flex gap-3">
+                          {/* Icon */}
+                          <div className="flex-shrink-0 mt-0.5">
+                            {isWorker && (
+                              <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center">
+                                <div className="w-2 h-2 rounded-full bg-blue-500" />
+                              </div>
+                            )}
+                            {isAI && (
+                              <div className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center">
+                                <Star className="w-3 h-3 text-amber-600" />
+                              </div>
+                            )}
+                            {!isWorker && !isAI && (
+                              <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center">
+                                <Info className="w-3 h-3 text-slate-400" />
+                              </div>
+                            )}
+                          </div>
+                          {/* Content */}
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm text-slate-800">{action.content}</div>
+                            {action.status_before && action.status_after && action.status_before !== action.status_after && (
+                              <div className="text-xs text-slate-400 mt-0.5">
+                                {FOLLOWUP_STATUS_CONFIG[action.status_before]?.label || action.status_before}
+                                {' → '}
+                                {FOLLOWUP_STATUS_CONFIG[action.status_after]?.label || action.status_after}
+                              </div>
+                            )}
+                            <div className="text-xs text-slate-400 mt-0.5">{formatDateTime(action.created_at)}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Bottom: Push + Drop */}
+            <div className="px-6 py-4 border-t border-slate-200 flex-shrink-0 space-y-3">
+              <div className="flex gap-2">
+                <textarea
+                  value={pushMessage}
+                  onChange={(e) => setPushMessage(e.target.value)}
+                  placeholder="워커에게 보낼 지시사항을 입력하세요..."
+                  rows={2}
+                  className="flex-1 text-sm border border-slate-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400"
+                />
+                <button
+                  onClick={() => handlePush(selectedCustomer.ticket_id)}
+                  disabled={pushing || !pushMessage.trim()}
+                  className="self-end px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl flex items-center gap-1.5 transition-colors"
+                >
+                  {pushing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  Push
+                </button>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  onClick={() => handleDrop(selectedCustomer.ticket_id)}
+                  className="px-3 py-1.5 text-xs font-medium text-red-600 border border-red-300 hover:bg-red-50 rounded-lg flex items-center gap-1 transition-colors"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Drop
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

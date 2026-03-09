@@ -267,15 +267,42 @@ export async function PATCH(req: NextRequest) {
       competitor: 'เลือกคู่แข่ง', price_issue: 'ปัญหาเรื่องราคา', other: 'อื่นๆ',
     };
 
+    // Translate worker's Thai comment to Korean for admin view
+    let contentKo = action_comment || `Status changed to ${targetStatus}`;
+    let contentTh = action_comment || `เปลี่ยนสถานะเป็น ${STATUS_LABELS_TH[targetStatus] || targetStatus}`;
+
+    if (action_comment && authUser.role === 'worker' && process.env.GEMINI_API_KEY) {
+      try {
+        const translateRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: `Translate the following Thai text to Korean. Return ONLY the Korean translation, nothing else.\n\n${action_comment}` }] }],
+              generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
+            }),
+          }
+        );
+        if (translateRes.ok) {
+          const translateData = await translateRes.json();
+          const translated = translateData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+          if (translated) contentKo = translated;
+        }
+      } catch (translateErr) {
+        console.error('[followup-customers] Translation error:', translateErr);
+      }
+    }
+
     const actionRecord: Record<string, any> = {
       ticket_id,
       action_type: isRevert ? 'system_note' : 'worker_action',
       content: isRevert
         ? `Admin reverted status from lost to contacted (previous reason: ${current.lost_reason || 'unknown'})`
-        : (action_comment || `Status changed to ${targetStatus}`),
+        : contentKo,
       content_th: isRevert
         ? `แอดมินเปลี่ยนสถานะจาก ไม่สำเร็จ เป็น ติดต่อแล้ว (เหตุผลเดิม: ${LOST_REASON_LABELS_TH[current.lost_reason] || current.lost_reason || '-'})`
-        : (action_comment || `เปลี่ยนสถานะเป็น ${STATUS_LABELS_TH[targetStatus] || targetStatus}`),
+        : contentTh,
       status_before: statusBefore,
       status_after: targetStatus,
       created_by: authUser.userId,

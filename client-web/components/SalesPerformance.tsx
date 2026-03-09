@@ -1073,6 +1073,12 @@ function FollowupCustomerTable({ getAuthHeader, onBadgeUpdate }: { getAuthHeader
     { key: 'lost', label: 'Lost', activeClass: 'bg-red-100 text-red-700 border-red-300' },
   ];
 
+  // Close modal and refresh customer list to update unread badges
+  const closeModal = () => {
+    setSelectedTicket(null);
+    setFetchKey(prev => prev + 1);
+  };
+
   const selectedCustomer = selectedTicket !== null
     ? customers.find(c => c.ticket_id === selectedTicket)
     : null;
@@ -1186,7 +1192,7 @@ function FollowupCustomerTable({ getAuthHeader, onBadgeUpdate }: { getAuthHeader
       {selectedTicket !== null && selectedCustomer && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-          onClick={(e) => { if (e.target === e.currentTarget) setSelectedTicket(null); }}
+          onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}
         >
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col mx-4">
             {/* Modal Header */}
@@ -1231,7 +1237,7 @@ function FollowupCustomerTable({ getAuthHeader, onBadgeUpdate }: { getAuthHeader
                     <option value="lost">Lost</option>
                   </select>
                   <button
-                    onClick={() => setSelectedTicket(null)}
+                    onClick={() => closeModal()}
                     className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                   >
                     <X className="w-5 h-5" />

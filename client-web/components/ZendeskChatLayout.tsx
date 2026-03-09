@@ -15,6 +15,7 @@ interface Ticket {
   channel: string;
   last_customer_comment_at: string | null;
   last_agent_comment_at: string | null;
+  last_message_at: string | null;
   is_read: boolean;
   assignee_email: string | null;
   tags: string[];

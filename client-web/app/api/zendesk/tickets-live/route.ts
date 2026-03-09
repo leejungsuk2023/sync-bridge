@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
     // Build query for active tickets (non-closed)
     let query = supabaseAdmin
       .from('zendesk_tickets')
-      .select('ticket_id, subject, status, priority, tags, requester_name, requester_email, assignee_name, assignee_email, is_read, last_customer_comment_at, last_agent_comment_at, last_webhook_at, created_at_zd, updated_at_zd, assigned_agent_user_id', { count: 'exact' })
+      .select('ticket_id, subject, status, priority, tags, requester_name, requester_email, assignee_name, assignee_email, is_read, last_customer_comment_at, last_agent_comment_at, last_message_at, last_webhook_at, created_at_zd, updated_at_zd, assigned_agent_user_id', { count: 'exact' })
       .neq('status', 'closed');
 
     if (filter === 'mine') {

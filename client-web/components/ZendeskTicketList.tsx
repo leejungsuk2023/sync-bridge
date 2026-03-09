@@ -11,6 +11,7 @@ interface Ticket {
   channel: string;
   last_customer_comment_at: string | null;
   last_agent_comment_at: string | null;
+  last_message_at: string | null;
   is_read: boolean;
   assignee_email: string | null;
   tags: string[];
@@ -162,15 +163,15 @@ export default function ZendeskTicketList({
     );
   }, [tickets, search]);
 
-  // Sort: unread first, then by last customer comment
+  // Sort: unread first, then by last message time
   const sortedTickets = useMemo(() => {
     return [...filteredTickets].sort((a, b) => {
       // Unread first
       if (!a.is_read && b.is_read) return -1;
       if (a.is_read && !b.is_read) return 1;
-      // Then by most recent activity
-      const dateA = a.last_customer_comment_at || a.last_agent_comment_at || '';
-      const dateB = b.last_customer_comment_at || b.last_agent_comment_at || '';
+      // Then by most recent message
+      const dateA = a.last_message_at || a.last_customer_comment_at || a.last_agent_comment_at || '';
+      const dateB = b.last_message_at || b.last_customer_comment_at || b.last_agent_comment_at || '';
       return new Date(dateB).getTime() - new Date(dateA).getTime();
     });
   }, [filteredTickets]);

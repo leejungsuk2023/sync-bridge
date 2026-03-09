@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { ZendeskClient } from '@/lib/zendesk';
 
 export const maxDuration = 30;
 
@@ -72,6 +73,106 @@ async function verifyUser(req: NextRequest): Promise<{ role: string; userId: str
   return { role: profile.role, userId: user.id };
 }
 
+// Live-sync: pull fresh comments from Zendesk API and insert missing ones into DB.
+// Throttled per ticket to avoid hammering Zendesk on every frontend poll.
+const syncTimestamps = new Map<number, number>();
+const SYNC_COOLDOWN_MS = 10_000; // 10 seconds cooldown per ticket
+
+async function liveSyncTicketComments(ticketIdNum: number): Promise<number> {
+  const lastSync = syncTimestamps.get(ticketIdNum) || 0;
+  if (Date.now() - lastSync < SYNC_COOLDOWN_MS) return 0;
+  syncTimestamps.set(ticketIdNum, Date.now());
+
+  try {
+    const zendesk = new ZendeskClient();
+    const comments = await zendesk.fetchTicketComments(ticketIdNum);
+    if (!comments || comments.length === 0) return 0;
+
+    // Get existing comment_ids
+    const { data: existing } = await supabaseAdmin
+      .from('zendesk_conversations')
+      .select('comment_id')
+      .eq('ticket_id', ticketIdNum);
+
+    const existingIds = new Set((existing || []).map((c: any) => c.comment_id).filter(Boolean));
+    const missing = comments.filter((c: any) => !existingIds.has(c.id));
+    if (missing.length === 0) return 0;
+
+    // Fetch requester_id for author type detection
+    let requesterId: number | null = null;
+    try {
+      const zdAuth = 'Basic ' + Buffer.from(
+        `${process.env.ZENDESK_EMAIL}/token:${process.env.ZENDESK_API_TOKEN}`
+      ).toString('base64');
+      const ticketRes = await fetch(
+        `https://${process.env.ZENDESK_SUBDOMAIN || 'bluebridge-globalhelp'}.zendesk.com/api/v2/tickets/${ticketIdNum}.json`,
+        { headers: { Authorization: zdAuth, 'Content-Type': 'application/json' } }
+      );
+      if (ticketRes.ok) {
+        const td = await ticketRes.json();
+        requesterId = td.ticket?.requester_id || null;
+      }
+    } catch (err) {
+      console.error(`[Conversations] Error fetching ticket #${ticketIdNum} detail:`, err);
+    }
+
+    let inserted = 0;
+    for (const comment of missing) {
+      const isCustomer = requesterId && comment.author_id === requesterId;
+      const authorType = isCustomer ? 'customer' : 'agent';
+      const plainBody = (comment.body || '')
+        .replace(/<[^>]*>/g, '')
+        .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '');
+
+      const { error: insertError } = await supabaseAdmin
+        .from('zendesk_conversations')
+        .insert({
+          ticket_id: ticketIdNum,
+          comment_id: comment.id,
+          author_id: comment.author_id,
+          author_type: authorType,
+          body: plainBody,
+          body_html: comment.body || null,
+          is_public: comment.public !== false,
+          created_at_zd: comment.created_at,
+          source: 'live_sync',
+        });
+
+      if (!insertError) {
+        inserted++;
+      } else if (insertError.code !== '23505') {
+        console.error(`[Conversations] Live-sync insert error for comment ${comment.id}:`, insertError);
+      }
+    }
+
+    if (inserted > 0) {
+      console.log(`[Conversations] Live-synced ${inserted} new comments for ticket #${ticketIdNum}`);
+
+      // Update ticket metadata
+      const allSorted = [...missing].sort(
+        (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      const ticketUpdate: Record<string, any> = {
+        last_message_at: allSorted[0]?.created_at || new Date().toISOString(),
+      };
+      const latestCustomer = missing.find((c: any) => requesterId && c.author_id === requesterId);
+      if (latestCustomer) {
+        ticketUpdate.last_customer_comment_at = latestCustomer.created_at;
+        ticketUpdate.is_read = false;
+      }
+      await supabaseAdmin
+        .from('zendesk_tickets')
+        .update(ticketUpdate)
+        .eq('ticket_id', ticketIdNum);
+    }
+
+    return inserted;
+  } catch (err) {
+    console.error(`[Conversations] Live-sync error for ticket #${ticketIdNum}:`, err);
+    return 0;
+  }
+}
+
 export async function GET(req: NextRequest) {
   const authUser = await verifyUser(req);
   if (!authUser) {
@@ -90,6 +191,9 @@ export async function GET(req: NextRequest) {
     if (isNaN(ticketIdNum)) {
       return withCors(NextResponse.json({ error: 'ticket_id must be a number' }, { status: 400 }));
     }
+
+    // Live-sync: pull fresh comments from Zendesk before serving (throttled)
+    await liveSyncTicketComments(ticketIdNum);
 
     // Fetch conversations ordered by creation time
     const { data: conversations, error: convError } = await supabaseAdmin

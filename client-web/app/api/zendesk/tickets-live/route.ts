@@ -49,6 +49,7 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const filter = searchParams.get('filter') || 'all';
+    const hospital = searchParams.get('hospital') || '';
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
     const perPage = Math.min(50, Math.max(1, parseInt(searchParams.get('per_page') || '20', 10)));
     const offset = (page - 1) * perPage;
@@ -87,9 +88,10 @@ export async function GET(req: NextRequest) {
     query = query
       .order('last_message_at', { ascending: false, nullsFirst: false });
 
-    // For 'waiting' filter, we need to fetch all and filter in JS
-    // because PostgREST doesn't support column-to-column comparison
-    if (filter !== 'waiting') {
+    // For 'waiting' or 'hospital' filter, we need to fetch all and filter in JS
+    // because PostgREST doesn't support column-to-column comparison or tag prefix matching
+    const needsJsFilter = filter === 'waiting' || !!hospital;
+    if (!needsJsFilter) {
       query = query.range(offset, offset + perPage - 1);
     }
 
@@ -100,7 +102,7 @@ export async function GET(req: NextRequest) {
       return withCors(NextResponse.json({ error: error.message }, { status: 500 }));
     }
 
-    // Apply waiting filter in JS (column-to-column comparison)
+    // Apply JS filters (waiting: column-to-column comparison, hospital: tag prefix matching)
     let filteredTickets = tickets || [];
     if (filter === 'waiting') {
       filteredTickets = filteredTickets.filter(t => {
@@ -110,10 +112,18 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const totalFiltered = filter === 'waiting' ? filteredTickets.length : (count || 0);
+    // Hospital filter: keep tickets where any tag starts with the hospital prefix
+    if (hospital) {
+      filteredTickets = filteredTickets.filter(t => {
+        const tags: string[] = t.tags || [];
+        return tags.some(tag => tag.startsWith(hospital));
+      });
+    }
 
-    // Paginate waiting results in JS
-    if (filter === 'waiting') {
+    const totalFiltered = needsJsFilter ? filteredTickets.length : (count || 0);
+
+    // Paginate JS-filtered results
+    if (needsJsFilter) {
       filteredTickets = filteredTickets.slice(offset, offset + perPage);
     }
 
@@ -145,7 +155,7 @@ export async function GET(req: NextRequest) {
       latest_customer_preview: previewMap.get(t.ticket_id) || null,
     }));
 
-    console.log(`[TicketsLive] Returned ${enrichedTickets.length} tickets (filter: ${filter}, page: ${page})`);
+    console.log(`[TicketsLive] Returned ${enrichedTickets.length} tickets (filter: ${filter}, hospital: ${hospital || 'all'}, page: ${page})`);
 
     return withCors(NextResponse.json({
       tickets: enrichedTickets,

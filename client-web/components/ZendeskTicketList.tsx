@@ -20,6 +20,25 @@ interface Ticket {
 
 type TicketFilter = 'mine' | 'all' | 'waiting';
 
+export const HOSPITALS = [
+  { prefix: 'thebb', name: 'TheBB' },
+  { prefix: 'delphic', name: 'Delphic' },
+  { prefix: 'will', name: 'Will' },
+  { prefix: 'mikclinicthai', name: 'MikClinic' },
+  { prefix: 'jyclinicthai', name: 'JY Clinic' },
+  { prefix: 'du', name: 'DU' },
+  { prefix: 'koreandiet', name: 'Korean Diet' },
+  { prefix: 'ourpthai', name: 'OURP' },
+  { prefix: 'everbreastthai', name: 'EverBreast' },
+  { prefix: 'clyveps_th', name: 'Clyveps' },
+  { prefix: 'mycell', name: 'Mycell' },
+  { prefix: 'nbclinici', name: 'NB Clinic' },
+  { prefix: 'dr.song', name: 'Dr. Song' },
+  { prefix: 'lacela', name: 'Lacela' },
+  { prefix: 'artline', name: 'Artline' },
+  { prefix: 'kleam', name: 'Kleam' },
+] as const;
+
 interface ZendeskTicketListProps {
   tickets: Ticket[];
   selectedTicketId: number | null;
@@ -31,6 +50,8 @@ interface ZendeskTicketListProps {
   hasMore?: boolean;
   onLoadMore?: () => void;
   loadingMore?: boolean;
+  hospital?: string;
+  onHospitalChange?: (hospital: string) => void;
 }
 
 const TEXT = {
@@ -50,6 +71,7 @@ const TEXT = {
     statusSolved: '해결됨',
     statusClosed: '종료',
     loadMore: '더 보기',
+    allHospitals: '전체 병원',
   },
   th: {
     search: 'ค้นหาตั๋ว...',
@@ -67,6 +89,7 @@ const TEXT = {
     statusSolved: 'แก้แล้ว',
     statusClosed: 'ปิดแล้ว',
     loadMore: 'โหลดเพิ่ม',
+    allHospitals: 'ทุกโรงพยาบาล',
   },
 } as const;
 
@@ -146,6 +169,8 @@ export default function ZendeskTicketList({
   hasMore = false,
   onLoadMore,
   loadingMore = false,
+  hospital = '',
+  onHospitalChange,
 }: ZendeskTicketListProps) {
   const [search, setSearch] = useState('');
   const t = TEXT[locale];
@@ -226,6 +251,24 @@ export default function ZendeskTicketList({
           </button>
         ))}
       </div>
+
+      {/* Hospital Filter */}
+      {onHospitalChange && (
+        <div className="px-3 py-1.5 border-b border-slate-100">
+          <select
+            value={hospital}
+            onChange={(e) => onHospitalChange(e.target.value)}
+            className="w-full h-7 text-xs border border-slate-200 rounded-md bg-white text-slate-600 px-2 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none cursor-pointer"
+          >
+            <option value="">{t.allHospitals}</option>
+            {HOSPITALS.map((h) => (
+              <option key={h.prefix} value={h.prefix}>
+                {h.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Ticket List */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">

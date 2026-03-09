@@ -31,6 +31,7 @@ export default function ZendeskChatLayout({ user, profile, locale = 'th' }: { us
   const [showChat, setShowChat] = useState(false);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [filter, setFilter] = useState<TicketFilter>(defaultFilter);
+  const [hospital, setHospital] = useState('');
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -50,7 +51,8 @@ export default function ZendeskChatLayout({ user, profile, locale = 'th' }: { us
       if (!session) return;
       if (pageNum > 1) setLoadingMore(true);
 
-      const res = await fetch(`/api/zendesk/tickets-live?filter=${filter}&page=${pageNum}`, {
+      const hospitalParam = hospital ? `&hospital=${encodeURIComponent(hospital)}` : '';
+      const res = await fetch(`/api/zendesk/tickets-live?filter=${filter}&page=${pageNum}${hospitalParam}`, {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
 
@@ -79,11 +81,20 @@ export default function ZendeskChatLayout({ user, profile, locale = 'th' }: { us
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [filter, getSession]);
+  }, [filter, hospital, getSession]);
 
   useEffect(() => {
     setLoading(true);
     fetchTickets();
+  }, [fetchTickets]);
+
+  // Periodic polling: refresh ticket list every 30 seconds as fallback
+  // (webhook may be down or poll cron infrequent)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchTickets();
+    }, 30_000);
+    return () => clearInterval(interval);
   }, [fetchTickets]);
 
   // Supabase Realtime: subscribe to zendesk_conversations INSERT events
@@ -157,6 +168,8 @@ export default function ZendeskChatLayout({ user, profile, locale = 'th' }: { us
             hasMore={hasMore}
             onLoadMore={handleLoadMore}
             loadingMore={loadingMore}
+            hospital={hospital}
+            onHospitalChange={setHospital}
           />
         </div>
 

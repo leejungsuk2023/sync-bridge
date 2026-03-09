@@ -172,6 +172,98 @@ function isImageUrl(url: string): boolean {
   return /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/i.test(url);
 }
 
+// ─── Inline Zendesk attachment parsing ──────────────────────────────
+
+interface InlineAttachment {
+  fileName: string;
+  url: string;
+  contentType: string;
+  size: string;
+  isImage: boolean;
+}
+
+/**
+ * Parse Zendesk inline attachment blocks from message body.
+ * Pattern (Korean):
+ *   (16:33:58) Apisara Wongyai님이 업로드함: CPEtgQv6bVWqGRGLl8FVgwU-.jpeg
+ *   URL: https://bluebridge-globalhelp.zendesk.com/sc/attachments/v2/01KJYENTX1QZQSVWFPS9WB18R1/CPEtgQv6bVWqGRGLl8FVgwU-.jpeg
+ *   유형: image/jpeg
+ *   크기: 1678
+ * Pattern (English/Thai):
+ *   uploaded: filename.jpeg
+ *   URL: ...
+ *   content_type: image/jpeg
+ *   size: 1678
+ */
+function parseInlineAttachments(body: string): { cleanBody: string; attachments: InlineAttachment[] } {
+  const attachments: InlineAttachment[] = [];
+
+  // Regex to match the full attachment block (handles both Korean and English metadata labels)
+  const attachmentBlockRegex = /(?:^|\n)(?:\(\d{2}:\d{2}:\d{2}\)\s+.+?(?:업로드함|uploaded):\s*.+\n)?URL:\s*(https?:\/\/[^\s]+)\n(?:유형|content_type|type):\s*(\S+)\n(?:크기|size):\s*(\d+)/gi;
+
+  let cleanBody = body;
+  let match: RegExpExecArray | null;
+
+  // Collect all attachment blocks
+  while ((match = attachmentBlockRegex.exec(body)) !== null) {
+    const url = match[1];
+    const contentType = match[2];
+    const size = match[3];
+    const isImage = contentType.startsWith('image/');
+    const fileName = url.split('/').pop() || 'file';
+
+    attachments.push({ fileName, url, contentType, size, isImage });
+  }
+
+  if (attachments.length > 0) {
+    // Remove all attachment blocks from body text
+    cleanBody = cleanBody.replace(
+      /(?:\n?)(?:\(\d{2}:\d{2}:\d{2}\)\s+.+?(?:업로드함|uploaded):\s*.+\n)?URL:\s*https?:\/\/[^\s]+\n(?:유형|content_type|type):\s*\S+\n(?:크기|size):\s*\d+/gi,
+      ''
+    ).trim();
+  }
+
+  return { cleanBody, attachments };
+}
+
+/** Render message body text, extracting inline Zendesk attachments as images or download links */
+function MessageBodyWithAttachments({
+  body,
+  onImageClick,
+}: {
+  body: string;
+  onImageClick: (url: string, name: string) => void;
+}) {
+  const { cleanBody, attachments } = parseInlineAttachments(body);
+
+  return (
+    <>
+      {cleanBody && <p className="text-sm whitespace-pre-wrap break-words">{cleanBody}</p>}
+      {attachments.map((att, idx) =>
+        att.isImage ? (
+          <img
+            key={idx}
+            src={att.url}
+            alt={att.fileName}
+            className="max-w-[300px] max-h-48 rounded-lg cursor-pointer hover:opacity-90 transition-opacity mt-1"
+            onClick={() => onImageClick(att.url, att.fileName)}
+          />
+        ) : (
+          <a
+            key={idx}
+            href={att.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 text-indigo-600 hover:text-indigo-800 text-sm mt-1"
+          >
+            <span className="underline truncate">{att.fileName}</span>
+          </a>
+        )
+      )}
+    </>
+  );
+}
+
 // ─── Component ──────────────────────────────────────────────────────
 
 export default function ZendeskChatPanel({
@@ -246,6 +338,15 @@ export default function ZendeskChatPanel({
 
   useEffect(() => {
     fetchConversations();
+  }, [fetchConversations]);
+
+  // ─── Periodic polling (fallback for missed webhooks) ──────────
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchConversations();
+    }, 15_000);
+    return () => clearInterval(interval);
   }, [fetchConversations]);
 
   // ─── Realtime subscription ────────────────────────────────────
@@ -552,7 +653,7 @@ export default function ZendeskChatPanel({
                           : 'bg-white border border-slate-200 text-slate-900'
                       }`}
                     >
-                      <p className="text-sm whitespace-pre-wrap break-words">{sub.text}</p>
+                      <MessageBodyWithAttachments body={sub.text} onImageClick={(url, name) => setPreviewImage({ url, name })} />
                     </div>
                   </div>
                 ))}
@@ -597,7 +698,7 @@ export default function ZendeskChatPanel({
                     dangerouslySetInnerHTML={{ __html: conv.body_html }}
                   />
                 ) : (
-                  <p className="text-sm whitespace-pre-wrap">{displayBody}</p>
+                  <MessageBodyWithAttachments body={displayBody} onImageClick={(url, name) => setPreviewImage({ url, name })} />
                 )}
 
                 {/* Korean translation toggle */}

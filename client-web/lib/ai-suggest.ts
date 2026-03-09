@@ -184,11 +184,9 @@ export async function generateSuggestions(
     .insert({
       ticket_id: ticketId,
       trigger_comment_id: triggerCommentId || null,
-      agent_user_id: agentUserId || null,
       suggestions: JSON.stringify(suggestions),
-      model_used: 'gemini-2.5-flash',
+      model_version: 'gemini-2.5-flash',
       response_time_ms: responseTimeMs,
-      prompt_tokens: null, // Gemini doesn't always expose token counts in this SDK version
     })
     .select('id')
     .single();

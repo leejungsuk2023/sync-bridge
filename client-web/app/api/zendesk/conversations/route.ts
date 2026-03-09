@@ -118,13 +118,12 @@ export async function GET(req: NextRequest) {
 
     // If locale=ko, translate Thai messages to Korean and cache
     if (locale === 'ko' && conversations && conversations.length > 0) {
-      // Find conversations needing translation: customer messages and short agent messages, excluding system
+      // Find conversations needing translation: all non-system messages
       const needTranslation = conversations.filter(
         (c: any) =>
           c.body_ko === null &&
           c.body &&
-          c.author_type !== 'system' &&
-          (c.author_type === 'customer' || c.body.length < 500)
+          c.author_type !== 'system'
       );
 
       if (needTranslation.length > 0) {

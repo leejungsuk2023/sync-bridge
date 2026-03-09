@@ -533,8 +533,8 @@ export default function ZendeskChatPanel({
           const displayBody = locale === 'ko' && conv.body_ko ? conv.body_ko : conv.body;
 
           // Try to parse multi-message comment (social channels batch messages)
-          // Skip parsing for translated text since it won't have the timestamp format
-          const subMessages = (locale === 'ko' && conv.body_ko) ? null : parseMultiMessage(conv.body, ticket?.requester_name || null);
+          // Parse both translated and original text (translated text keeps timestamp format)
+          const subMessages = parseMultiMessage(displayBody, ticket?.requester_name || null);
 
           if (subMessages) {
             return (

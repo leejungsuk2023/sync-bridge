@@ -242,7 +242,7 @@ export default function ZendeskTicketList({
             {sortedTickets.map((ticket) => {
               const isSelected = ticket.ticket_id === selectedTicketId;
               const statusConf = STATUS_CONFIG[ticket.status] || STATUS_CONFIG.open;
-              const lastActivity = ticket.last_customer_comment_at || ticket.last_agent_comment_at;
+              const lastActivity = ticket.last_message_at || ticket.last_customer_comment_at || ticket.last_agent_comment_at;
 
               return (
                 <button

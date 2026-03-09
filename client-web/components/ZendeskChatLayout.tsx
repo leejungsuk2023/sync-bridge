@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { MessageSquare } from 'lucide-react';
 import ZendeskTicketList from './ZendeskTicketList';
 import ZendeskChatPanel from './ZendeskChatPanel';
+import AISuggestPanel from './AISuggestPanel';
 
 interface Ticket {
   ticket_id: number;
@@ -28,6 +29,7 @@ export default function ZendeskChatLayout({ user, profile }: { user: any; profil
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [filter, setFilter] = useState<TicketFilter>('mine');
   const [loading, setLoading] = useState(true);
+  const [injectedReply, setInjectedReply] = useState<string | null>(null);
   const selectedTicketIdRef = useRef(selectedTicketId);
   selectedTicketIdRef.current = selectedTicketId;
 
@@ -138,6 +140,8 @@ export default function ZendeskChatLayout({ user, profile }: { user: any; profil
               profile={profile}
               onBack={handleBack}
               onTicketUpdate={handleTicketUpdate}
+              injectedReply={injectedReply}
+              onInjectedReplyConsumed={() => setInjectedReply(null)}
             />
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-3">
@@ -147,15 +151,13 @@ export default function ZendeskChatLayout({ user, profile }: { user: any; profil
           )}
         </div>
 
-        {/* AI Suggest Panel — Phase 2 placeholder, desktop only */}
-        <div className="hidden md:flex w-80 shrink-0 border-l border-slate-200 flex-col items-center justify-center bg-slate-50">
-          <div className="text-center p-6 space-y-2">
-            <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center mx-auto">
-              <span className="text-xl">🤖</span>
-            </div>
-            <p className="text-sm font-medium text-slate-600">AI แนะนำ</p>
-            <p className="text-xs text-slate-400">เร็วๆ นี้ — AI จะช่วยแนะนำการตอบกลับ</p>
-          </div>
+        {/* AI Suggest Panel — desktop only */}
+        <div className="hidden md:block w-80 shrink-0 border-l border-slate-200 overflow-y-auto bg-slate-50">
+          <AISuggestPanel
+            ticketId={selectedTicketId}
+            onUseReply={(text) => setInjectedReply(text)}
+            user={user}
+          />
         </div>
       </div>
     </div>

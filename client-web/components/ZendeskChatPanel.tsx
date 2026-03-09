@@ -34,6 +34,8 @@ interface ZendeskChatPanelProps {
   profile: any;
   onBack?: () => void;
   onTicketUpdate?: () => void;
+  injectedReply?: string | null;
+  onInjectedReplyConsumed?: () => void;
 }
 
 // ─── Constants ──────────────────────────────────────────────────────
@@ -88,6 +90,8 @@ export default function ZendeskChatPanel({
   profile,
   onBack,
   onTicketUpdate,
+  injectedReply,
+  onInjectedReplyConsumed,
 }: ZendeskChatPanelProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [ticket, setTicket] = useState<TicketInfo | null>(null);
@@ -103,6 +107,15 @@ export default function ZendeskChatPanel({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const statusMenuRef = useRef<HTMLDivElement>(null);
+
+  // Accept injected reply text from AI panel
+  useEffect(() => {
+    if (injectedReply) {
+      setInput(injectedReply);
+      onInjectedReplyConsumed?.();
+      textareaRef.current?.focus();
+    }
+  }, [injectedReply, onInjectedReplyConsumed]);
 
   const getSession = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();

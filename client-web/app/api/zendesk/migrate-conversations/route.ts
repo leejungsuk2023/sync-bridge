@@ -62,10 +62,16 @@ export async function POST(req: NextRequest) {
   console.log('[MigrateConversations] Starting migration...');
 
   // Fetch all zendesk_tickets with comments
+  // Batch params
+  const url = new URL(req.url);
+  const batchSize = parseInt(url.searchParams.get('batch') || '50');
+  const offsetParam = parseInt(url.searchParams.get('offset') || '0');
+
   const { data: tickets, error: ticketsError } = await supabaseAdmin
     .from('zendesk_tickets')
     .select('ticket_id, comments, requester_email, requester_name, assignee_email, status, channel')
-    .not('comments', 'is', null);
+    .not('comments', 'is', null)
+    .range(offsetParam, offsetParam + batchSize - 1);
 
   if (ticketsError) {
     console.error('[MigrateConversations] Error fetching tickets:', ticketsError);
@@ -73,7 +79,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (!tickets || tickets.length === 0) {
-    return withCors(NextResponse.json({ message: 'No tickets with comments found', migrated: 0 }));
+    return withCors(NextResponse.json({ message: 'No more tickets to migrate', migrated: 0, done: true }));
   }
 
   // Collect all unique author_ids to resolve names
@@ -86,7 +92,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Fetch author info from Zendesk API
-  console.log(`[MigrateConversations] Resolving ${authorIds.size} authors...`);
+  console.log(`[MigrateConversations] Batch offset=${offsetParam}, tickets=${tickets.length}, authors=${authorIds.size}`);
   const zendesk = new ZendeskClient();
   const usersMap = await zendesk.fetchUsers([...authorIds]);
 
@@ -167,10 +173,13 @@ export async function POST(req: NextRequest) {
 
   console.log(`[MigrateConversations] Done: ${migrated} comments migrated, ${errors.length} errors`);
 
+  const hasMore = tickets.length === batchSize;
   return withCors(NextResponse.json({
     migrated,
     tickets_processed: tickets.length,
     authors_resolved: usersMap.size,
+    next_offset: hasMore ? offsetParam + batchSize : null,
+    done: !hasMore,
     errors: errors.length > 0 ? errors : undefined,
   }));
 }

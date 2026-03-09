@@ -65,7 +65,7 @@ export default function ConsultationPage() {
       </header>
 
       <main className="max-w-[1440px] mx-auto px-3 py-4 sm:p-6">
-        <ZendeskChatLayout user={user} profile={profile} />
+        <ZendeskChatLayout user={user} profile={profile} locale="ko" />
       </main>
     </div>
   );

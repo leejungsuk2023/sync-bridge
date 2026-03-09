@@ -36,18 +36,71 @@ interface ZendeskChatPanelProps {
   onTicketUpdate?: () => void;
   injectedReply?: string | null;
   onInjectedReplyConsumed?: () => void;
+  locale?: 'ko' | 'th';
 }
+
+const CHAT_TEXT = {
+  ko: {
+    public: '공개',
+    internal: '내부 메모',
+    placeholder: '메시지를 입력하세요... (Ctrl+Enter 전송)',
+    placeholderInternal: '내부 메모 작성... (Ctrl+Enter 전송)',
+    send: '전송',
+    sending: '전송 중...',
+    noMessages: '메시지가 없습니다',
+    back: '뒤로',
+    agent: '상담원',
+    customer: '고객',
+    internalNote: '내부 메모',
+    sendFailed: '메시지 전송 실패: ',
+    sendError: '메시지 전송 중 오류가 발생했습니다',
+    attachSoon: '파일 첨부 기능은 곧 제공됩니다',
+    attachFile: '파일 첨부',
+    statusNew: '신규',
+    statusOpen: '열림',
+    statusPending: '대기 중',
+    statusHold: '보류',
+    statusSolved: '해결됨',
+    statusClosed: '종료',
+  },
+  th: {
+    public: 'สาธารณะ',
+    internal: 'บันทึกภายใน',
+    placeholder: 'พิมพ์ข้อความถึงลูกค้า... (Ctrl+Enter ส่ง)',
+    placeholderInternal: 'บันทึกภายใน... (Ctrl+Enter ส่ง)',
+    send: 'ส่ง',
+    sending: 'กำลังส่ง...',
+    noMessages: 'ยังไม่มีข้อความ',
+    back: 'กลับ',
+    agent: 'เจ้าหน้าที่',
+    customer: 'ลูกค้า',
+    internalNote: 'บันทึกภายใน',
+    sendFailed: 'ส่งข้อความไม่สำเร็จ: ',
+    sendError: 'เกิดข้อผิดพลาดในการส่งข้อความ',
+    attachSoon: 'การแนบไฟล์จะเปิดใช้งานเร็วๆ นี้',
+    attachFile: 'แนบไฟล์',
+    statusNew: 'ใหม่',
+    statusOpen: 'เปิด',
+    statusPending: 'รอตอบ',
+    statusHold: 'พักไว้',
+    statusSolved: 'แก้แล้ว',
+    statusClosed: 'ปิดแล้ว',
+  },
+} as const;
 
 // ─── Constants ──────────────────────────────────────────────────────
 
-const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
-  new:     { label: 'ใหม่',      bg: 'bg-purple-100', text: 'text-purple-700' },
-  open:    { label: 'เปิด',      bg: 'bg-emerald-100', text: 'text-emerald-700' },
-  pending: { label: 'รอตอบ',     bg: 'bg-amber-100',   text: 'text-amber-700' },
-  hold:    { label: 'พักไว้',    bg: 'bg-orange-100',  text: 'text-orange-700' },
-  solved:  { label: 'แก้แล้ว',   bg: 'bg-slate-100',   text: 'text-slate-500' },
-  closed:  { label: 'ปิดแล้ว',   bg: 'bg-slate-100',   text: 'text-slate-400' },
-};
+function getChatStatusConfig(locale: 'ko' | 'th'): Record<string, { label: string; bg: string; text: string }> {
+  const t = CHAT_TEXT[locale];
+  return {
+    new:     { label: t.statusNew,     bg: 'bg-purple-100',  text: 'text-purple-700' },
+    open:    { label: t.statusOpen,    bg: 'bg-emerald-100', text: 'text-emerald-700' },
+    pending: { label: t.statusPending, bg: 'bg-amber-100',   text: 'text-amber-700' },
+    hold:    { label: t.statusHold,    bg: 'bg-orange-100',  text: 'text-orange-700' },
+    solved:  { label: t.statusSolved,  bg: 'bg-slate-100',   text: 'text-slate-500' },
+    closed:  { label: t.statusClosed,  bg: 'bg-slate-100',   text: 'text-slate-400' },
+  };
+}
 
 const STATUS_OPTIONS = ['open', 'pending', 'solved'] as const;
 
@@ -68,9 +121,9 @@ function getChannelIcon(channel: string | null): string {
   }
 }
 
-function formatTimestamp(dateStr: string): string {
+function formatTimestamp(dateStr: string, locale: 'ko' | 'th' = 'th'): string {
   const date = new Date(dateStr);
-  return date.toLocaleString('th-TH', {
+  return date.toLocaleString(locale === 'ko' ? 'ko-KR' : 'th-TH', {
     day: 'numeric',
     month: 'short',
     hour: '2-digit',
@@ -92,7 +145,10 @@ export default function ZendeskChatPanel({
   onTicketUpdate,
   injectedReply,
   onInjectedReplyConsumed,
+  locale = 'th',
 }: ZendeskChatPanelProps) {
+  const t = CHAT_TEXT[locale];
+  const STATUS_CONFIG = getChatStatusConfig(locale);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [ticket, setTicket] = useState<TicketInfo | null>(null);
   const [input, setInput] = useState('');
@@ -222,7 +278,7 @@ export default function ZendeskChatPanel({
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         console.error('[ZendeskChatPanel] Failed to send reply:', res.status, errData);
-        alert('ส่งข้อความไม่สำเร็จ: ' + (errData.error || res.statusText));
+        alert(t.sendFailed + (errData.error || res.statusText));
         return;
       }
 
@@ -234,7 +290,7 @@ export default function ZendeskChatPanel({
       await fetchConversations();
     } catch (err) {
       console.error('[ZendeskChatPanel] Send error:', err);
-      alert('เกิดข้อผิดพลาดในการส่งข้อความ');
+      alert(t.sendError);
     } finally {
       setSending(false);
     }
@@ -281,7 +337,7 @@ export default function ZendeskChatPanel({
     const file = e.target.files?.[0];
     if (!file) return;
     // TODO Phase 2: implement file upload via Zendesk API
-    alert('การแนบไฟล์จะเปิดใช้งานเร็วๆ นี้');
+    alert(t.attachSoon);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -324,7 +380,7 @@ export default function ZendeskChatPanel({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold text-slate-900 truncate">
-                {ticket?.requester_name || 'ลูกค้า'}
+                {ticket?.requester_name || t.customer}
               </span>
               <span className="text-xs" title={ticket?.channel || ''}>
                 {getChannelIcon(ticket?.channel || null)}
@@ -417,7 +473,7 @@ export default function ZendeskChatPanel({
       <div ref={messagesRef} className="flex-1 overflow-y-auto p-4 space-y-3">
         {conversations.length === 0 && (
           <div className="flex items-center justify-center h-full">
-            <p className="text-sm text-slate-400">ยังไม่มีข้อความ</p>
+            <p className="text-sm text-slate-400">{t.noMessages}</p>
           </div>
         )}
         {conversations.map((conv) => {
@@ -439,9 +495,9 @@ export default function ZendeskChatPanel({
             <div key={conv.id} className={`flex flex-col ${isAgent ? 'items-end' : 'items-start'}`}>
               {/* Author name */}
               <span className={`text-[11px] font-medium mb-0.5 ${isAgent ? 'text-indigo-600 mr-1' : 'text-slate-600 ml-1'}`}>
-                {conv.author_name || (isAgent ? 'เจ้าหน้าที่' : 'ลูกค้า')}
+                {conv.author_name || (isAgent ? t.agent : t.customer)}
                 {isInternal && (
-                  <span className="ml-1 text-amber-600 font-normal">(Internal Note)</span>
+                  <span className="ml-1 text-amber-600 font-normal">({t.internalNote})</span>
                 )}
               </span>
 
@@ -458,7 +514,7 @@ export default function ZendeskChatPanel({
                 {isInternal && (
                   <div className="flex items-center gap-1 mb-1">
                     <Lock className="w-3 h-3 text-amber-500" />
-                    <span className="text-[10px] font-medium text-amber-600">Internal Note</span>
+                    <span className="text-[10px] font-medium text-amber-600">{t.internalNote}</span>
                   </div>
                 )}
 
@@ -511,7 +567,7 @@ export default function ZendeskChatPanel({
 
               {/* Timestamp */}
               <span className={`text-[10px] mt-0.5 ${isAgent ? 'text-indigo-400' : 'text-slate-400'}`}>
-                {formatTimestamp(conv.created_at_zd)}
+                {formatTimestamp(conv.created_at_zd, locale)}
               </span>
             </div>
           );
@@ -532,7 +588,7 @@ export default function ZendeskChatPanel({
             }`}
           >
             <Globe className="w-3 h-3" />
-            สาธารณะ
+            {t.public}
           </button>
           <button
             type="button"
@@ -544,7 +600,7 @@ export default function ZendeskChatPanel({
             }`}
           >
             <Lock className="w-3 h-3" />
-            บันทึกภายใน
+            {t.internal}
           </button>
         </div>
 
@@ -561,7 +617,7 @@ export default function ZendeskChatPanel({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             className="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 transition-colors flex-shrink-0"
-            title="แนบไฟล์"
+            title={t.attachFile}
           >
             <Paperclip className="w-4 h-4" />
           </button>
@@ -576,7 +632,7 @@ export default function ZendeskChatPanel({
                 sendReply();
               }
             }}
-            placeholder={isPublic ? 'พิมพ์ข้อความถึงลูกค้า... (Ctrl+Enter ส่ง)' : 'บันทึกภายใน... (Ctrl+Enter ส่ง)'}
+            placeholder={isPublic ? t.placeholder : t.placeholderInternal}
             rows={3}
             className="flex-1 min-h-[72px] max-h-[200px] px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-shadow resize-y"
           />
@@ -592,7 +648,7 @@ export default function ZendeskChatPanel({
             ) : (
               <Send className="w-4 h-4" />
             )}
-            ส่ง
+            {t.send}
           </button>
         </div>
       </div>

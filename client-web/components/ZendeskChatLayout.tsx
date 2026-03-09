@@ -23,7 +23,7 @@ interface Ticket {
 
 type TicketFilter = 'mine' | 'all' | 'waiting';
 
-export default function ZendeskChatLayout({ user, profile }: { user: any; profile: any }) {
+export default function ZendeskChatLayout({ user, profile, locale = 'th' }: { user: any; profile: any; locale?: 'ko' | 'th' }) {
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
   const [showChat, setShowChat] = useState(false);
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -127,6 +127,7 @@ export default function ZendeskChatLayout({ user, profile }: { user: any; profil
             filter={filter}
             onFilterChange={setFilter}
             loading={loading}
+            locale={locale}
           />
         </div>
 
@@ -142,11 +143,12 @@ export default function ZendeskChatLayout({ user, profile }: { user: any; profil
               onTicketUpdate={handleTicketUpdate}
               injectedReply={injectedReply}
               onInjectedReplyConsumed={() => setInjectedReply(null)}
+              locale={locale}
             />
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-3">
               <MessageSquare className="w-10 h-10 text-slate-300" />
-              <p className="text-sm">เลือกตั๋วเพื่อเริ่มแชท</p>
+              <p className="text-sm">{locale === 'ko' ? '티켓을 선택하세요' : 'เลือกตั๋วเพื่อเริ่มแชท'}</p>
             </div>
           )}
         </div>
@@ -157,6 +159,7 @@ export default function ZendeskChatLayout({ user, profile }: { user: any; profil
             ticketId={selectedTicketId}
             onUseReply={(text) => setInjectedReply(text)}
             user={user}
+            locale={locale}
           />
         </div>
       </div>

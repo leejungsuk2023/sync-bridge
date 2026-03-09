@@ -26,17 +26,61 @@ interface ZendeskTicketListProps {
   filter: TicketFilter;
   onFilterChange: (filter: TicketFilter) => void;
   loading: boolean;
+  locale?: 'ko' | 'th';
 }
+
+const TEXT = {
+  ko: {
+    search: '티켓 검색...',
+    mine: '내 티켓',
+    all: '전체',
+    waiting: '대기',
+    noTickets: '티켓이 없습니다',
+    loading: '로딩 중...',
+    customer: '고객',
+    noSubject: '(제목 없음)',
+    statusNew: '신규',
+    statusOpen: '열림',
+    statusPending: '대기 중',
+    statusHold: '보류',
+    statusSolved: '해결됨',
+    statusClosed: '종료',
+  },
+  th: {
+    search: 'ค้นหาตั๋ว...',
+    mine: 'ของฉัน',
+    all: 'ทั้งหมด',
+    waiting: 'รอ',
+    noTickets: 'ไม่พบตั๋ว',
+    loading: 'กำลังโหลด...',
+    customer: 'ลูกค้า',
+    noSubject: '(ไม่มีหัวข้อ)',
+    statusNew: 'ใหม่',
+    statusOpen: 'เปิด',
+    statusPending: 'รอตอบ',
+    statusHold: 'พักไว้',
+    statusSolved: 'แก้แล้ว',
+    statusClosed: 'ปิดแล้ว',
+  },
+} as const;
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
-function formatRelativeTime(dateStr: string): string {
+function formatRelativeTime(dateStr: string, locale: 'ko' | 'th' = 'th'): string {
   const date = new Date(dateStr);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const mins = Math.floor(diffMs / (1000 * 60));
   const hours = Math.floor(diffMs / (1000 * 60 * 60));
   const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (locale === 'ko') {
+    if (mins < 1) return '방금';
+    if (mins < 60) return `${mins}분 전`;
+    if (hours < 24) return `${hours}시간 전`;
+    if (days < 7) return `${days}일 전`;
+    return date.toLocaleDateString('ko-KR', { day: 'numeric', month: 'short' });
+  }
 
   if (mins < 1) return 'เมื่อกี้';
   if (mins < 60) return `${mins} นาที`;
@@ -62,20 +106,26 @@ function getChannelIcon(channel: string): string {
   }
 }
 
-const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
-  new:     { label: 'ใหม่',      bg: 'bg-purple-100', text: 'text-purple-700' },
-  open:    { label: 'เปิด',      bg: 'bg-emerald-100', text: 'text-emerald-700' },
-  pending: { label: 'รอตอบ',     bg: 'bg-amber-100',   text: 'text-amber-700' },
-  hold:    { label: 'พักไว้',    bg: 'bg-orange-100',  text: 'text-orange-700' },
-  solved:  { label: 'แก้แล้ว',   bg: 'bg-slate-100',   text: 'text-slate-500' },
-  closed:  { label: 'ปิดแล้ว',   bg: 'bg-slate-100',   text: 'text-slate-400' },
-};
+function getStatusConfig(locale: 'ko' | 'th'): Record<string, { label: string; bg: string; text: string }> {
+  const t = TEXT[locale];
+  return {
+    new:     { label: t.statusNew,     bg: 'bg-purple-100',  text: 'text-purple-700' },
+    open:    { label: t.statusOpen,    bg: 'bg-emerald-100', text: 'text-emerald-700' },
+    pending: { label: t.statusPending, bg: 'bg-amber-100',   text: 'text-amber-700' },
+    hold:    { label: t.statusHold,    bg: 'bg-orange-100',  text: 'text-orange-700' },
+    solved:  { label: t.statusSolved,  bg: 'bg-slate-100',   text: 'text-slate-500' },
+    closed:  { label: t.statusClosed,  bg: 'bg-slate-100',   text: 'text-slate-400' },
+  };
+}
 
-const FILTER_TABS: { key: TicketFilter; label: string }[] = [
-  { key: 'mine', label: 'ของฉัน' },
-  { key: 'all', label: 'ทั้งหมด' },
-  { key: 'waiting', label: 'รอ' },
-];
+function getFilterTabs(locale: 'ko' | 'th'): { key: TicketFilter; label: string }[] {
+  const t = TEXT[locale];
+  return [
+    { key: 'mine', label: t.mine },
+    { key: 'all', label: t.all },
+    { key: 'waiting', label: t.waiting },
+  ];
+}
 
 // ─── Component ──────────────────────────────────────────────────────
 
@@ -86,8 +136,12 @@ export default function ZendeskTicketList({
   filter,
   onFilterChange,
   loading,
+  locale = 'th',
 }: ZendeskTicketListProps) {
   const [search, setSearch] = useState('');
+  const t = TEXT[locale];
+  const STATUS_CONFIG = getStatusConfig(locale);
+  const FILTER_TABS = getFilterTabs(locale);
 
   const filteredTickets = useMemo(() => {
     if (!search.trim()) return tickets;
@@ -123,7 +177,7 @@ export default function ZendeskTicketList({
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="ค้นหาตั๋ว..."
+            placeholder={t.search}
             className="w-full h-9 pl-9 pr-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-shadow"
           />
         </div>
@@ -156,7 +210,7 @@ export default function ZendeskTicketList({
           </div>
         ) : sortedTickets.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-slate-400">
-            <p className="text-sm">ไม่พบตั๋ว</p>
+            <p className="text-sm">{t.noTickets}</p>
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
@@ -191,16 +245,16 @@ export default function ZendeskTicketList({
                       {/* Top row: customer name + time */}
                       <div className="flex items-center justify-between gap-2">
                         <span className={`text-sm truncate ${!ticket.is_read ? 'font-semibold text-slate-900' : 'font-medium text-slate-700'}`}>
-                          {ticket.requester_name || 'ลูกค้า'}
+                          {ticket.requester_name || t.customer}
                         </span>
                         <span className="text-[10px] text-slate-400 whitespace-nowrap flex-shrink-0">
-                          {lastActivity ? formatRelativeTime(lastActivity) : ''}
+                          {lastActivity ? formatRelativeTime(lastActivity, locale) : ''}
                         </span>
                       </div>
 
                       {/* Subject */}
                       <p className={`text-xs truncate mt-0.5 ${!ticket.is_read ? 'text-slate-700' : 'text-slate-500'}`}>
-                        {ticket.subject || '(ไม่มีหัวข้อ)'}
+                        {ticket.subject || t.noSubject}
                       </p>
 
                       {/* Bottom row: channel + status */}

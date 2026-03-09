@@ -22,9 +22,48 @@ interface AISuggestPanelProps {
   ticketId: number | null;
   onUseReply: (text: string) => void;
   user: any;
+  locale?: 'ko' | 'th';
 }
 
-export default function AISuggestPanel({ ticketId, onUseReply, user }: AISuggestPanelProps) {
+const AI_TEXT = {
+  ko: {
+    header: 'AI 추천 답변',
+    selectTicket: '티켓을 선택하면 AI 추천을 볼 수 있습니다',
+    suggestion: '추천',
+    useReply: '이 답변 사용',
+    edit: '수정',
+    save: '저장',
+    cancel: '취소',
+    retry: '다시 시도',
+    noSuggestions: '이 티켓에 대한 추천이 아직 없습니다',
+    errorMsg: 'AI 추천을 불러올 수 없습니다',
+    customerInfo: '고객 정보',
+    name: '이름:',
+    procedure: '관심 시술:',
+    channel: '채널:',
+    prevTickets: '이전 티켓:',
+  },
+  th: {
+    header: 'AI แนะนำคำตอบ',
+    selectTicket: 'เลือกตั๋วเพื่อดูคำแนะนำ',
+    suggestion: 'แนะนำ',
+    useReply: 'ใช้คำตอบนี้',
+    edit: 'แก้ไข',
+    save: 'บันทึก',
+    cancel: 'ยกเลิก',
+    retry: 'ลองใหม่',
+    noSuggestions: 'ยังไม่มีคำแนะนำสำหรับตั๋วนี้',
+    errorMsg: 'ไม่สามารถแนะนำคำตอบได้',
+    customerInfo: 'ข้อมูลลูกค้า',
+    name: 'ชื่อ:',
+    procedure: 'หัตถการ:',
+    channel: 'ช่องทาง:',
+    prevTickets: 'ตั๋วก่อนหน้า:',
+  },
+} as const;
+
+export default function AISuggestPanel({ ticketId, onUseReply, user, locale = 'th' }: AISuggestPanelProps) {
+  const at = AI_TEXT[locale];
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [suggestionId, setSuggestionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -65,7 +104,7 @@ export default function AISuggestPanel({ ticketId, onUseReply, user }: AISuggest
         setSuggestionId(data.suggestion_id || null);
       } catch (err) {
         console.error('[AISuggest] Failed to fetch suggestions:', err);
-        setError('ไม่สามารถแนะนำคำตอบได้');
+        setError(at.errorMsg);
       } finally {
         setLoading(false);
       }
@@ -215,7 +254,7 @@ export default function AISuggestPanel({ ticketId, onUseReply, user }: AISuggest
     return (
       <div className="h-full flex flex-col items-center justify-center text-slate-400 p-6">
         <div className="text-4xl mb-3">💬</div>
-        <p className="text-sm">เลือกตั๋วเพื่อดูคำแนะนำ</p>
+        <p className="text-sm">{at.selectTicket}</p>
       </div>
     );
   }
@@ -224,7 +263,7 @@ export default function AISuggestPanel({ ticketId, onUseReply, user }: AISuggest
     <div className="h-full flex flex-col overflow-y-auto">
       {/* Header */}
       <div className="shrink-0 px-4 py-3 border-b border-slate-200 bg-white">
-        <h3 className="text-sm font-semibold text-slate-900">🤖 AI แนะนำคำตอบ</h3>
+        <h3 className="text-sm font-semibold text-slate-900">🤖 {at.header}</h3>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -256,7 +295,7 @@ export default function AISuggestPanel({ ticketId, onUseReply, user }: AISuggest
               onClick={handleRetry}
               className="mt-2 text-sm text-red-500 hover:text-red-700 underline"
             >
-              ลองใหม่
+              {at.retry}
             </button>
           </div>
         )}
@@ -270,7 +309,7 @@ export default function AISuggestPanel({ ticketId, onUseReply, user }: AISuggest
             {/* Label */}
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-indigo-600">
-                แนะนำ {index + 1}
+                {at.suggestion} {index + 1}
               </span>
               <span className="text-[10px] text-slate-400">
                 {Math.round(suggestion.confidence * 100)}%
@@ -291,13 +330,13 @@ export default function AISuggestPanel({ ticketId, onUseReply, user }: AISuggest
                     onClick={() => saveEdit(index)}
                     className="flex-1 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
                   >
-                    บันทึก
+                    {at.save}
                   </button>
                   <button
                     onClick={cancelEdit}
                     className="px-3 py-1.5 text-xs font-medium text-slate-500 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
                   >
-                    ยกเลิก
+                    {at.cancel}
                   </button>
                 </div>
               </div>
@@ -331,13 +370,13 @@ export default function AISuggestPanel({ ticketId, onUseReply, user }: AISuggest
                   onClick={() => onUseReply(suggestion.reply_text)}
                   className="flex-1 py-2 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
                 >
-                  ใช้คำตอบนี้
+                  {at.useReply}
                 </button>
                 <button
                   onClick={() => startEdit(index, suggestion.reply_text)}
                   className="px-3 py-2 text-xs font-medium text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
                 >
-                  แก้ไข
+                  {at.edit}
                 </button>
               </div>
             )}
@@ -347,7 +386,7 @@ export default function AISuggestPanel({ ticketId, onUseReply, user }: AISuggest
         {/* No suggestions yet (not loading, no error, empty) */}
         {!loading && !error && suggestions.length === 0 && (
           <div className="bg-white border border-slate-200 rounded-xl p-6 text-center shadow-sm">
-            <p className="text-sm text-slate-400">ยังไม่มีคำแนะนำสำหรับตั๋วนี้</p>
+            <p className="text-sm text-slate-400">{at.noSuggestions}</p>
           </div>
         )}
 
@@ -358,29 +397,29 @@ export default function AISuggestPanel({ ticketId, onUseReply, user }: AISuggest
         {customerInfo && (
           <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-2 shadow-sm">
             <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              ข้อมูลลูกค้า
+              {at.customerInfo}
             </h4>
             <div className="grid grid-cols-2 gap-2 text-xs">
               {customerInfo.customer_name && (
                 <div>
-                  <span className="text-slate-400">ชื่อ:</span>
+                  <span className="text-slate-400">{at.name}</span>
                   <p className="text-slate-700 font-medium">{customerInfo.customer_name}</p>
                 </div>
               )}
               {customerInfo.interested_procedure && (
                 <div>
-                  <span className="text-slate-400">หัตถการ:</span>
+                  <span className="text-slate-400">{at.procedure}</span>
                   <p className="text-slate-700">{customerInfo.interested_procedure}</p>
                 </div>
               )}
               {customerInfo.channel && (
                 <div>
-                  <span className="text-slate-400">ช่องทาง:</span>
+                  <span className="text-slate-400">{at.channel}</span>
                   <p className="text-slate-700">{customerInfo.channel}</p>
                 </div>
               )}
               <div>
-                <span className="text-slate-400">ตั๋วก่อนหน้า:</span>
+                <span className="text-slate-400">{at.prevTickets}</span>
                 <p className="text-slate-700">{customerInfo.ticket_count}</p>
               </div>
             </div>

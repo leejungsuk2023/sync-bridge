@@ -133,13 +133,26 @@ export async function GET(req: NextRequest) {
           .filter((c: any) => requesterId && c.author_id === requesterId)
           .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
 
+        const latestAgentComment = missingComments
+          .filter((c: any) => !requesterId || c.author_id !== requesterId)
+          .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+
+        // Determine latest message time for sorting
+        const allSorted = [...missingComments].sort(
+          (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
         const ticketUpdate: Record<string, any> = {
           last_webhook_at: new Date().toISOString(),
+          last_message_at: allSorted[0]?.created_at || new Date().toISOString(),
         };
 
         if (latestCustomerComment) {
           ticketUpdate.last_customer_comment_at = latestCustomerComment.created_at;
           ticketUpdate.is_read = false;
+        }
+
+        if (latestAgentComment) {
+          ticketUpdate.last_agent_comment_at = latestAgentComment.created_at;
         }
 
         // Also append new comments to zendesk_tickets.comments JSONB

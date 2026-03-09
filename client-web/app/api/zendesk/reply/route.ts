@@ -95,8 +95,10 @@ export async function POST(req: NextRequest) {
     }
 
     // UPDATE zendesk_tickets
+    const now = new Date().toISOString();
     const ticketUpdate: Record<string, any> = {
-      last_agent_comment_at: new Date().toISOString(),
+      last_agent_comment_at: now,
+      last_message_at: now,
     };
     if (status) {
       ticketUpdate.status = status;

@@ -173,11 +173,14 @@ export async function POST(req: NextRequest) {
     // UPDATE zendesk_tickets
     const ticketUpdate: Record<string, any> = {
       last_webhook_at: new Date().toISOString(),
+      last_message_at: targetComment.created_at,
       is_read: false,
     };
 
     if (isCustomer) {
       ticketUpdate.last_customer_comment_at = targetComment.created_at;
+    } else {
+      ticketUpdate.last_agent_comment_at = targetComment.created_at;
     }
 
     // Also append to zendesk_tickets.comments JSONB (Phase 1 coexistence)

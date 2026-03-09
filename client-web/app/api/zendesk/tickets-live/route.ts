@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
 
     // Order and paginate
     query = query
-      .order('updated_at_zd', { ascending: false, nullsFirst: false });
+      .order('last_message_at', { ascending: false, nullsFirst: false });
 
     // For 'waiting' filter, we need to fetch all and filter in JS
     // because PostgREST doesn't support column-to-column comparison

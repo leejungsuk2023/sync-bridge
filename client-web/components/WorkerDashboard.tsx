@@ -14,6 +14,8 @@ type Tab = 'งาน' | 'แชท' | 'ติดตาม' | 'เครื่�
 export default function WorkerDashboard({ user, profile }: { user: any; profile: any }) {
   const [activeTab, setActiveTab] = useState<Tab>('งาน');
   const [avgRating, setAvgRating] = useState<number | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [hasUrgent, setHasUrgent] = useState(false);
 
   useEffect(() => {
     const loadRating = async () => {
@@ -30,6 +32,33 @@ export default function WorkerDashboard({ user, profile }: { user: any; profile:
     };
     loadRating();
   }, [user.id]);
+
+  useEffect(() => {
+    const fetchNotifCount = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+        const res = await fetch('/api/zendesk/followup-notifications', {
+          headers: { 'Authorization': `Bearer ${session.access_token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const notifs = data.notifications || [];
+          setUnreadCount(notifs.length);
+          setHasUrgent(notifs.some((n: any) =>
+            n.body?.toLowerCase().includes('urgency: high') ||
+            n.body?.toLowerCase().includes('urgency:high') ||
+            n.title?.includes('เร่งด่วน')
+          ));
+        }
+      } catch (err) {
+        console.error('[WorkerDashboard] Failed to fetch notifications:', err);
+      }
+    };
+    fetchNotifCount();
+    const interval = setInterval(fetchNotifCount, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -75,6 +104,23 @@ export default function WorkerDashboard({ user, profile }: { user: any; profile:
         </div>
       </div>
 
+      {/* Urgent Followup Banner */}
+      {hasUrgent && activeTab !== 'ติดตาม' && (
+        <div
+          onClick={() => setActiveTab('ติดตาม')}
+          className="mx-4 sm:mx-6 mt-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-red-100 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500" />
+            </span>
+            <span className="text-sm font-medium text-red-700">มีคำสั่งเร่งด่วนที่ต้องดำเนินการ</span>
+          </div>
+          <span className="text-xs text-red-500 font-medium">ดูเลย →</span>
+        </div>
+      )}
+
       {/* Desktop Tab Bar */}
       <div className="hidden md:flex px-4 sm:px-6 border-b border-slate-200 bg-white">
         {tabs.map((tab) => (
@@ -82,13 +128,18 @@ export default function WorkerDashboard({ user, profile }: { user: any; profile:
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={[
-              'px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px',
+              'relative px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px',
               activeTab === tab
                 ? 'text-blue-600 border-blue-600'
                 : 'text-slate-500 border-transparent hover:text-slate-700',
             ].join(' ')}
           >
             {tab}
+            {tab === 'ติดตาม' && unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold text-white bg-red-500 rounded-full min-w-[18px] leading-none">
+                {unreadCount}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -106,7 +157,7 @@ export default function WorkerDashboard({ user, profile }: { user: any; profile:
           <ChatLayout userId={user.id} clientId={profile.client_id} locale="th" assigneeId={user.id} />
         )}
         {activeTab === 'ติดตาม' && (
-          <WorkerFollowup userId={user.id} />
+          <WorkerFollowup userId={user.id} onNotificationsRead={() => { setUnreadCount(0); setHasUrgent(false); }} />
         )}
         {activeTab === 'เครื่องมือ' && (
           <TranslationHelper />
@@ -120,13 +171,18 @@ export default function WorkerDashboard({ user, profile }: { user: any; profile:
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={[
-              'flex-1 py-3 text-xs font-medium transition-colors',
+              'relative flex-1 py-3 text-xs font-medium transition-colors',
               activeTab === tab
                 ? 'text-blue-600'
                 : 'text-slate-500 hover:text-slate-700',
             ].join(' ')}
           >
             {tab}
+            {tab === 'ติดตาม' && unreadCount > 0 && (
+              <span className="absolute top-1 right-1/4 inline-flex items-center justify-center px-1 py-0.5 text-[9px] font-bold text-white bg-red-500 rounded-full min-w-[16px] leading-none">
+                {unreadCount}
+              </span>
+            )}
           </button>
         ))}
       </nav>

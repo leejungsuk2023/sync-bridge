@@ -190,7 +190,7 @@ function ActionTimeline({ ticketId }: { ticketId: number }) {
 
 // ─── Main Component ─────────────────────────────────────────────────
 
-export default function WorkerFollowup({ userId }: { userId: string }) {
+export default function WorkerFollowup({ userId, onNotificationsRead }: { userId: string; onNotificationsRead?: () => void }) {
   const [customers, setCustomers] = useState<FollowupCustomer[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<number | null>(null);
@@ -290,6 +290,7 @@ export default function WorkerFollowup({ userId }: { userId: string }) {
 
       if (res.ok) {
         setNotifications([]);
+        onNotificationsRead?.();
       }
     } catch (err) {
       console.error('[WorkerFollowup] Failed to mark notifications read:', err);

@@ -13,6 +13,7 @@ import TaskPresetManager from './TaskPresetManager';
 import UserManager from './UserManager';
 import WorkerDashboard from './WorkerDashboard';
 import HospitalDashboard from './HospitalDashboard';
+import GlossaryManager from './GlossaryManager';
 
 export default function Dashboard({ user }: { user: any }) {
   const [profile, setProfile] = useState<any>(null);
@@ -121,6 +122,9 @@ export default function Dashboard({ user }: { user: any }) {
         )}
         <TaskCalendar workers={workers} clientId={profile?.client_id} />
         <TimeReport workers={workers} />
+        {profile?.role === 'bbg_admin' && (
+          <GlossaryManager userId={user.id} />
+        )}
         {profile?.role === 'bbg_admin' && (
           <UserManager clients={clients} />
         )}

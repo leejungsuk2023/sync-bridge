@@ -94,6 +94,11 @@ export default function Dashboard({ user }: { user: any }) {
           <div className="flex items-center gap-2 sm:gap-4">
             <span className="text-sm text-slate-600 hidden sm:inline">{profile?.email || user.email}</span>
             {getRoleBadge(profile?.role || 'unknown')}
+            {(profile?.role === 'bbg_admin' || profile?.role === 'client') && (
+              <a href="/consultation" className="text-xs sm:text-sm text-indigo-600 hover:text-indigo-800 transition-colors font-medium">
+                상담
+              </a>
+            )}
             {profile?.role === 'bbg_admin' && (
               <a href="/admin/monitoring" className="text-xs sm:text-sm text-indigo-600 hover:text-indigo-800 transition-colors font-medium">
                 모니터링

@@ -353,7 +353,7 @@ export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { t
                     </a>
                   )
                 ) : (
-                  <p className="text-sm">{renderContent(displayText, isMine)}</p>
+                  <p className="text-sm whitespace-pre-wrap">{renderContent(displayText, isMine)}</p>
                 )}
               </div>
               <span className={`text-[10px] mt-1 ${isMine ? 'text-emerald-700' : 'text-slate-500'}`}>

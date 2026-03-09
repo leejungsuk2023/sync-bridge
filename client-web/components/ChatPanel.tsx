@@ -553,7 +553,7 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
                     </a>
                   )
                 ) : (
-                  <p className="text-sm">{renderContent(displayText, isMine)}</p>
+                  <p className="text-sm whitespace-pre-wrap">{renderContent(displayText, isMine)}</p>
                 )}
               </div>
               <span className={`text-[10px] mt-0.5 ${isMine ? 'text-indigo-400' : 'text-slate-400'}`}>

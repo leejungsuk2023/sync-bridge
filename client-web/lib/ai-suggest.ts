@@ -97,7 +97,7 @@ Summary: ${analysis.ai_summary || 'N/A'}`
     : 'No quick replies available.';
 
   const glossaryText = glossary.length > 0
-    ? glossary.map((g: any) => `${g.term_ko} → ${g.term_th}`).join('\n')
+    ? glossary.map((g: any) => `${g.korean} → ${g.thai}`).join('\n')
     : 'No glossary entries.';
 
   return `You are a Thai customer support specialist for BBG (Blue Bridge Global), a medical tourism company connecting Korean hospitals with international patients.
@@ -132,7 +132,7 @@ Respond ONLY with valid JSON (no markdown, no code fences):
     {
       "text": "The Thai reply text",
       "confidence": 0.0 to 1.0,
-      "reasoning": "Brief explanation of why this reply is appropriate"
+      "reasoning": "Brief explanation in Korean (한국어) of why this reply is appropriate"
     }
   ]
 }`;

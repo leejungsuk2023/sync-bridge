@@ -24,11 +24,16 @@ interface Ticket {
 type TicketFilter = 'mine' | 'all' | 'waiting';
 
 export default function ZendeskChatLayout({ user, profile, locale = 'th' }: { user: any; profile: any; locale?: 'ko' | 'th' }) {
+  // Admin/client see all tickets by default; workers see their own
+  const defaultFilter: TicketFilter = profile?.role === 'worker' ? 'mine' : 'all';
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
   const [showChat, setShowChat] = useState(false);
   const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [filter, setFilter] = useState<TicketFilter>('mine');
+  const [filter, setFilter] = useState<TicketFilter>(defaultFilter);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [injectedReply, setInjectedReply] = useState<string | null>(null);
   const selectedTicketIdRef = useRef(selectedTicketId);
   selectedTicketIdRef.current = selectedTicketId;
@@ -38,12 +43,13 @@ export default function ZendeskChatLayout({ user, profile, locale = 'th' }: { us
     return session;
   }, []);
 
-  const fetchTickets = useCallback(async () => {
+  const fetchTickets = useCallback(async (pageNum: number = 1) => {
     try {
       const session = await getSession();
       if (!session) return;
+      if (pageNum > 1) setLoadingMore(true);
 
-      const res = await fetch(`/api/zendesk/tickets-live?filter=${filter}`, {
+      const res = await fetch(`/api/zendesk/tickets-live?filter=${filter}&page=${pageNum}`, {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
 
@@ -53,11 +59,24 @@ export default function ZendeskChatLayout({ user, profile, locale = 'th' }: { us
       }
 
       const data = await res.json();
-      setTickets(data.tickets || []);
+      const newTickets = data.tickets || [];
+
+      if (pageNum === 1) {
+        setTickets(newTickets);
+      } else {
+        setTickets(prev => {
+          const existingIds = new Set(prev.map(t => t.ticket_id));
+          const unique = newTickets.filter((t: any) => !existingIds.has(t.ticket_id));
+          return [...prev, ...unique];
+        });
+      }
+      setPage(pageNum);
+      setHasMore(newTickets.length >= 20);
     } catch (err) {
       console.error('[ZendeskChat] Error fetching tickets:', err);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, [filter, getSession]);
 
@@ -94,6 +113,12 @@ export default function ZendeskChatLayout({ user, profile, locale = 'th' }: { us
     };
   }, [user.id]);
 
+  const handleLoadMore = useCallback(() => {
+    if (!loadingMore && hasMore) {
+      fetchTickets(page + 1);
+    }
+  }, [fetchTickets, page, loadingMore, hasMore]);
+
   const handleSelectTicket = (ticketId: number) => {
     setSelectedTicketId(ticketId);
     setShowChat(true);
@@ -128,6 +153,9 @@ export default function ZendeskChatLayout({ user, profile, locale = 'th' }: { us
             onFilterChange={setFilter}
             loading={loading}
             locale={locale}
+            hasMore={hasMore}
+            onLoadMore={handleLoadMore}
+            loadingMore={loadingMore}
           />
         </div>
 

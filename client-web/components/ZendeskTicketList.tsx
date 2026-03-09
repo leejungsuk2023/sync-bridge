@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { Search } from 'lucide-react';
 
 interface Ticket {
@@ -27,6 +27,9 @@ interface ZendeskTicketListProps {
   onFilterChange: (filter: TicketFilter) => void;
   loading: boolean;
   locale?: 'ko' | 'th';
+  hasMore?: boolean;
+  onLoadMore?: () => void;
+  loadingMore?: boolean;
 }
 
 const TEXT = {
@@ -45,6 +48,7 @@ const TEXT = {
     statusHold: '보류',
     statusSolved: '해결됨',
     statusClosed: '종료',
+    loadMore: '더 보기',
   },
   th: {
     search: 'ค้นหาตั๋ว...',
@@ -61,6 +65,7 @@ const TEXT = {
     statusHold: 'พักไว้',
     statusSolved: 'แก้แล้ว',
     statusClosed: 'ปิดแล้ว',
+    loadMore: 'โหลดเพิ่ม',
   },
 } as const;
 
@@ -137,6 +142,9 @@ export default function ZendeskTicketList({
   onFilterChange,
   loading,
   locale = 'th',
+  hasMore = false,
+  onLoadMore,
+  loadingMore = false,
 }: ZendeskTicketListProps) {
   const [search, setSearch] = useState('');
   const t = TEXT[locale];
@@ -166,6 +174,22 @@ export default function ZendeskTicketList({
       return new Date(dateB).getTime() - new Date(dateA).getTime();
     });
   }, [filteredTickets]);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !hasMore || !onLoadMore) return;
+
+    const handleScroll = () => {
+      if (loadingMore) return;
+      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+      if (nearBottom) onLoadMore();
+    };
+
+    el.addEventListener('scroll', handleScroll, { passive: true });
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, [hasMore, onLoadMore, loadingMore]);
 
   return (
     <div className="h-full flex flex-col bg-white border-r border-slate-200">
@@ -203,7 +227,7 @@ export default function ZendeskTicketList({
       </div>
 
       {/* Ticket List */}
-      <div className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <span className="w-6 h-6 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
@@ -282,6 +306,19 @@ export default function ZendeskTicketList({
               );
             })}
           </div>
+        )}
+        {hasMore && !loading && (
+          <button
+            type="button"
+            onClick={onLoadMore}
+            disabled={loadingMore}
+            className="w-full py-3 text-xs text-indigo-600 hover:bg-indigo-50 transition-colors disabled:text-slate-400 flex items-center justify-center gap-2"
+          >
+            {loadingMore ? (
+              <span className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+            ) : null}
+            {loadingMore ? t.loading : t.loadMore}
+          </button>
         )}
       </div>
     </div>

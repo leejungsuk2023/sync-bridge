@@ -36,7 +36,7 @@ async function verifyUser(req: NextRequest): Promise<{ role: string; userId: str
     .select('role')
     .eq('id', user.id)
     .single();
-  if (!profile || (profile.role !== 'bbg_admin' && profile.role !== 'worker')) return null;
+  if (!profile || !['bbg_admin', 'worker', 'client'].includes(profile.role)) return null;
   return { role: profile.role, userId: user.id, email: user.email || '' };
 }
 
@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
 
     // Order and paginate
     query = query
-      .order('last_customer_comment_at', { ascending: false, nullsFirst: false });
+      .order('updated_at_zd', { ascending: false, nullsFirst: false });
 
     // For 'waiting' filter, we need to fetch all and filter in JS
     // because PostgREST doesn't support column-to-column comparison

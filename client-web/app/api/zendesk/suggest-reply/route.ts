@@ -38,7 +38,7 @@ async function verifyUser(req: NextRequest): Promise<{ role: string; userId: str
     .select('role')
     .eq('id', user.id)
     .single();
-  if (!profile || (profile.role !== 'bbg_admin' && profile.role !== 'worker')) return null;
+  if (!profile || !['bbg_admin', 'worker', 'client'].includes(profile.role)) return null;
   return { role: profile.role, userId: user.id };
 }
 
@@ -47,11 +47,13 @@ export async function POST(req: NextRequest) {
   const internalSecret = req.headers.get('x-internal-secret');
   const isInternal = internalSecret === process.env.CRON_SECRET;
 
+  let agentUserId: string | undefined;
   if (!isInternal) {
     const authUser = await verifyUser(req);
     if (!authUser) {
       return withCors(NextResponse.json({ error: 'Unauthorized' }, { status: 403 }));
     }
+    agentUserId = authUser.userId;
   }
 
   const body = await req.json().catch(() => ({}));
@@ -63,7 +65,7 @@ export async function POST(req: NextRequest) {
 
   try {
     console.log(`[SuggestReply] Generating suggestions for ticket ${ticket_id}${trigger_comment_id ? `, trigger comment ${trigger_comment_id}` : ''}`);
-    const result = await generateSuggestions(ticket_id, trigger_comment_id);
+    const result = await generateSuggestions(ticket_id, trigger_comment_id, agentUserId);
     console.log(`[SuggestReply] Generated ${result.suggestions?.length || 0} suggestions for ticket ${ticket_id}`);
     return withCors(NextResponse.json(result));
   } catch (error: any) {

@@ -6,7 +6,8 @@ import QuickReplyChips from './QuickReplyChips';
 
 interface Suggestion {
   id: string;
-  reply_text: string;
+  text?: string;
+  reply_text?: string;
   confidence: number;
   reasoning: string;
 }
@@ -122,9 +123,10 @@ export default function AISuggestPanel({ ticketId, onUseReply, user, locale = 't
 
     const fetchCustomerInfo = async () => {
       try {
+        // Fetch analysis data (no channel column here)
         const { data, error: fetchError } = await supabase
           .from('zendesk_analyses')
-          .select('customer_name, interested_procedure, channel')
+          .select('customer_name, interested_procedure')
           .eq('ticket_id', ticketId)
           .single();
 
@@ -132,6 +134,13 @@ export default function AISuggestPanel({ ticketId, onUseReply, user, locale = 't
           console.error('[AISuggest] Failed to fetch customer info:', fetchError.message);
           return;
         }
+
+        // Fetch channel from zendesk_tickets
+        const { data: ticketData } = await supabase
+          .from('zendesk_tickets')
+          .select('channel')
+          .eq('ticket_id', ticketId)
+          .single();
 
         // Count previous tickets by same customer name
         let ticketCount = 1;
@@ -146,7 +155,7 @@ export default function AISuggestPanel({ ticketId, onUseReply, user, locale = 't
         setCustomerInfo({
           customer_name: data?.customer_name || null,
           interested_procedure: data?.interested_procedure || null,
-          channel: data?.channel || null,
+          channel: ticketData?.channel || null,
           ticket_count: ticketCount,
         });
       } catch (err) {
@@ -226,7 +235,7 @@ export default function AISuggestPanel({ ticketId, onUseReply, user, locale = 't
 
   const saveEdit = (index: number) => {
     const updated = [...suggestions];
-    updated[index] = { ...updated[index], reply_text: editText };
+    updated[index] = { ...updated[index], text: editText };
     setSuggestions(updated);
     setEditingIndex(null);
     setEditText('');
@@ -342,7 +351,7 @@ export default function AISuggestPanel({ ticketId, onUseReply, user, locale = 't
               </div>
             ) : (
               <p className="text-sm text-slate-700 leading-relaxed">
-                {suggestion.reply_text}
+                {suggestion.text || suggestion.reply_text || ''}
               </p>
             )}
 
@@ -367,13 +376,13 @@ export default function AISuggestPanel({ ticketId, onUseReply, user, locale = 't
             {editingIndex !== index && (
               <div className="flex gap-2">
                 <button
-                  onClick={() => onUseReply(suggestion.reply_text)}
+                  onClick={() => onUseReply(suggestion.text || suggestion.reply_text || '')}
                   className="flex-1 py-2 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
                 >
                   {at.useReply}
                 </button>
                 <button
-                  onClick={() => startEdit(index, suggestion.reply_text)}
+                  onClick={() => startEdit(index, suggestion.text || suggestion.reply_text || '')}
                   className="px-3 py-2 text-xs font-medium text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
                 >
                   {at.edit}

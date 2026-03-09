@@ -78,15 +78,20 @@ export async function GET(req: NextRequest) {
       query = query.or(`assigned_agent_user_id.eq.${authUser.userId},assignee_email.eq.${agentEmail}`);
     } else if (filter === 'waiting') {
       // Tickets where customer replied more recently than agent
-      query = query
-        .not('last_customer_comment_at', 'is', null)
-        .or('last_agent_comment_at.is.null,last_customer_comment_at.gt.last_agent_comment_at');
+      // PostgREST doesn't support column-to-column comparison in .or(),
+      // so we use raw filter with a computed approach:
+      // Fetch all active tickets and filter in JS after query
     }
 
     // Order and paginate
     query = query
-      .order('last_customer_comment_at', { ascending: false, nullsFirst: false })
-      .range(offset, offset + perPage - 1);
+      .order('last_customer_comment_at', { ascending: false, nullsFirst: false });
+
+    // For 'waiting' filter, we need to fetch all and filter in JS
+    // because PostgREST doesn't support column-to-column comparison
+    if (filter !== 'waiting') {
+      query = query.range(offset, offset + perPage - 1);
+    }
 
     const { data: tickets, error, count } = await query;
 
@@ -95,12 +100,28 @@ export async function GET(req: NextRequest) {
       return withCors(NextResponse.json({ error: error.message }, { status: 500 }));
     }
 
+    // Apply waiting filter in JS (column-to-column comparison)
+    let filteredTickets = tickets || [];
+    if (filter === 'waiting') {
+      filteredTickets = filteredTickets.filter(t => {
+        if (!t.last_customer_comment_at) return false;
+        if (!t.last_agent_comment_at) return true; // agent never replied
+        return new Date(t.last_customer_comment_at) > new Date(t.last_agent_comment_at);
+      });
+    }
+
+    const totalFiltered = filter === 'waiting' ? filteredTickets.length : (count || 0);
+
+    // Paginate waiting results in JS
+    if (filter === 'waiting') {
+      filteredTickets = filteredTickets.slice(offset, offset + perPage);
+    }
+
     // Get latest customer message preview for each ticket
-    const ticketIds = (tickets || []).map(t => t.ticket_id);
+    const ticketIds = filteredTickets.map(t => t.ticket_id);
     let previewMap = new Map<number, string>();
 
     if (ticketIds.length > 0) {
-      // Fetch latest customer comment per ticket for preview
       const { data: latestComments } = await supabaseAdmin
         .from('zendesk_conversations')
         .select('ticket_id, body, created_at_zd')
@@ -109,7 +130,6 @@ export async function GET(req: NextRequest) {
         .order('created_at_zd', { ascending: false });
 
       if (latestComments) {
-        // Group by ticket_id and take first (latest) per ticket
         for (const comment of latestComments) {
           if (!previewMap.has(comment.ticket_id)) {
             const preview = (comment.body || '').substring(0, 100);
@@ -120,7 +140,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Enrich tickets with preview
-    const enrichedTickets = (tickets || []).map(t => ({
+    const enrichedTickets = filteredTickets.map(t => ({
       ...t,
       latest_customer_preview: previewMap.get(t.ticket_id) || null,
     }));
@@ -129,7 +149,7 @@ export async function GET(req: NextRequest) {
 
     return withCors(NextResponse.json({
       tickets: enrichedTickets,
-      total: count || 0,
+      total: totalFiltered,
       page,
     }));
   } catch (err: any) {

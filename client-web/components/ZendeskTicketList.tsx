@@ -1,0 +1,235 @@
+'use client';
+
+import { useState, useMemo } from 'react';
+import { Search } from 'lucide-react';
+
+interface Ticket {
+  ticket_id: number;
+  subject: string;
+  status: string;
+  requester_name: string;
+  channel: string;
+  last_customer_comment_at: string | null;
+  last_agent_comment_at: string | null;
+  is_read: boolean;
+  assignee_email: string | null;
+  tags: string[];
+  preview: string | null;
+}
+
+type TicketFilter = 'mine' | 'all' | 'waiting';
+
+interface ZendeskTicketListProps {
+  tickets: Ticket[];
+  selectedTicketId: number | null;
+  onSelect: (ticketId: number) => void;
+  filter: TicketFilter;
+  onFilterChange: (filter: TicketFilter) => void;
+  loading: boolean;
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────
+
+function formatRelativeTime(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const mins = Math.floor(diffMs / (1000 * 60));
+  const hours = Math.floor(diffMs / (1000 * 60 * 60));
+  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (mins < 1) return 'เมื่อกี้';
+  if (mins < 60) return `${mins} นาที`;
+  if (hours < 24) return `${hours} ชม.`;
+  if (days < 7) return `${days} วัน`;
+  return date.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+}
+
+function getChannelIcon(channel: string): string {
+  switch (channel?.toLowerCase()) {
+    case 'facebook':
+    case 'facebook_messenger':
+      return '📱';
+    case 'line':
+      return '💬';
+    case 'email':
+      return '✉️';
+    case 'web':
+    case 'web_widget':
+      return '🌐';
+    default:
+      return '💬';
+  }
+}
+
+const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
+  new:     { label: 'ใหม่',      bg: 'bg-purple-100', text: 'text-purple-700' },
+  open:    { label: 'เปิด',      bg: 'bg-emerald-100', text: 'text-emerald-700' },
+  pending: { label: 'รอตอบ',     bg: 'bg-amber-100',   text: 'text-amber-700' },
+  hold:    { label: 'พักไว้',    bg: 'bg-orange-100',  text: 'text-orange-700' },
+  solved:  { label: 'แก้แล้ว',   bg: 'bg-slate-100',   text: 'text-slate-500' },
+  closed:  { label: 'ปิดแล้ว',   bg: 'bg-slate-100',   text: 'text-slate-400' },
+};
+
+const FILTER_TABS: { key: TicketFilter; label: string }[] = [
+  { key: 'mine', label: 'ของฉัน' },
+  { key: 'all', label: 'ทั้งหมด' },
+  { key: 'waiting', label: 'รอ' },
+];
+
+// ─── Component ──────────────────────────────────────────────────────
+
+export default function ZendeskTicketList({
+  tickets,
+  selectedTicketId,
+  onSelect,
+  filter,
+  onFilterChange,
+  loading,
+}: ZendeskTicketListProps) {
+  const [search, setSearch] = useState('');
+
+  const filteredTickets = useMemo(() => {
+    if (!search.trim()) return tickets;
+    const q = search.toLowerCase();
+    return tickets.filter(
+      (t) =>
+        t.subject?.toLowerCase().includes(q) ||
+        t.requester_name?.toLowerCase().includes(q) ||
+        String(t.ticket_id).includes(q)
+    );
+  }, [tickets, search]);
+
+  // Sort: unread first, then by last customer comment
+  const sortedTickets = useMemo(() => {
+    return [...filteredTickets].sort((a, b) => {
+      // Unread first
+      if (!a.is_read && b.is_read) return -1;
+      if (a.is_read && !b.is_read) return 1;
+      // Then by most recent activity
+      const dateA = a.last_customer_comment_at || a.last_agent_comment_at || '';
+      const dateB = b.last_customer_comment_at || b.last_agent_comment_at || '';
+      return new Date(dateB).getTime() - new Date(dateA).getTime();
+    });
+  }, [filteredTickets]);
+
+  return (
+    <div className="h-full flex flex-col bg-white border-r border-slate-200">
+      {/* Search */}
+      <div className="p-3 border-b border-slate-100">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="ค้นหาตั๋ว..."
+            className="w-full h-9 pl-9 pr-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-shadow"
+          />
+        </div>
+      </div>
+
+      {/* Filter Tabs */}
+      <div className="flex border-b border-slate-200">
+        {FILTER_TABS.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => onFilterChange(tab.key)}
+            className={[
+              'flex-1 py-2 text-xs font-medium transition-colors border-b-2 -mb-px',
+              filter === tab.key
+                ? 'text-indigo-600 border-indigo-600'
+                : 'text-slate-500 border-transparent hover:text-slate-700',
+            ].join(' ')}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Ticket List */}
+      <div className="flex-1 overflow-y-auto">
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <span className="w-6 h-6 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : sortedTickets.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+            <p className="text-sm">ไม่พบตั๋ว</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {sortedTickets.map((ticket) => {
+              const isSelected = ticket.ticket_id === selectedTicketId;
+              const statusConf = STATUS_CONFIG[ticket.status] || STATUS_CONFIG.open;
+              const lastActivity = ticket.last_customer_comment_at || ticket.last_agent_comment_at;
+
+              return (
+                <button
+                  key={ticket.ticket_id}
+                  type="button"
+                  onClick={() => onSelect(ticket.ticket_id)}
+                  className={[
+                    'w-full text-left px-3 py-3 transition-colors relative',
+                    isSelected
+                      ? 'bg-indigo-50 border-l-2 border-indigo-500'
+                      : 'hover:bg-slate-50 border-l-2 border-transparent',
+                  ].join(' ')}
+                >
+                  <div className="flex items-start gap-2">
+                    {/* Unread indicator */}
+                    <div className="flex-shrink-0 mt-1.5">
+                      {!ticket.is_read ? (
+                        <div className="w-2 h-2 rounded-full bg-blue-500" />
+                      ) : (
+                        <div className="w-2 h-2" />
+                      )}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      {/* Top row: customer name + time */}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`text-sm truncate ${!ticket.is_read ? 'font-semibold text-slate-900' : 'font-medium text-slate-700'}`}>
+                          {ticket.requester_name || 'ลูกค้า'}
+                        </span>
+                        <span className="text-[10px] text-slate-400 whitespace-nowrap flex-shrink-0">
+                          {lastActivity ? formatRelativeTime(lastActivity) : ''}
+                        </span>
+                      </div>
+
+                      {/* Subject */}
+                      <p className={`text-xs truncate mt-0.5 ${!ticket.is_read ? 'text-slate-700' : 'text-slate-500'}`}>
+                        {ticket.subject || '(ไม่มีหัวข้อ)'}
+                      </p>
+
+                      {/* Bottom row: channel + status */}
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className="text-xs" title={ticket.channel}>
+                          {getChannelIcon(ticket.channel)}
+                        </span>
+                        <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-medium rounded-full ${statusConf.bg} ${statusConf.text}`}>
+                          {statusConf.label}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          #{ticket.ticket_id}
+                        </span>
+                      </div>
+
+                      {/* Preview */}
+                      {ticket.preview && (
+                        <p className="text-[11px] text-slate-400 truncate mt-1">
+                          {ticket.preview}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

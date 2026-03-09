@@ -8,8 +8,9 @@ import TaskPropose from './TaskPropose';
 import ChatLayout from './ChatLayout';
 import TranslationHelper from './TranslationHelper';
 import WorkerFollowup from './WorkerFollowup';
+import ZendeskChatLayout from './ZendeskChatLayout';
 
-type Tab = 'งาน' | 'แชท' | 'ติดตาม' | 'เครื่องมือ';
+type Tab = 'งาน' | 'แชท' | 'ให้คำปรึกษา' | 'ติดตาม' | 'เครื่องมือ';
 
 export default function WorkerDashboard({ user, profile }: { user: any; profile: any }) {
   const [activeTab, setActiveTab] = useState<Tab>('งาน');
@@ -64,7 +65,18 @@ export default function WorkerDashboard({ user, profile }: { user: any; profile:
     await supabase.auth.signOut();
   };
 
-  const tabs: Tab[] = ['งาน', 'แชท', 'ติดตาม', 'เครื่องมือ'];
+  const [profileState, setProfileState] = useState(profile);
+
+  const refreshProfile = async () => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+    if (data) setProfileState(data);
+  };
+
+  const tabs: Tab[] = ['งาน', 'แชท', 'ให้คำปรึกษา', 'ติดตาม', 'เครื่องมือ'];
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -155,6 +167,9 @@ export default function WorkerDashboard({ user, profile }: { user: any; profile:
         )}
         {activeTab === 'แชท' && (
           <ChatLayout userId={user.id} clientId={profile.client_id} locale="th" assigneeId={user.id} />
+        )}
+        {activeTab === 'ให้คำปรึกษา' && (
+          <ZendeskChatLayout user={user} profile={profileState} />
         )}
         {activeTab === 'ติดตาม' && (
           <WorkerFollowup userId={user.id} onNotificationsRead={() => { setUnreadCount(0); setHasUrgent(false); }} />

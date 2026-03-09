@@ -38,7 +38,7 @@ export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { t
   const [annotatingImage, setAnnotatingImage] = useState<{ url: string; name: string } | null>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const retryingIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -111,7 +111,7 @@ export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { t
   }, [messages]);
 
   // @멘션
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     setInput(value);
     const cursor = e.target.selectionStart || value.length;
@@ -412,7 +412,7 @@ export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { t
               ))}
             </div>
           )}
-          <input
+          <textarea
             ref={inputRef}
             value={input}
             onChange={handleInputChange}
@@ -422,7 +422,9 @@ export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { t
             }}
             onBlur={() => setTimeout(() => setShowMentions(false), 200)}
             placeholder={L.inputPlaceholder}
-            className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-shadow"
+            rows={1}
+            className="w-full min-h-[40px] max-h-32 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-shadow resize-none"
+            onInput={(e) => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 128) + 'px'; }}
           />
         </div>
         <button

@@ -180,11 +180,13 @@ CREATE POLICY "chat_files_public_read" ON storage.objects FOR SELECT TO anon USI
 | `NEXT_PUBLIC_SUPABASE_URL` | Y | Supabase 프로젝트 URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Y | Supabase anon key |
 | `SUPABASE_SERVICE_ROLE_KEY` | Y | 서버사이드 API (tasks, users) |
-| `GEMINI_API_KEY` | Y | 번역 + AI 어시스트 + 팔로업 AI 체크 |
-| `CRON_SECRET` | Y | Vercel Cron 인증 (zendesk/cron + followup-check 보호) |
+| `GEMINI_API_KEY` | Y | 번역 + AI 어시스트 + 팔로업 AI 체크 + AI 답변 추천 |
+| `CRON_SECRET` | Y | Vercel Cron 인증 (zendesk/cron + followup-check + followup-summary + poll 보호) |
 | `ZENDESK_SUBDOMAIN` | Zendesk 기능 | Zendesk 서브도메인 |
-| `ZENDESK_EMAIL` | Zendesk 기능 | Zendesk API 인증 이메일 |
-| `ZENDESK_API_TOKEN` | Zendesk 기능 | Zendesk API 토큰 |
+| `ZENDESK_EMAIL` | Zendesk 기능 | Zendesk API 인증 이메일 (Admin 계정) |
+| `ZENDESK_API_TOKEN` | Zendesk 기능 | Zendesk API 토큰 (Admin, Fallback용) |
+| `ZENDESK_WEBHOOK_SECRET` | Zendesk 채팅 | Webhook HMAC-SHA256 서명 검증 시크릿 |
+| `ZENDESK_TOKEN_ENCRYPTION_KEY` | Zendesk 채팅 | 상담원 개인 토큰 AES-256-GCM 암호화 키 (64자 hex = 32 bytes) |
 
 ---
 
@@ -304,6 +306,75 @@ Access-Control-Allow-Headers: Content-Type, Authorization
 
 ---
 
+---
+
+## 10. Zendesk 채팅 상담 UI 디버깅
+
+### 티켓 목록이 표시되지 않는 경우
+
+| 확인 항목 | 방법 |
+|-----------|------|
+| `zendesk_chat_integration.sql` 실행 여부 | Supabase → Table Editor → `zendesk_conversations`, `zendesk_agent_tokens` 테이블 존재 확인 |
+| `zendesk_conversations_ko.sql` 실행 여부 | `zendesk_conversations` 테이블에 `body_ko` 컬럼 존재 확인 |
+| `zendesk_tickets` 신규 컬럼 | `last_customer_comment_at`, `is_read`, `last_message_at` 컬럼 존재 확인 |
+| `ZENDESK_*` 환경 변수 | Vercel Dashboard → Environment Variables |
+
+**콘솔 로그:**
+
+```
+[TicketsLive] Returned N tickets ...          → 정상
+[AutoSync] Phase 1: upserted N tickets ...    → 자동 sync 성공
+[AutoSync] Error: ...                         → Zendesk API 호출 실패
+```
+
+### 대화 메시지가 로드되지 않는 경우
+
+```
+[Conversations] Live-synced N new comments for ticket #...   → live-sync 성공
+[Conversations] Error fetching conversations: ...            → DB 조회 실패
+```
+
+zendesk_conversations 테이블에 데이터가 없으면 먼저 `/api/zendesk/migrate-conversations` (POST)를 실행하여 기존 zendesk_tickets.comments JSONB를 마이그레이션해야 합니다.
+
+### 답변 전송 실패
+
+| 확인 항목 | 방법 |
+|-----------|------|
+| 상담원 토큰 설정 여부 | ZendeskSetup 화면에서 Zendesk 이메일+토큰 등록 확인 |
+| `ZENDESK_TOKEN_ENCRYPTION_KEY` 설정 | Vercel 환경변수 확인 (64자 hex 필수) |
+| Fallback 동작 | 개인 토큰 없으면 Admin 토큰(`ZENDESK_EMAIL`/`ZENDESK_API_TOKEN`)으로 자동 Fallback |
+
+**콘솔 로그:**
+
+```
+[Reply] Sending reply to ticket #N (public: true, user: ...)   → 전송 시도
+[Reply] Reply sent successfully to ticket #N, comment_id: ...  → 성공
+[Reply] Error: ...                                             → 실패
+```
+
+### Webhook이 수신되지 않는 경우 (Fallback: 프론트엔드 폴링)
+
+Webhook 미작동 시 프론트엔드에서 주기적으로 conversations API를 호출하여 신규 메시지를 감지합니다.
+
+| 확인 항목 | 방법 |
+|-----------|------|
+| `ZENDESK_WEBHOOK_SECRET` 설정 | Vercel 환경변수 확인 |
+| Webhook URL | Zendesk Trigger → `https://your-domain.vercel.app/api/zendesk/webhook` |
+| HMAC 검증 실패 | Vercel Functions 로그에서 `[Webhook] Signature mismatch` 확인 |
+| Fallback polling | `vercel.json`에 `/api/zendesk/poll` 일 4회 Cron 등록 여부 확인 |
+
+### AI 답변 추천이 표시되지 않는 경우
+
+```
+[SuggestReply] Generating suggestions for ticket N ...   → 생성 시도
+[SuggestReply] Generated N suggestions for ticket N      → 성공 (N >= 2 이어야 정상)
+[SuggestReply] Error: ...                                → Gemini API 실패
+```
+
+`GEMINI_API_KEY` 설정 및 `ai_reply_suggestions` 테이블 존재 여부 확인.
+
+---
+
 ## 7. 공통 디버깅 패턴
 
 ### 콘솔 로그 프리픽스
@@ -319,6 +390,14 @@ Access-Control-Allow-Headers: Content-Type, Authorization
 | `[WorkerDashboard]` | WorkerDashboard.tsx — 알림 폴링 에러 |
 | `[SalesPerformance]` | SalesPerformance.tsx — 팔로업 고객 조회/상태변경/Push 에러 |
 | `[followup-customers]` | followup-customers/route.ts — 태국어 번역 백필, PATCH 번역 에러 |
+| `[TicketsLive]` | tickets-live/route.ts — 티켓 목록 조회 + 자동 증분 sync |
+| `[AutoSync]` | tickets-live/route.ts 내부 — 2단계 자동 sync (Phase 1: 메타데이터, Phase 2: 댓글) |
+| `[Conversations]` | conversations/route.ts — 대화 조회 + live-sync + 번역 캐시 |
+| `[Reply]` | reply/route.ts — 답변 전송 |
+| `[TicketUpdate]` | ticket-update/route.ts — 티켓 상태/태그 업데이트 |
+| `[SuggestReply]` | suggest-reply/route.ts — AI 답변 추천 생성 |
+| `[Webhook]` | webhook/route.ts — Webhook 수신 + HMAC 검증 |
+| `[Poll]` | poll/route.ts — Fallback polling |
 
 ### Supabase Dashboard 활용
 

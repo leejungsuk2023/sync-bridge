@@ -30,7 +30,7 @@ export async function buildSuggestionContext(
   // 1. Recent 10 conversations for this ticket
   const { data: conversations } = await supabaseAdmin
     .from('zendesk_conversations')
-    .select('*')
+    .select('author_type, body, created_at')
     .eq('ticket_id', ticketId)
     .order('created_at', { ascending: false })
     .limit(10);
@@ -81,7 +81,10 @@ function buildPrompt(context: SuggestionContext): string {
   const { conversations, analysis, quickReplies, glossary, politeParticle } = context;
 
   const conversationText = conversations
-    .map((c: any) => `[${c.direction === 'inbound' ? 'Customer' : 'Agent'}] ${c.body}`)
+    .map((c: any) => {
+      const body = (c.body || '').slice(0, 500); // Truncate long messages to avoid token limits
+      return `[${c.author_type === 'customer' ? 'Customer' : 'Agent'}] ${body}`;
+    })
     .join('\n');
 
   const customerInfo = analysis
@@ -89,7 +92,7 @@ function buildPrompt(context: SuggestionContext): string {
 Phone: ${analysis.customer_phone || 'N/A'}
 Interested procedure: ${analysis.interested_procedure || 'N/A'}
 Followup reason: ${analysis.followup_reason || 'N/A'}
-Summary: ${analysis.ai_summary || 'N/A'}`
+Summary: ${analysis.summary || 'N/A'}`
     : 'No customer analysis available.';
 
   const quickReplyText = quickReplies.length > 0
@@ -143,7 +146,7 @@ export async function generateSuggestions(
   ticketId: number,
   triggerCommentId?: number,
   agentUserId?: string
-): Promise<{ suggestions: Suggestion[]; suggestionId: string }> {
+): Promise<{ suggestions: Suggestion[]; suggestion_id: string }> {
   const context = await buildSuggestionContext(ticketId, agentUserId);
 
   const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
@@ -159,10 +162,11 @@ export async function generateSuggestions(
   const responseText = result.response.text();
   console.log(`[AISuggest] Gemini responded in ${responseTimeMs}ms for ticket #${ticketId}`);
 
-  // Parse JSON response
+  // Parse JSON response — strip markdown code fences if present
   let suggestions: Suggestion[] = [];
   try {
-    const parsed = JSON.parse(responseText);
+    const cleaned = responseText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+    const parsed = JSON.parse(cleaned);
     suggestions = (parsed.suggestions || []).map((s: any) => ({
       text: s.text || '',
       confidence: typeof s.confidence === 'number' ? s.confidence : 0.5,
@@ -184,7 +188,7 @@ export async function generateSuggestions(
     .insert({
       ticket_id: ticketId,
       trigger_comment_id: triggerCommentId || null,
-      suggestions: JSON.stringify(suggestions),
+      suggestions: suggestions,
       model_version: 'gemini-2.5-flash',
       response_time_ms: responseTimeMs,
     })
@@ -195,8 +199,8 @@ export async function generateSuggestions(
     console.error('[AISuggest] Failed to save suggestions:', saveErr);
   }
 
-  const suggestionId = saved?.id || '';
-  console.log(`[AISuggest] Saved ${suggestions.length} suggestions for ticket #${ticketId} (id: ${suggestionId})`);
+  const suggestion_id = saved?.id || '';
+  console.log(`[AISuggest] Saved ${suggestions.length} suggestions for ticket #${ticketId} (id: ${suggestion_id})`);
 
-  return { suggestions, suggestionId };
+  return { suggestions, suggestion_id };
 }

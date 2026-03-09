@@ -184,7 +184,11 @@ export default function AISuggestPanel({ ticketId, onUseReply, user, locale = 't
           console.log('[AISuggest] Realtime suggestion received:', payload.new);
           const newRow = payload.new as any;
           if (newRow.suggestions) {
-            setSuggestions(newRow.suggestions);
+            // Handle both JSON object and stringified JSON from DB
+            const parsed = typeof newRow.suggestions === 'string'
+              ? JSON.parse(newRow.suggestions)
+              : newRow.suggestions;
+            setSuggestions(parsed);
             setSuggestionId(newRow.id);
             setLoading(false);
             setError(null);

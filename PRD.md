@@ -90,7 +90,25 @@
 **16개 병원 파트너 계정 (prefix@hospital.com / 비밀번호: 1234):**
 thebb, delphic, will, mikclinicthai, jyclinicthai, du, koreandiet, ourpthai, everbreastthai, clyveps_th, mycell, nbclinici, dr.song, lacela, artline, kleam
 
-### 3.1e Client Web — 팔로업 고객 추적
+### 3.1e Client Web — Zendesk 채팅 상담 UI
+
+| 기능 | 상태 | 설명 |
+|------|------|------|
+| 3패널 상담 레이아웃 | ✅ | `ZendeskChatLayout.tsx` — 좌측 티켓 목록(280px) + 중앙 채팅(flex-1) + 우측 AI 추천(320px). 워커 대시보드 `ให้คำปรึกษา` 탭 |
+| 티켓 목록 | ✅ | `ZendeskTicketList.tsx` — 내 티켓/전체/대기 필터 탭, 병원 필터 드롭다운, 읽지 않은 표시(파란 점), 최신 고객 메시지 프리뷰 |
+| 채팅 패널 | ✅ | `ZendeskChatPanel.tsx` — 대화 버블 (고객 좌측/상담원 우측), 인라인 이미지, Public/Internal Note 토글, 티켓 상태 변경 드롭다운 |
+| 프론트엔드 폴링 | ✅ | 웹훅 미작동 환경 대비 — 프론트엔드에서 주기적으로 conversations API 호출하여 신규 메시지 감지 |
+| 실시간 sync | ✅ | `/api/zendesk/tickets-live` 자동 증분 sync (60초 throttle) + `/api/zendesk/conversations` live-sync (10초 쿨다운) |
+| Thai→Korean 번역 | ✅ | `conversations?locale=ko` — 미번역 메시지 Gemini 일괄 번역 후 body_ko 컬럼에 캐시 |
+| 답변 전송 | ✅ | `/api/zendesk/reply` — 상담원별 개인 토큰 우선, 없으면 Admin 토큰 + author_id Fallback |
+| 상담원 토큰 설정 | ✅ | `ZendeskSetup.tsx` — Zendesk 이메일+API 토큰 입력, AES-256 암호화 저장, 즉시 검증 |
+| AI 답변 추천 | ✅ | `AISuggestPanel.tsx` — Gemini 기반 태국어 답변 2-3개 추천. Quick Reply 칩, 고객 정보 요약. 추천 선택 시 입력창 자동 채움 |
+| 추천 피드백 | ✅ | 추천 선택/수정/무시 데이터 `ai_reply_suggestions` 저장 → 향후 프롬프트 튜닝용 |
+| Webhook 수신 | ✅ | `/api/zendesk/webhook` — HMAC-SHA256 서명 검증, zendesk_conversations INSERT, Realtime Push |
+| 병원별 필터링 | ✅ | 티켓의 tags 프리픽스로 병원 식별, 상담원이 담당 병원 티켓만 볼 수 있도록 필터 |
+| Fallback Polling | ✅ | `/api/zendesk/poll` — Webhook 누락 보정, 일 4회 Vercel Cron 실행 |
+
+### 3.1f Client Web — 팔로업 고객 추적
 
 | 기능 | 상태 | 설명 |
 |------|------|------|
@@ -127,14 +145,18 @@ thebb, delphic, will, mikclinicthai, jyclinicthai, du, koreandiet, ourpthai, eve
 | 테이블 | 용도 |
 |--------|------|
 | `clients` | 고객사(병원) 정보 |
-| `profiles` | 사용자 프로필 (role, client_id, display_name, **hospital_prefix**) — role: bbg_admin / client / worker / **hospital** |
+| `profiles` | 사용자 프로필 (role, client_id, display_name, **hospital_prefix**, **zendesk_connected**, **polite_particle**) — role: bbg_admin / client / worker / **hospital** |
 | `time_logs` | 근태 기록 (worker_id, status, created_at) |
 | `tasks` | 업무 (content, content_th, description, description_th, assignee_id, due_date, rating, source, status, created_by) |
 | `messages` | 업무별 채팅 (content_ko, content_th, is_whisper, sender_lang, file_url, file_name, file_type, mentions) |
 | `quick_replies` | 자동답변 템플릿 (title/body × ko/th, client_id) |
 | `task_presets` | 업무 프리셋 (title/content × ko/th, client_id) |
-| `zendesk_tickets` | Zendesk 티켓 동기화 (ticket_id, subject, status, tags, comments, created_at_zd, updated_at_zd) |
+| `zendesk_tickets` | Zendesk 티켓 동기화 (ticket_id, subject, status, tags, comments, created_at_zd, updated_at_zd, **last_customer_comment_at**, **last_agent_comment_at**, **last_message_at**, **assigned_agent_user_id**, **channel**, **is_read**, **last_webhook_at**) |
 | `zendesk_analyses` | Zendesk 티켓 AI 분석 결과 (quality_score, reservation_converted, summary, hospital_name, needs_followup, followup_reason, followup_reason_th, **followup_status**, **followup_note**, **followup_updated_by**, **followup_updated_at**, **customer_name**, **customer_phone**, **interested_procedure**, interested_procedure_th, **customer_age**, next_check_at, last_checked_at, last_zendesk_comment_id, check_count, lost_reason, lost_reason_detail) |
+| `zendesk_conversations` | Zendesk 개별 대화 메시지 — 실시간 채팅용 (ticket_id, comment_id, author_type: customer\|agent\|system, body, body_ko, body_html, is_public, channel, attachments, created_at_zd) |
+| `zendesk_agent_tokens` | 상담원별 Zendesk 개인 API 토큰 (user_id, zendesk_email, zendesk_user_id, encrypted_token, is_active, verified_at) |
+| `ai_reply_suggestions` | AI 답변 추천 이력 (ticket_id, trigger_comment_id, suggestions jsonb, selected_index, was_edited, final_text, response_time_ms) |
+| `zendesk_webhook_log` | Zendesk Webhook 수신 로그 (ticket_id, comment_id, payload, processed, error) |
 | `followup_actions` | 팔로업 액션 이력 (ticket_id, action_type: worker_action\|ai_instruction\|system_note, content, content_th, status_before, status_after, zendesk_changes, created_by, read_at) |
 | `followup_notifications` | 워커 인앱 알림 (user_id, action_id, ticket_id, title, body, channel, read_at) |
 | `chat_read_status` | 채팅 읽음 상태 추적 (user_id, task_id, last_read_at) |
@@ -183,8 +205,8 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | role | 접근 범위 |
 |------|-----------|
 | `bbg_admin` | 모든 기능 + God Mode + 프리셋 관리 + 계정 관리 + Whisper 전송 + Sales 분석 전체 + Zendesk 전체 API |
-| `client` | 자사 직원/업무/자동답변, 프리셋 사용(조회만), 업무 완료/취소/되돌리기, 전체 톡방 참여, Whisper 볼 수 없음 |
-| `worker` | 워커 웹 대시보드, 본인 업무/채팅, 업무 제안, 전체 톡방 참여, 상태 토글, 번역 도우미, 템플릿 읽기, time_logs 기록, 팔로업 고객 조회/상태 업데이트 (`ติดตาม` 탭) |
+| `client` | 자사 직원/업무/자동답변, 프리셋 사용(조회만), 업무 완료/취소/되돌리기, 전체 톡방 참여, Whisper 볼 수 없음, Zendesk 채팅 상담 (tickets-live, conversations, reply, ticket-update, suggest-reply, suggest-feedback) |
+| `worker` | 워커 웹 대시보드, 본인 업무/채팅, 업무 제안, 전체 톡방 참여, 상태 토글, 번역 도우미, 템플릿 읽기, time_logs 기록, 팔로업 고객 조회/상태 업데이트 (`ติดตาม` 탭), Zendesk 채팅 상담 (`ให้คำปรึกษา` 탭) |
 | `hospital` | 병원 파트너 대시보드 전용 — 자사 hospital_prefix 기반 데이터만 조회, AI 인사이트 요청, hospital-stats 조회 |
 
 ---
@@ -213,7 +235,18 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | `/api/zendesk/followup-notifications` | GET | 현재 사용자 미읽은 알림 목록 (bbg_admin + worker) |
 | `/api/zendesk/followup-notifications` | PATCH | 알림 읽음 처리 — notification_ids 배열 또는 mark_all_read (bbg_admin + worker) |
 | `/api/zendesk/followup-check` | POST | AI 자동 팔로업 체크 Cron — contacted/scheduled 티켓 분석 후 태국어 지시 생성 (CRON_SECRET 인증) |
-| `/api/zendesk/cron` | GET | Vercel Cron endpoint — sync + analyze 자동 실행 (CRON_SECRET 인증) |
+| `/api/zendesk/followup-summary` | POST | 팔로업 요약 알림 Cron — bbg_admin/worker에게 요약 알림 (Vercel Cron + CRON_SECRET, 일 4회) |
+| `/api/zendesk/cron` | GET | Vercel Cron endpoint — sync + analyze 자동 실행 (CRON_SECRET 인증, 일 2회: 09:00 KST, 16:00 KST) |
+| `/api/zendesk/tickets-live` | GET | 실시간 티켓 목록 — filter(mine\|all\|waiting), hospital 필터, 자동 증분 sync (bbg_admin + worker + client) |
+| `/api/zendesk/conversations` | GET | 티켓 대화 조회 — live-sync + locale=ko 한국어 번역 캐시 (bbg_admin + worker + client) |
+| `/api/zendesk/reply` | POST | 고객 답변 전송 — is_public/Internal Note 선택, 상담원별 개인 토큰 인증 (bbg_admin + worker + client) |
+| `/api/zendesk/ticket-update` | PATCH | 티켓 상태/태그/is_read 업데이트 — Zendesk + Supabase 동시 반영 (bbg_admin + worker + client) |
+| `/api/zendesk/agent-token` | GET/PUT/DELETE | 상담원 Zendesk 개인 토큰 관리 — AES-256 암호화 저장 (bbg_admin + worker) |
+| `/api/zendesk/suggest-reply` | POST | AI 답변 추천 생성 — Gemini, 대화 히스토리+고객 정보+QR+Glossary 컨텍스트 (bbg_admin + worker + client) |
+| `/api/zendesk/suggest-feedback` | POST | AI 추천 피드백 기록 — selected_index, was_edited, final_text (bbg_admin + worker + client) |
+| `/api/zendesk/webhook` | POST | Zendesk Webhook 수신 — HMAC-SHA256 서명 검증, DB INSERT 후 Realtime Push |
+| `/api/zendesk/poll` | GET | Webhook 누락 보정 Fallback Polling Cron — 최대 50 티켓, 2분 이상 Webhook 없는 티켓 체크 (CRON_SECRET, 일 4회) |
+| `/api/zendesk/migrate-conversations` | POST | 기존 zendesk_tickets.comments JSONB → zendesk_conversations 테이블 마이그레이션 (일회성, bbg_admin) |
 
 ---
 
@@ -260,7 +293,8 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | 4.0 | 병원 파트너 대시보드, 팔로업 고객 추적, AI 인사이트 시스템 |
 | 5.0 | 모바일 반응형, TaskChat 번역 동적화 (locale prop), Ctrl+V 이미지 붙여넣기, 이미지 어노테이션 (ImageAnnotator), Desktop App·Extension 삭제 |
 | 6.0 | 팔로업 시스템 개편: AI 자동 체크 Cron (followup-check), Push/Drop, 타임라인 모달, 워커 알림 뱃지/긴급 배너, 워커 코멘트 태국어→한국어 자동 번역, 신규 테이블(followup_actions, followup_notifications, chat_read_status, glossary), zendesk_analyses 신규 컬럼 |
+| 7.0 | Zendesk 채팅 통합 UI: ZendeskChatLayout/TicketList/ChatPanel/AISuggestPanel/ZendeskSetup/QuickReplyChips. 상담원별 개인 토큰 인증(AES-256 암호화), Webhook 수신+HMAC 검증, Fallback Polling Cron(일 4회), followup-summary Cron(일 4회), Thai→Korean 번역 캐시(body_ko). 신규 테이블(zendesk_conversations, zendesk_agent_tokens, ai_reply_suggestions, zendesk_webhook_log). 신규 env vars(ZENDESK_WEBHOOK_SECRET, ZENDESK_TOKEN_ENCRYPTION_KEY). client role 추가(tickets-live/conversations/reply/ticket-update/suggest-reply/suggest-feedback) |
 
 ---
 
-**문서 버전:** 6.0 · 팔로업 시스템 전면 개편 반영 (AI 자동 체크 Cron, Push/Drop, 타임라인 모달, 워커 알림, 코멘트 자동번역, followup_actions/followup_notifications/chat_read_status/glossary 테이블, zendesk_analyses 체크 사이클·태국어 번역·lost 관리 컬럼 추가)
+**문서 버전:** 7.0 · Zendesk 채팅 통합 UI + AI 답변 추천 시스템 반영

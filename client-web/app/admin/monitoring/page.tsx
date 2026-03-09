@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { ALL_CHAT_SENTINELS } from '@/lib/chat-rooms';
 
 // ── 타입 ──
 interface TaskWithMeta {
@@ -233,7 +234,12 @@ export default function MonitoringPage() {
       });
     }
 
-    const enriched: TaskWithMeta[] = rawTasks.map((t: any) => ({
+    // Filter out chat room sentinel tasks (e.g. __CHAT_WORK__, __CHAT_CS__, etc.)
+    const nonSentinelTasks = rawTasks.filter(
+      (t: any) => !ALL_CHAT_SENTINELS.includes(t.content)
+    );
+
+    const enriched: TaskWithMeta[] = nonSentinelTasks.map((t: any) => ({
       ...t,
       profiles: profileMap[t.assignee_id] || null,
       clients: clientMap[t.client_id] || null,

@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ChevronDown } from 'lucide-react';
 
 export default function TaskAssign({ workers, clientId }: { workers: any[]; clientId?: string }) {
+  const [collapsed, setCollapsed] = useState(true);
   const [assigneeId, setAssigneeId] = useState('');
   const [content, setContent] = useState('');
   const [description, setDescription] = useState('');
@@ -170,8 +171,15 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
 
   return (
     <div className="bg-gradient-to-r from-emerald-50/70 to-white rounded-xl shadow-sm border border-emerald-100 border-l-4 border-l-emerald-400 p-4 sm:p-6">
-      <h2 className="text-lg font-semibold text-slate-900 mb-4">업무 할당</h2>
-      <form onSubmit={handleSubmit}>
+      <button
+        type="button"
+        onClick={() => setCollapsed(!collapsed)}
+        className="w-full flex items-center justify-between cursor-pointer"
+      >
+        <h2 className="text-lg font-semibold text-slate-900">업무 할당</h2>
+        <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${collapsed ? '' : 'rotate-180'}`} />
+      </button>
+      {!collapsed && <form onSubmit={handleSubmit} className="mt-4">
         {/* 1행: 담당자 + 프리셋 + 마감일 */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
           <div>
@@ -289,7 +297,7 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
         {workers.length === 0 && (
           <p className="mt-3 text-sm text-amber-600">할당 가능한 직원이 없습니다.</p>
         )}
-      </form>
+      </form>}
     </div>
   );
 }

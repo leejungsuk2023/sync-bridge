@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { ChevronDown } from 'lucide-react';
 
 export default function TimeReport({ workers }: { workers: any[] }) {
+  const [collapsed, setCollapsed] = useState(true);
   const [report, setReport] = useState<Record<string, { total: number; online: number; away: number }>>({});
   const [loading, setLoading] = useState(true);
 
@@ -43,13 +45,20 @@ export default function TimeReport({ workers }: { workers: any[] }) {
 
   return (
     <div className="bg-gradient-to-r from-cyan-50/70 to-white rounded-xl shadow-sm border border-cyan-100 border-l-4 border-l-cyan-400 p-6">
-      <h2 className="text-lg font-semibold text-slate-900 mb-6">오늘 근무 리포트</h2>
-      {loading ? (
-        <p className="text-center text-slate-500 py-12">불러오는 중...</p>
+      <button
+        type="button"
+        onClick={() => setCollapsed(!collapsed)}
+        className="w-full flex items-center justify-between cursor-pointer mb-0"
+      >
+        <h2 className="text-lg font-semibold text-slate-900">오늘 근무 리포트</h2>
+        <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${collapsed ? '' : 'rotate-180'}`} />
+      </button>
+      {!collapsed && (loading ? (
+        <p className="text-center text-slate-500 py-12 mt-6">불러오는 중...</p>
       ) : workers.length === 0 ? (
-        <p className="text-center text-slate-500 py-12">할당된 직원이 없습니다.</p>
+        <p className="text-center text-slate-500 py-12 mt-6">할당된 직원이 없습니다.</p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto mt-6">
           <table className="w-full">
             <thead>
               <tr className="border-b border-slate-200">
@@ -108,7 +117,7 @@ export default function TimeReport({ workers }: { workers: any[] }) {
             </tbody>
           </table>
         </div>
-      )}
+      ))}
     </div>
   );
 }

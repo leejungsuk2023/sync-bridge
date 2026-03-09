@@ -79,12 +79,11 @@ export async function POST(req: NextRequest) {
       .insert({
         ticket_id: ticketIdNum,
         comment_id: comment_id || null,
-        author_id: agentClient.getZendeskUserId() || null,
+        author_zendesk_id: agentClient.getZendeskUserId() || null,
         author_type: 'agent',
         body: replyBody.trim(),
         is_public,
         created_at_zd: new Date().toISOString(),
-        sent_by_user_id: authUser.userId,
       })
       .select('id')
       .single();

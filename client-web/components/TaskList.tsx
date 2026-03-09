@@ -58,6 +58,7 @@ export default function TaskList({ clientId, userId, canComplete = false, assign
     detailExpand: '상세 보기',
     detailGuide: '상세 가이드',
   };
+  const [collapsed, setCollapsed] = useState(true);
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [chatTaskId, setChatTaskId] = useState<string | null>(null);
@@ -229,24 +230,33 @@ export default function TaskList({ clientId, userId, canComplete = false, assign
   return (
     <div className="space-y-4">
       <div className="bg-gradient-to-r from-amber-50/70 to-white rounded-xl shadow-sm border border-amber-100 border-l-4 border-l-amber-400 p-4 sm:p-6">
-        <div className="flex items-center justify-between mb-6">
+        <button
+          type="button"
+          onClick={() => setCollapsed(!collapsed)}
+          className="w-full flex items-center justify-between cursor-pointer"
+        >
           <h2 className="text-lg font-semibold text-slate-900">{title || L.defaultTitle}</h2>
-          {doneTasks.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setShowDone(!showDone)}
-              className="text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors"
-            >
-              {showDone ? L.hideDone(doneTasks.length) : L.showDone(doneTasks.length)}
-            </button>
-          )}
-        </div>
-        {loading ? (
-          <p className="text-center text-slate-500 py-12">{L.loading}</p>
+          <div className="flex items-center gap-3">
+            {!collapsed && doneTasks.length > 0 && (
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(e) => { e.stopPropagation(); setShowDone(!showDone); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); setShowDone(!showDone); } }}
+                className="text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors"
+              >
+                {showDone ? L.hideDone(doneTasks.length) : L.showDone(doneTasks.length)}
+              </span>
+            )}
+            <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${collapsed ? '' : 'rotate-180'}`} />
+          </div>
+        </button>
+        {!collapsed && (loading ? (
+          <p className="text-center text-slate-500 py-12 mt-6">{L.loading}</p>
         ) : pendingTasks.length === 0 && !showDone ? (
-          <p className="text-center text-slate-500 py-12">{L.noTasks}</p>
+          <p className="text-center text-slate-500 py-12 mt-6">{L.noTasks}</p>
         ) : (
-          <div className="space-y-4 max-h-[800px] overflow-y-auto pr-2">
+          <div className="space-y-4 max-h-[800px] overflow-y-auto pr-2 mt-6">
             {[...pendingTasks, ...(showDone ? doneTasks : [])].map((task) => (
               <div key={task.id} className="border border-slate-200 rounded-lg p-3 sm:p-4 space-y-3">
                 {/* Content + Status + Chat */}
@@ -435,7 +445,7 @@ export default function TaskList({ clientId, userId, canComplete = false, assign
               </div>
             ))}
           </div>
-        )}
+        ))}
       </div>
     </div>
   );

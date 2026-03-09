@@ -129,13 +129,12 @@ async function liveSyncTicketComments(ticketIdNum: number): Promise<number> {
         .insert({
           ticket_id: ticketIdNum,
           comment_id: comment.id,
-          author_id: comment.author_id,
+          author_zendesk_id: comment.author_id,
           author_type: authorType,
           body: plainBody,
           body_html: comment.body || null,
           is_public: comment.public !== false,
           created_at_zd: comment.created_at,
-          source: 'live_sync',
         });
 
       if (!insertError) {

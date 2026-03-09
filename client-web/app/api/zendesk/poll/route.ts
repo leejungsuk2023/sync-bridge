@@ -48,7 +48,114 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, checked: 0, new_comments: 0 });
     }
 
-    console.log(`[Poll] Checking ${tickets.length} tickets for missed webhooks`);
+    // Also discover new tickets from Zendesk that aren't in DB yet
+    let newTicketsSynced = 0;
+    try {
+      const { tickets: zdTickets } = await zendesk.fetchTicketsPage(1, 30);
+      if (zdTickets && zdTickets.length > 0) {
+        const zdTicketIds = zdTickets.map((t: any) => t.id);
+        const { data: existingInDb } = await supabaseAdmin
+          .from('zendesk_tickets')
+          .select('ticket_id')
+          .in('ticket_id', zdTicketIds);
+
+        const existingIds = new Set((existingInDb || []).map((t: any) => t.ticket_id));
+        const newZdTickets = zdTickets.filter((t: any) => !existingIds.has(t.id));
+
+        if (newZdTickets.length > 0) {
+          // Fetch user info for new tickets
+          const userIds = new Set<number>();
+          newZdTickets.forEach((t: any) => {
+            if (t.assignee_id) userIds.add(t.assignee_id);
+            if (t.requester_id) userIds.add(t.requester_id);
+          });
+          const usersMap = await zendesk.fetchUsers([...userIds]);
+
+          for (const zt of newZdTickets) {
+            try {
+              const comments = await zendesk.fetchTicketComments(zt.id);
+              const assignee = zt.assignee_id ? usersMap.get(zt.assignee_id) : null;
+              const requester = zt.requester_id ? usersMap.get(zt.requester_id) : null;
+
+              let lastCustomerCommentAt: string | null = null;
+              let lastAgentCommentAt: string | null = null;
+              let lastMessageAt: string | null = null;
+
+              if (comments && comments.length > 0) {
+                const sorted = [...comments].sort(
+                  (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+                );
+                lastMessageAt = sorted[0]?.created_at || null;
+                for (const c of sorted) {
+                  const isCust = zt.requester_id && c.author_id === zt.requester_id;
+                  if (isCust && !lastCustomerCommentAt) lastCustomerCommentAt = c.created_at;
+                  if (!isCust && !lastAgentCommentAt) lastAgentCommentAt = c.created_at;
+                  if (lastCustomerCommentAt && lastAgentCommentAt) break;
+                }
+              }
+
+              await supabaseAdmin.from('zendesk_tickets').upsert({
+                ticket_id: zt.id,
+                subject: zt.subject,
+                description: zt.description,
+                status: zt.status,
+                priority: zt.priority,
+                assignee_email: assignee?.email || null,
+                assignee_name: assignee?.name || null,
+                requester_email: requester?.email || null,
+                requester_name: requester?.name || null,
+                tags: zt.tags,
+                created_at_zd: zt.created_at,
+                updated_at_zd: zt.updated_at,
+                comments: comments || [],
+                synced_at: new Date().toISOString(),
+                last_message_at: lastMessageAt || zt.updated_at,
+                last_customer_comment_at: lastCustomerCommentAt,
+                last_agent_comment_at: lastAgentCommentAt,
+                is_read: false,
+              }, { onConflict: 'ticket_id' });
+
+              // Insert conversations
+              for (const comment of (comments || [])) {
+                const isCust = zt.requester_id && comment.author_id === zt.requester_id;
+                const plainBody = (comment.body || '')
+                  .replace(/<[^>]*>/g, '')
+                  .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '');
+
+                const commentAuthor = usersMap.get(comment.author_id);
+                const { error: insErr } = await supabaseAdmin
+                  .from('zendesk_conversations')
+                  .insert({
+                    ticket_id: zt.id,
+                    comment_id: comment.id,
+                    author_zendesk_id: comment.author_id,
+                    author_name: commentAuthor?.name || null,
+                    author_email: commentAuthor?.email || null,
+                    author_type: isCust ? 'customer' : 'agent',
+                    body: plainBody,
+                    body_html: comment.body || null,
+                    is_public: comment.public !== false,
+                    created_at_zd: comment.created_at,
+                  });
+
+                if (insErr && insErr.code !== '23505') {
+                  console.error(`[Poll] Error inserting new ticket comment ${comment.id}:`, insErr);
+                }
+              }
+
+              newTicketsSynced++;
+            } catch (err: any) {
+              console.error(`[Poll] Error syncing new ticket #${zt.id}:`, err.message);
+            }
+          }
+          console.log(`[Poll] Discovered ${newTicketsSynced} new tickets from Zendesk`);
+        }
+      }
+    } catch (err: any) {
+      console.error('[Poll] Error discovering new tickets:', err.message);
+    }
+
+    console.log(`[Poll] Checking ${tickets.length} existing tickets for missed comments`);
 
     for (const ticket of tickets) {
       checked++;
@@ -109,13 +216,12 @@ export async function GET(req: NextRequest) {
             .insert({
               ticket_id: ticket.ticket_id,
               comment_id: comment.id,
-              author_id: comment.author_id,
+              author_zendesk_id: comment.author_id,
               author_type: authorType,
               body: plainBody,
               body_html: comment.body || null,
               is_public: comment.public !== false,
               created_at_zd: comment.created_at,
-              source: 'poll', // Mark as poll-sourced for debugging
             });
 
           if (insertError) {
@@ -190,12 +296,13 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    console.log(`[Poll] Complete: checked ${checked} tickets, found ${newComments} new comments`);
+    console.log(`[Poll] Complete: checked ${checked} tickets, found ${newComments} new comments, discovered ${newTicketsSynced} new tickets`);
 
     return NextResponse.json({
       ok: true,
       checked,
       new_comments: newComments,
+      new_tickets_discovered: newTicketsSynced,
       errors: errors.length > 0 ? errors : undefined,
     });
   } catch (err: any) {

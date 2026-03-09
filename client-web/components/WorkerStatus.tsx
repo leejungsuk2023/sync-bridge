@@ -7,7 +7,7 @@ import { Star, ChevronDown } from 'lucide-react';
 export default function WorkerStatus({ workers }: { workers: any[] }) {
   const [statuses, setStatuses] = useState<Record<string, string>>({});
   const [avgRatings, setAvgRatings] = useState<Record<string, { avg: number; count: number }>>({});
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
     if (workers.length === 0) return;

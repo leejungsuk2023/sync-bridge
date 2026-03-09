@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Upload, Search, Plus, Pencil, Trash2, FileSpreadsheet, X, Check } from 'lucide-react';
+import { Upload, Search, Plus, Pencil, Trash2, FileSpreadsheet, X, Check, ChevronDown } from 'lucide-react';
 
 interface GlossaryEntry {
   id: string;
@@ -62,6 +62,7 @@ function parseCSV(text: string): ParsedEntry[] {
 }
 
 export default function GlossaryManager({ userId }: GlossaryManagerProps) {
+  const [collapsed, setCollapsed] = useState(true);
   const [entries, setEntries] = useState<GlossaryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -301,7 +302,19 @@ export default function GlossaryManager({ userId }: GlossaryManagerProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="bg-gradient-to-r from-amber-50/70 to-white rounded-xl shadow-sm border border-amber-100 border-l-4 border-l-amber-400 p-6">
+      <button
+        type="button"
+        onClick={() => setCollapsed(!collapsed)}
+        className="w-full flex items-center justify-between cursor-pointer mb-0"
+      >
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900 text-left">용어집 관리</h2>
+          <p className="text-xs text-slate-500 mt-1 text-left">한국어-태국어 의료/비즈니스 용어집을 관리합니다.</p>
+        </div>
+        <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform shrink-0 ${collapsed ? '' : 'rotate-180'}`} />
+      </button>
+      {!collapsed && (<div className="space-y-4 mt-6">
       {/* Stats Bar */}
       <div className="bg-white rounded-lg border p-4 flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
@@ -668,6 +681,7 @@ export default function GlossaryManager({ userId }: GlossaryManagerProps) {
           </div>
         )}
       </div>
+      </div>)}
     </div>
   );
 }

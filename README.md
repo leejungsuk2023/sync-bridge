@@ -43,7 +43,18 @@ g sync/
 │   │   ├── api/zendesk/followup-actions/route.ts  # 팔로업 액션 이력 API (GET/POST/PATCH, bbg_admin + worker)
 │   │   ├── api/zendesk/followup-notifications/route.ts # 워커 인앱 알림 API (GET/PATCH, bbg_admin + worker)
 │   │   ├── api/zendesk/followup-check/route.ts    # AI 자동 팔로업 체크 Cron (POST, CRON_SECRET 인증)
-│   │   └── api/zendesk/cron/route.ts   # Vercel Cron endpoint (자동 sync + analyze)
+│   │   ├── api/zendesk/followup-summary/route.ts  # 팔로업 요약 Cron (bbg_admin/worker 알림, 일 4회)
+│   │   ├── api/zendesk/cron/route.ts   # Vercel Cron endpoint (자동 sync + analyze, 일 2회)
+│   │   ├── api/zendesk/tickets-live/route.ts       # 실시간 티켓 목록 (bbg_admin + worker + client, 자동 증분 sync)
+│   │   ├── api/zendesk/conversations/route.ts      # 티켓 대화 조회 — live-sync + locale=ko 번역 캐시 (bbg_admin + worker + client)
+│   │   ├── api/zendesk/reply/route.ts              # 고객 답변 전송 (상담원별 토큰 인증, bbg_admin + worker + client)
+│   │   ├── api/zendesk/ticket-update/route.ts      # 티켓 상태/태그/is_read 업데이트 (bbg_admin + worker + client)
+│   │   ├── api/zendesk/agent-token/route.ts        # 상담원 Zendesk 개인 토큰 CRUD (GET/PUT/DELETE, bbg_admin + worker)
+│   │   ├── api/zendesk/suggest-reply/route.ts      # AI 답변 추천 생성 (Gemini, bbg_admin + worker + client)
+│   │   ├── api/zendesk/suggest-feedback/route.ts   # AI 추천 피드백 기록 (bbg_admin + worker + client)
+│   │   ├── api/zendesk/webhook/route.ts            # Zendesk Webhook 수신 (HMAC 서명 검증)
+│   │   ├── api/zendesk/poll/route.ts               # Webhook 누락 보정 Fallback Polling Cron (CRON_SECRET, 일 4회)
+│   │   └── api/zendesk/migrate-conversations/route.ts # 기존 zendesk_tickets.comments → zendesk_conversations 마이그레이션 (일회성)
 │   ├── components/
 │   │   ├── LoginPage.tsx           # 로그인 페이지
 │   │   ├── Dashboard.tsx           # 메인 대시보드 (hospital role → HospitalDashboard 분기), 모바일 반응형 헤더
@@ -61,13 +72,23 @@ g sync/
 │   │   ├── UserManager.tsx         # 계정 관리 CRUD (회색, bbg_admin)
 │   │   ├── QuickReplyManager.tsx   # 자동답변 CRUD
 │   │   ├── HospitalDashboard.tsx   # 병원 파트너 전용 대시보드 (hospital role)
-│   │   ├── WorkerDashboard.tsx     # 워커 대시보드 (ChatLayout 사용, "ติดตาม" 탭 WorkerFollowup 포함)
+│   │   ├── WorkerDashboard.tsx     # 워커 대시보드 (5탭: งาน/แชท/ให้คำปรึกษา/ติดตาม/เครื่องมือ)
 │   │   ├── WorkerFollowup.tsx      # 팔로업 고객 관리 탭 (워커 대시보드 ติดตาม)
-│   │   └── SalesPerformance.tsx    # Zendesk Sales 성과 분석 (/sales, 3탭: Sales성과/병원별분석/팔로업고객)
+│   │   ├── SalesPerformance.tsx    # Zendesk Sales 성과 분석 (/sales, 3탭: Sales성과/병원별분석/팔로업고객)
+│   │   ├── ZendeskChatLayout.tsx   # Zendesk 상담 3패널 오케스트레이터 (워커 대시보드 ให้คำปรึกษา 탭)
+│   │   ├── ZendeskTicketList.tsx   # 좌측 티켓 목록 패널 — 내 티켓/전체/대기 필터, 병원 필터
+│   │   ├── ZendeskChatPanel.tsx    # 중앙 채팅 패널 — 대화 히스토리, 인라인 이미지, Public/Internal 토글
+│   │   ├── AISuggestPanel.tsx      # 우측 AI 추천 답변 패널 — Gemini 기반 2-3개 추천, Quick Reply 칩
+│   │   ├── ZendeskSetup.tsx        # 상담원 Zendesk 개인 토큰 등록/관리 설정 UI
+│   │   └── QuickReplyChips.tsx     # Quick Reply 칩 컴포넌트
 │   ├── lib/
 │   │   ├── supabase.ts
-│   │   └── chat-rooms.ts           # 채팅방 상수, 센티넬 값, 타입 정의
-│   └── vercel.json                 # Vercel Cron 스케줄 설정 (00:00 UTC + 07:00 UTC + 03:00 UTC)
+│   │   ├── chat-rooms.ts           # 채팅방 상수, 센티넬 값, 타입 정의
+│   │   ├── zendesk.ts              # ZendeskClient (티켓 조회, 댓글 조회/작성)
+│   │   ├── zendesk-agent.ts        # AgentZendeskClient — 상담원별 토큰 인증 + Fallback to Admin
+│   │   ├── ai-suggest.ts           # AI 답변 추천 로직 (Gemini, 컨텍스트 조합)
+│   │   └── crypto.ts               # AES-256-GCM 암호화/복호화 (상담원 토큰 보관용)
+│   └── vercel.json                 # Vercel Cron 스케줄 (zendesk/cron 일 2회, followup-summary 일 4회, poll 일 4회)
 │
 └── supabase/
     ├── schema.sql              # clients, profiles, time_logs, tasks + RLS
@@ -90,6 +111,8 @@ g sync/
     ├── followup_thai_fields.sql # zendesk_analyses 태국어 번역 컬럼 (followup_reason_th, interested_procedure_th)
     ├── chat_read_status.sql    # 채팅 읽음 상태 추적 테이블 (chat_read_status)
     ├── glossary.sql            # 의료/비즈니스 용어 한↔태 번역 용어집 테이블
+    ├── zendesk_chat_integration.sql # Zendesk 채팅 통합 (zendesk_agent_tokens, zendesk_conversations, ai_reply_suggestions, zendesk_webhook_log + zendesk_tickets/profiles 컬럼 추가)
+    ├── zendesk_conversations_ko.sql # zendesk_conversations.body_ko 컬럼 추가 (한국어 번역 캐시)
     ├── v1.4_improvements.sql   # 기타 개선사항
     ├── setup_test_client.sql   # 테스트 데이터 셋업
     └── README.md
@@ -139,7 +162,9 @@ g sync/
    18. `supabase/followup_thai_fields.sql` — zendesk_analyses 태국어 번역 컬럼 (followup_reason_th, interested_procedure_th)
    19. `supabase/chat_read_status.sql` — 채팅 읽음 상태 추적 테이블
    20. `supabase/glossary.sql` — 의료/비즈니스 용어 한↔태 번역 용어집 테이블
-   21. `supabase/v1.4_improvements.sql` — 기타 개선사항
+   21. `supabase/zendesk_chat_integration.sql` — Zendesk 채팅 통합 (zendesk_agent_tokens, zendesk_conversations, ai_reply_suggestions, zendesk_webhook_log + zendesk_tickets/profiles 컬럼)
+   22. `supabase/zendesk_conversations_ko.sql` — zendesk_conversations.body_ko 컬럼 (한국어 번역 캐시)
+   23. `supabase/v1.4_improvements.sql` — 기타 개선사항
 3. **Authentication** → Providers → **Email** 활성화
 
 ### 2. Client Web 실행
@@ -157,8 +182,10 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ...   # 업무 API + 계정 관리 (서버사이드
 GEMINI_API_KEY=AIza...               # 번역 + AI 어시스트 (Google Gemini)
 CRON_SECRET=...                      # Vercel Cron 인증 시크릿 (zendesk/cron 보호용)
 ZENDESK_SUBDOMAIN=...                # Zendesk 서브도메인 (예: bbg)
-ZENDESK_EMAIL=...                    # Zendesk API 인증 이메일
-ZENDESK_API_TOKEN=...                # Zendesk API 토큰
+ZENDESK_EMAIL=...                    # Zendesk API 인증 이메일 (Admin 계정)
+ZENDESK_API_TOKEN=...                # Zendesk API 토큰 (Admin, Fallback용)
+ZENDESK_WEBHOOK_SECRET=...           # Zendesk Webhook HMAC 서명 검증 시크릿
+ZENDESK_TOKEN_ENCRYPTION_KEY=...     # 상담원 개인 토큰 AES-256 암호화 키 (64자 hex)
 ```
 
 ```bash
@@ -196,6 +223,8 @@ npm run dev
 | AI 어시스트 API | 환자 메시지 분석 → 한국어 번역 + 의도 파악 + 추천 답변 3개 |
 | Sales 성과 분석 | `/sales` — Zendesk 티켓 기반 AI 분석, 담당자별 품질 평가, 예약 전환율, 팔로업 고객 관리 (3탭: Sales 성과 / 병원별 분석 / 팔로업 고객). 팔로업 탭: BI 요약 카드, 상세 모달(타임라인 + Push 지시 + Drop 처리) |
 | 병원 파트너 대시보드 | hospital role 로그인 시 전용 대시보드 — 자사 병원 데이터만 조회, AI 인사이트(병원전략/Sales개선/본사관리) 확인 |
+| Zendesk 채팅 상담 UI | 워커 대시보드 `ให้คำปรึกษา` 탭 — 3패널 레이아웃(티켓 목록/채팅/AI 추천). 프론트엔드 폴링으로 실시간 동기화. 인라인 이미지, Thai→Korean 번역 캐시, 티켓 상태 변경, 상담원별 개인 토큰 인증 |
+| AI 답변 추천 | Zendesk 채팅 우측 패널 — Gemini 기반 태국어 답변 2-3개 추천. Quick Reply 칩, 고객 정보 요약. 추천 피드백 수집 (selected_index, was_edited) |
 
 ### 관리자/파트너 페이지 구조
 
@@ -291,7 +320,7 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 
 | 파일 | 변수 |
 |------|------|
-| `client-web/.env.local` | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, `CRON_SECRET`, `ZENDESK_SUBDOMAIN`, `ZENDESK_EMAIL`, `ZENDESK_API_TOKEN` |
+| `client-web/.env.local` | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, `CRON_SECRET`, `ZENDESK_SUBDOMAIN`, `ZENDESK_EMAIL`, `ZENDESK_API_TOKEN`, `ZENDESK_WEBHOOK_SECRET`, `ZENDESK_TOKEN_ENCRYPTION_KEY` |
 
 ---
 

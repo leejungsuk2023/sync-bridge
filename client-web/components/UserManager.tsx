@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Trash2 } from 'lucide-react';
+import { Trash2, ChevronDown } from 'lucide-react';
 
 interface UserInfo {
   id: string;
@@ -14,6 +14,7 @@ interface UserInfo {
 }
 
 export default function UserManager({ clients }: { clients: any[] }) {
+  const [collapsed, setCollapsed] = useState(true);
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -127,10 +128,18 @@ export default function UserManager({ clients }: { clients: any[] }) {
 
   return (
     <div className="bg-gradient-to-r from-slate-100/70 to-white rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-slate-400 p-6">
-      <div className="mb-6">
-        <h2 className="text-lg font-semibold text-slate-900">계정 관리</h2>
-        <p className="text-xs text-slate-500 mt-1">병원(client) 또는 직원(worker) 계정을 생성하고 관리합니다.</p>
-      </div>
+      <button
+        type="button"
+        onClick={() => setCollapsed(!collapsed)}
+        className="w-full flex items-center justify-between cursor-pointer mb-0"
+      >
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900 text-left">계정 관리</h2>
+          <p className="text-xs text-slate-500 mt-1 text-left">병원(client) 또는 직원(worker) 계정을 생성하고 관리합니다.</p>
+        </div>
+        <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform shrink-0 ${collapsed ? '' : 'rotate-180'}`} />
+      </button>
+      {!collapsed && (<>
 
       {/* Create form */}
       <div className="space-y-4 pb-6 border-b border-slate-200">
@@ -264,6 +273,7 @@ export default function UserManager({ clients }: { clients: any[] }) {
           </div>
         )}
       </div>
+      </>)}
     </div>
   );
 }

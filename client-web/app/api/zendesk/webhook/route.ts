@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
       .insert({
         ticket_id: ticketId,
         comment_id: targetComment.id,
-        author_id: targetComment.author_id,
+        author_zendesk_id: targetComment.author_id,
         author_type: authorType,
         body: plainBody,
         body_html: targetComment.body || null,

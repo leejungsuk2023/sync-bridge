@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Link as LinkIcon } from 'lucide-react';
+import { Link as LinkIcon, ChevronDown } from 'lucide-react';
 import WorkerStatus from './WorkerStatus';
 import TaskAssign from './TaskAssign';
 import TaskList from './TaskList';
@@ -20,6 +20,7 @@ export default function Dashboard({ user }: { user: any }) {
   const [workers, setWorkers] = useState<any[]>([]);
   const [clients, setClients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [chatCollapsed, setChatCollapsed] = useState(true);
 
   useEffect(() => {
     const loadData = async () => {
@@ -119,7 +120,21 @@ export default function Dashboard({ user }: { user: any }) {
       {/* Main */}
       <main className="max-w-[1440px] mx-auto px-3 py-4 sm:p-6 space-y-4 sm:space-y-6">
         <WorkerStatus workers={workers} />
-        <ChatLayout userId={user.id} clientId={profile?.client_id} />
+        <div className="bg-gradient-to-r from-emerald-50/70 to-white rounded-xl shadow-sm border border-emerald-100 border-l-4 border-l-emerald-400 p-6">
+          <button
+            type="button"
+            onClick={() => setChatCollapsed(!chatCollapsed)}
+            className="w-full flex items-center justify-between cursor-pointer mb-0"
+          >
+            <h2 className="text-lg font-semibold text-slate-900">채팅</h2>
+            <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${chatCollapsed ? '' : 'rotate-180'}`} />
+          </button>
+          {!chatCollapsed && (
+            <div className="mt-6">
+              <ChatLayout userId={user.id} clientId={profile?.client_id} />
+            </div>
+          )}
+        </div>
         <TaskAssign workers={workers} clientId={profile?.client_id} />
         <TaskList clientId={profile?.client_id} userId={user.id} canComplete />
         {profile?.role === 'bbg_admin' && (

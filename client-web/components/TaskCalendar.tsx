@@ -2,11 +2,12 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 
 const DAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
 export default function TaskCalendar({ workers, clientId }: { workers: any[]; clientId?: string }) {
+  const [collapsed, setCollapsed] = useState(true);
   const [selectedWorker, setSelectedWorker] = useState('');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [tasks, setTasks] = useState<any[]>([]);
@@ -74,10 +75,18 @@ export default function TaskCalendar({ workers, clientId }: { workers: any[]; cl
 
   return (
     <div className="bg-gradient-to-r from-violet-50/70 to-white rounded-xl shadow-sm border border-violet-100 border-l-4 border-l-violet-400 p-6">
-      <h2 className="text-lg font-semibold text-slate-900 mb-6">직원별 업무 현황</h2>
+      <button
+        type="button"
+        onClick={() => setCollapsed(!collapsed)}
+        className="w-full flex items-center justify-between cursor-pointer mb-0"
+      >
+        <h2 className="text-lg font-semibold text-slate-900">직원별 업무 현황</h2>
+        <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${collapsed ? '' : 'rotate-180'}`} />
+      </button>
+      {!collapsed && (<>
 
       {/* 직원 선택 + 월 이동 */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 mt-6">
         <select
           value={selectedWorker}
           onChange={(e) => setSelectedWorker(e.target.value)}
@@ -218,6 +227,7 @@ export default function TaskCalendar({ workers, clientId }: { workers: any[]; cl
           )}
         </>
       )}
+      </>)}
     </div>
   );
 }

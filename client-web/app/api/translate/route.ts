@@ -8,6 +8,10 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
+// Simple in-memory glossary cache (5-minute TTL)
+let glossaryCache: { data: any[] | null; fetchedAt: number } = { data: null, fetchedAt: 0 };
+const GLOSSARY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 // CORS: Desktop App (Electron) 및 Extension에서의 cross-origin 요청 허용
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -43,9 +47,14 @@ export async function POST(req: NextRequest) {
     // Fetch glossary entries for improved translation accuracy
     let glossaryText = '';
     try {
-      const { data: glossaryEntries } = await supabaseAdmin
-        .from('glossary')
-        .select('korean, thai, notes');
+      const now = Date.now();
+      if (!glossaryCache.data || now - glossaryCache.fetchedAt > GLOSSARY_CACHE_TTL) {
+        const { data } = await supabaseAdmin
+          .from('glossary')
+          .select('korean, thai, notes');
+        glossaryCache = { data, fetchedAt: now };
+      }
+      const glossaryEntries = glossaryCache.data;
 
       if (glossaryEntries && glossaryEntries.length > 0) {
         const GLOSSARY_THRESHOLD = 200;

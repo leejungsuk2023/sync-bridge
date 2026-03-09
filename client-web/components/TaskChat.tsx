@@ -39,6 +39,7 @@ export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { t
   const messagesRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const retryingIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const fetchTask = async () => {
@@ -297,8 +298,8 @@ export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { t
               displayText = translated;
             } else {
               displayText = m.content;
-              if (!m._retrying && m.id) {
-                m._retrying = true;
+              if (!retryingIdsRef.current.has(m.id) && m.id) {
+                retryingIdsRef.current.add(m.id);
                 fetch('/api/translate', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },

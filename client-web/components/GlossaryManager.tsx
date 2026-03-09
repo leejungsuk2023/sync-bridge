@@ -166,6 +166,10 @@ export default function GlossaryManager({ userId }: GlossaryManagerProps) {
       setCsvDuplicates(dupes);
       setShowUpload(true);
     };
+    reader.onerror = () => {
+      console.error('[GlossaryManager] Failed to read file');
+      alert('파일을 읽을 수 없습니다.');
+    };
     reader.readAsText(file, 'utf-8');
   };
 
@@ -272,10 +276,9 @@ export default function GlossaryManager({ userId }: GlossaryManagerProps) {
     try {
       setDeleteLoading(id);
       const headers = await getAuthHeader();
-      const res = await fetch('/api/glossary', {
+      const res = await fetch(`/api/glossary?id=${id}`, {
         method: 'DELETE',
         headers,
-        body: JSON.stringify({ id }),
       });
       if (res.ok) {
         await fetchEntries();

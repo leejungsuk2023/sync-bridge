@@ -608,7 +608,12 @@ export default function WorkerFollowup({ userId }: { userId: string }) {
         {/* Customer info */}
         <div className="flex items-start justify-between">
           <div>
-            <p className="font-medium text-slate-900">{customer.customer_name}</p>
+            <div className="flex items-center gap-2">
+              <p className="font-medium text-slate-900">{customer.customer_name}</p>
+              <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono font-medium bg-slate-100 text-slate-500 rounded border border-slate-200">
+                #{customer.ticket_id}
+              </span>
+            </div>
             {customer.customer_phone && (
               <p className="text-xs text-slate-500 mt-0.5">{customer.customer_phone}</p>
             )}

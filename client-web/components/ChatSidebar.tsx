@@ -72,23 +72,26 @@ export default function ChatSidebar({ userId, clientId, assigneeId, locale = 'ko
         .select('task_id, last_read_at')
         .eq('user_id', userId);
 
+      const countResults = await Promise.all(
+        taskIds.map(async (taskId) => {
+          const readStatus = readStatuses?.find(r => r.task_id === taskId);
+          let query = supabase
+            .from('messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('task_id', taskId)
+            .neq('sender_id', userId);
+
+          if (readStatus) {
+            query = query.gt('created_at', readStatus.last_read_at);
+          }
+
+          const { count } = await query;
+          return { taskId, count: count || 0 };
+        })
+      );
+
       const counts: Record<string, number> = {};
-
-      for (const taskId of taskIds) {
-        const readStatus = readStatuses?.find(r => r.task_id === taskId);
-        let query = supabase
-          .from('messages')
-          .select('id', { count: 'exact', head: true })
-          .eq('task_id', taskId)
-          .neq('sender_id', userId);
-
-        if (readStatus) {
-          query = query.gt('created_at', readStatus.last_read_at);
-        }
-
-        const { count } = await query;
-        counts[taskId] = count || 0;
-      }
+      countResults.forEach(r => { counts[r.taskId] = r.count; });
 
       // Reset count for currently active chat
       if (activeTaskIdRef.current && counts[activeTaskIdRef.current] !== undefined) {

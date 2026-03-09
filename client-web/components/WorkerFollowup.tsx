@@ -198,7 +198,7 @@ function FollowupLostModal({
           <textarea
             value={comment}
             onChange={(e) => setComment(e.target.value)}
-            placeholder="บันทึกสิ่งที่ทำ..."
+            placeholder="สรุปสิ่งที่ทำ เช่น โทรหาลูกค้าแล้ว รอตอบกลับ / ส่งข้อมูลเพิ่มเติมให้ลูกค้าแล้ว..."
             rows={2}
             className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 resize-none"
           />
@@ -654,12 +654,6 @@ export default function WorkerFollowup({ userId }: { userId: string }) {
               <p className="text-slate-700">{customer.followup_reason_th || customer.followup_reason}</p>
             </div>
           )}
-          {customer.subject && (
-            <div className="col-span-2">
-              <span className="text-slate-400">หัวข้อ:</span>
-              <p className="text-slate-700">{customer.subject}</p>
-            </div>
-          )}
         </div>
 
         {/* Lost reason badge */}
@@ -677,7 +671,7 @@ export default function WorkerFollowup({ userId }: { userId: string }) {
         {/* Action comment textarea (disabled for terminal statuses) */}
         {!terminal && (
           <textarea
-            placeholder="บันทึกสิ่งที่ทำ..."
+            placeholder="สรุปสิ่งที่ทำ เช่น โทรหาลูกค้าแล้ว รอตอบกลับ / ส่งข้อมูลเพิ่มเติมให้ลูกค้าแล้ว..."
             value={comments[customer.ticket_id] || ''}
             onChange={(e) => setComments((prev) => ({ ...prev, [customer.ticket_id]: e.target.value }))}
             rows={2}

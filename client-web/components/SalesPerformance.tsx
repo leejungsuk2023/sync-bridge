@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { BarChart3, Star, RefreshCw, Users, TrendingUp, AlertTriangle, Search, Building2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { BarChart3, Star, RefreshCw, Users, TrendingUp, AlertTriangle, Search, Building2, ArrowUpRight, ArrowDownRight, RotateCcw } from 'lucide-react';
 
 interface Overview {
   totalTickets: number;
@@ -62,6 +62,8 @@ export default function SalesPerformance() {
   const [activeTab, setActiveTab] = useState<'sales' | 'hospital' | 'followup'>('sales');
   const [insights, setInsights] = useState<{hospital_strategy: string; sales_improvement: string; hq_management: string} | null>(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsError, setInsightsError] = useState(false);
+  const [insightsKey, setInsightsKey] = useState(0);
 
   const getAuthHeader = async () => {
     const session = (await supabase.auth.getSession()).data.session;
@@ -138,11 +140,13 @@ export default function SalesPerformance() {
   useEffect(() => {
     if (!ticketHospitalFilter) {
       setInsights(null);
+      setInsightsError(false);
       return;
     }
     const fetchInsights = async () => {
       setInsightsLoading(true);
       setInsights(null);
+      setInsightsError(false);
       try {
         const headers = await getAuthHeader();
         const res = await fetch('/api/zendesk/insights', {
@@ -153,15 +157,18 @@ export default function SalesPerformance() {
         if (res.ok) {
           const data = await res.json();
           setInsights(data.insights || null);
+        } else {
+          setInsightsError(true);
         }
       } catch (err) {
         console.error('[SalesPerformance] Failed to fetch insights:', err);
+        setInsightsError(true);
       } finally {
         setInsightsLoading(false);
       }
     };
     fetchInsights();
-  }, [ticketHospitalFilter]);
+  }, [ticketHospitalFilter, insightsKey]);
 
   const handleMarkFollowup = async (ticketId: number) => {
     try {
@@ -492,6 +499,17 @@ export default function SalesPerformance() {
                   <span className="text-sm">인사이트 분석 중...</span>
                 </div>
               )}
+              {ticketHospitalFilter && insightsError && !insightsLoading && (
+                <div className="flex items-center gap-3 py-3 px-4 bg-red-50 border border-red-200 rounded-xl mb-4">
+                  <span className="text-sm text-red-600">인사이트 분석에 실패했습니다.</span>
+                  <button
+                    onClick={() => setInsightsKey(prev => prev + 1)}
+                    className="text-xs px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                  >
+                    재시도
+                  </button>
+                </div>
+              )}
               {ticketHospitalFilter && insights && !insightsLoading && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                   <div className="border border-slate-200 border-l-4 border-l-blue-500 rounded-xl shadow-sm p-4">
@@ -773,15 +791,41 @@ export default function SalesPerformance() {
   );
 }
 
+// Status display configuration
+const FOLLOWUP_STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  pending: { label: '대기', color: 'text-amber-700', bg: 'bg-amber-100', border: 'border-amber-300' },
+  contacted: { label: '연락완료', color: 'text-blue-700', bg: 'bg-blue-100', border: 'border-blue-300' },
+  scheduled: { label: '예약됨', color: 'text-indigo-700', bg: 'bg-indigo-100', border: 'border-indigo-300' },
+  converted: { label: '성공', color: 'text-emerald-700', bg: 'bg-emerald-100', border: 'border-emerald-300' },
+  lost: { label: 'Lost', color: 'text-red-700', bg: 'bg-red-100', border: 'border-red-300' },
+};
+
+// Lost reason labels in Korean
+const LOST_REASON_LABELS: Record<string, string> = {
+  no_response: '연락 안 됨',
+  customer_rejected: '고객 거절',
+  competitor: '경쟁사 선택',
+  price_issue: '가격 문제',
+  other: '기타',
+};
+
 function FollowupCustomerTable({ getAuthHeader }: { getAuthHeader: () => Promise<{ Authorization: string }> }) {
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [lostReasonFilter, setLostReasonFilter] = useState<string>('');
+  const [reverting, setReverting] = useState<number | null>(null);
+  const [fetchKey, setFetchKey] = useState(0);
 
   useEffect(() => {
     const fetchFollowups = async () => {
+      setLoading(true);
       try {
         const headers = await getAuthHeader();
-        const res = await fetch('/api/zendesk/followup-customers', { headers });
+        const url = statusFilter
+          ? `/api/zendesk/followup-customers?status=${statusFilter}`
+          : '/api/zendesk/followup-customers';
+        const res = await fetch(url, { headers });
         if (res.ok) {
           const data = await res.json();
           setCustomers(data.customers || []);
@@ -793,55 +837,243 @@ function FollowupCustomerTable({ getAuthHeader }: { getAuthHeader: () => Promise
       }
     };
     fetchFollowups();
-  }, []);
+  }, [statusFilter, fetchKey]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center gap-2 text-slate-500 py-4">
-        <RefreshCw className="w-4 h-4 animate-spin" />
-        <span>고객 데이터 로딩 중...</span>
-      </div>
-    );
-  }
+  // Revert a lost item back to contacted
+  const handleRevert = async (ticketId: number) => {
+    if (!confirm('Lost 처리를 되돌리고 팔로업을 재개합니까?')) return;
+    setReverting(ticketId);
+    try {
+      const headers = await getAuthHeader();
+      const res = await fetch('/api/zendesk/followup-customers', {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ticket_id: ticketId,
+          status: 'contacted',
+          action_comment: 'Admin reverted from lost',
+        }),
+      });
+      if (res.ok) {
+        setFetchKey(prev => prev + 1);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`되돌리기 실패: ${err.error || res.status}`);
+      }
+    } catch (err) {
+      console.error('[SalesPerformance] Revert failed:', err);
+      alert('되돌리기 중 오류가 발생했습니다.');
+    } finally {
+      setReverting(null);
+    }
+  };
 
-  if (customers.length === 0) {
+  // Compute status counts from the full (unfiltered) customer list
+  // When a filter is active, counts are based on current result
+  const statusCounts = customers.reduce<Record<string, number>>((acc, c) => {
+    const s = c.followup_status || 'pending';
+    acc[s] = (acc[s] || 0) + 1;
+    return acc;
+  }, {});
+
+  // Filter customers by lost reason (client-side sub-filter)
+  const filteredCustomers = statusFilter === 'lost' && lostReasonFilter
+    ? customers.filter(c => c.lost_reason === lostReasonFilter)
+    : customers;
+
+  // Compute lost reason counts for the summary bar
+  const lostReasonCounts = statusFilter === 'lost'
+    ? customers.reduce<Record<string, number>>((acc, c) => {
+        const reason = c.lost_reason || 'other';
+        acc[reason] = (acc[reason] || 0) + 1;
+        return acc;
+      }, {})
+    : {};
+
+  // Format datetime for display
+  const formatDateTime = (dateStr: string | null) => {
+    if (!dateStr) return '-';
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }) + ' ' +
+      d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Status badge renderer
+  const statusBadge = (status: string) => {
+    const config = FOLLOWUP_STATUS_CONFIG[status] || FOLLOWUP_STATUS_CONFIG.pending;
     return (
-      <div className="text-center py-8 text-slate-500">
-        <Users className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-        <p>팔로업 고객 데이터가 없습니다.</p>
-        <p className="text-xs mt-1">Analyze 실행 시 대화에서 고객 정보가 자동 추출됩니다.</p>
-      </div>
+      <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${config.bg} ${config.color}`}>
+        {config.label}
+      </span>
     );
-  }
+  };
+
+  // Status filter buttons
+  const statusFilterButtons = [
+    { key: '', label: '전체' },
+    { key: 'pending', label: '대기', activeClass: 'bg-amber-100 text-amber-700 border-amber-300' },
+    { key: 'contacted', label: '연락완료', activeClass: 'bg-blue-100 text-blue-700 border-blue-300' },
+    { key: 'scheduled', label: '예약됨', activeClass: 'bg-indigo-100 text-indigo-700 border-indigo-300' },
+    { key: 'converted', label: '성공', activeClass: 'bg-emerald-100 text-emerald-700 border-emerald-300' },
+    { key: 'lost', label: 'Lost', activeClass: 'bg-red-100 text-red-700 border-red-300' },
+  ];
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="bg-slate-50 text-slate-600">
-            <th className="text-left px-3 py-2 font-medium rounded-tl-lg">고객명</th>
-            <th className="text-left px-3 py-2 font-medium">연락처</th>
-            <th className="text-left px-3 py-2 font-medium">관심 시술</th>
-            <th className="text-center px-3 py-2 font-medium">나이</th>
-            <th className="text-left px-3 py-2 font-medium">병원</th>
-            <th className="text-left px-3 py-2 font-medium">팔로업 사유</th>
-            <th className="text-left px-3 py-2 font-medium rounded-tr-lg">티켓</th>
-          </tr>
-        </thead>
-        <tbody>
-          {customers.map((c, i) => (
-            <tr key={c.ticket_id || i} className="border-t border-slate-100 hover:bg-slate-50">
-              <td className="px-3 py-2 font-medium text-slate-900">{c.customer_name || '-'}</td>
-              <td className="px-3 py-2 text-slate-700">{c.customer_phone || '-'}</td>
-              <td className="px-3 py-2 text-slate-700">{c.interested_procedure || '-'}</td>
-              <td className="text-center px-3 py-2 text-slate-700">{c.customer_age || '-'}</td>
-              <td className="px-3 py-2 text-slate-700 text-xs">{c.hospital_name || '-'}</td>
-              <td className="px-3 py-2 text-slate-600 text-xs">{c.followup_reason || '-'}</td>
-              <td className="px-3 py-2 text-xs text-slate-500">{c.subject || `#${c.ticket_id}`}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="space-y-4">
+      {/* Status Filter Bar */}
+      <div className="flex flex-wrap gap-2">
+        {statusFilterButtons.map(btn => {
+          const isActive = statusFilter === btn.key;
+          const count = btn.key === '' ? customers.length : (statusCounts[btn.key] || 0);
+          return (
+            <button
+              key={btn.key}
+              onClick={() => { setStatusFilter(btn.key); setLostReasonFilter(''); }}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                isActive
+                  ? (btn.activeClass || 'bg-slate-800 text-white border-slate-800')
+                  : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+              }`}
+            >
+              {btn.label}
+              {!loading && (
+                <span className={`ml-1.5 ${isActive ? 'opacity-80' : 'text-slate-400'}`}>
+                  {btn.key === '' && !statusFilter ? customers.length : count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Lost Reason Sub-filter (only when lost filter is active) */}
+      {statusFilter === 'lost' && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setLostReasonFilter('')}
+              className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
+                !lostReasonFilter
+                  ? 'bg-red-600 text-white border-red-600'
+                  : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+              }`}
+            >
+              전체 lost
+            </button>
+            {Object.entries(LOST_REASON_LABELS).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setLostReasonFilter(key)}
+                className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
+                  lostReasonFilter === key
+                    ? 'bg-red-600 text-white border-red-600'
+                    : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Lost Statistics Summary */}
+          {Object.keys(lostReasonCounts).length > 0 && (
+            <div className="flex flex-wrap gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
+              {Object.entries(LOST_REASON_LABELS).map(([key, label]) => {
+                const count = lostReasonCounts[key] || 0;
+                if (count === 0) return null;
+                return (
+                  <span key={key} className="inline-flex items-center gap-1 text-xs text-red-700">
+                    <span className="font-medium">{label}</span>
+                    <span className="px-1.5 py-0.5 bg-red-200 rounded-full text-red-800 font-bold">{count}</span>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Loading state */}
+      {loading ? (
+        <div className="flex items-center gap-2 text-slate-500 py-4">
+          <RefreshCw className="w-4 h-4 animate-spin" />
+          <span>고객 데이터 로딩 중...</span>
+        </div>
+      ) : filteredCustomers.length === 0 ? (
+        <div className="text-center py-8 text-slate-500">
+          <Users className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+          <p>팔로업 고객 데이터가 없습니다.</p>
+          <p className="text-xs mt-1">Analyze 실행 시 대화에서 고객 정보가 자동 추출됩니다.</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-slate-50 text-slate-600">
+                <th className="text-left px-3 py-2 font-medium rounded-tl-lg">고객명</th>
+                <th className="text-left px-3 py-2 font-medium">연락처</th>
+                <th className="text-left px-3 py-2 font-medium">관심 시술</th>
+                <th className="text-left px-3 py-2 font-medium">병원</th>
+                <th className="text-center px-3 py-2 font-medium">상태</th>
+                {statusFilter === 'lost' && (
+                  <th className="text-left px-3 py-2 font-medium">Lost 사유</th>
+                )}
+                <th className="text-center px-3 py-2 font-medium">체크 횟수</th>
+                <th className="text-center px-3 py-2 font-medium">다음 체크</th>
+                <th className="text-left px-3 py-2 font-medium">팔로업 사유</th>
+                <th className="text-left px-3 py-2 font-medium">티켓</th>
+                <th className="text-center px-3 py-2 font-medium rounded-tr-lg">작업</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredCustomers.map((c, i) => {
+                const status = c.followup_status || 'pending';
+                const isLost = status === 'lost';
+                return (
+                  <tr
+                    key={c.ticket_id || i}
+                    className={`border-t border-slate-100 hover:bg-slate-50 ${isLost ? 'opacity-60' : ''}`}
+                  >
+                    <td className="px-3 py-2 font-medium text-slate-900">{c.customer_name || '-'}</td>
+                    <td className="px-3 py-2 text-slate-700">{c.customer_phone || '-'}</td>
+                    <td className="px-3 py-2 text-slate-700">{c.interested_procedure || '-'}</td>
+                    <td className="px-3 py-2 text-slate-700 text-xs">{c.hospital_name || '-'}</td>
+                    <td className="text-center px-3 py-2">{statusBadge(status)}</td>
+                    {statusFilter === 'lost' && (
+                      <td className="px-3 py-2 text-xs text-slate-600">
+                        {c.lost_reason ? LOST_REASON_LABELS[c.lost_reason] || c.lost_reason : '-'}
+                        {c.lost_reason === 'other' && c.lost_reason_detail && (
+                          <span className="block text-slate-400 mt-0.5">{c.lost_reason_detail}</span>
+                        )}
+                      </td>
+                    )}
+                    <td className="text-center px-3 py-2 text-slate-700">{c.check_count ?? 0}</td>
+                    <td className="text-center px-3 py-2 text-xs text-slate-600">
+                      {formatDateTime(c.next_check_at)}
+                    </td>
+                    <td className="px-3 py-2 text-slate-600 text-xs">{c.followup_reason || '-'}</td>
+                    <td className="px-3 py-2 text-xs text-slate-500">{c.subject || `#${c.ticket_id}`}</td>
+                    <td className="text-center px-3 py-2">
+                      {isLost ? (
+                        <button
+                          onClick={() => handleRevert(c.ticket_id)}
+                          disabled={reverting === c.ticket_id}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50 transition-colors"
+                        >
+                          <RotateCcw className={`w-3 h-3 ${reverting === c.ticket_id ? 'animate-spin' : ''}`} />
+                          되돌리기
+                        </button>
+                      ) : (
+                        <span className="text-slate-400">-</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

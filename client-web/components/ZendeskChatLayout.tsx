@@ -151,8 +151,8 @@ export default function ZendeskChatLayout({ user, profile }: { user: any; profil
           )}
         </div>
 
-        {/* AI Suggest Panel — desktop only */}
-        <div className="hidden md:block w-80 shrink-0 border-l border-slate-200 overflow-y-auto bg-slate-50">
+        {/* AI Suggest Panel — desktop only, collapsible */}
+        <div className="hidden lg:block w-72 shrink-0 border-l border-slate-200 overflow-y-auto bg-slate-50">
           <AISuggestPanel
             ticketId={selectedTicketId}
             onUseReply={(text) => setInjectedReply(text)}

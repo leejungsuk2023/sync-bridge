@@ -577,8 +577,8 @@ export default function ZendeskChatPanel({
               }
             }}
             placeholder={isPublic ? 'พิมพ์ข้อความถึงลูกค้า... (Ctrl+Enter ส่ง)' : 'บันทึกภายใน... (Ctrl+Enter ส่ง)'}
-            rows={1}
-            className="flex-1 min-h-[40px] max-h-[120px] px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-shadow resize-none"
+            rows={3}
+            className="flex-1 min-h-[72px] max-h-[200px] px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-shadow resize-y"
           />
 
           <button

@@ -815,6 +815,7 @@ function FollowupCustomerTable({ getAuthHeader }: { getAuthHeader: () => Promise
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [lostReasonFilter, setLostReasonFilter] = useState<string>('');
   const [reverting, setReverting] = useState<number | null>(null);
+  const [changingStatus, setChangingStatus] = useState<number | null>(null);
   const [fetchKey, setFetchKey] = useState(0);
 
   useEffect(() => {
@@ -865,6 +866,33 @@ function FollowupCustomerTable({ getAuthHeader }: { getAuthHeader: () => Promise
       alert('되돌리기 중 오류가 발생했습니다.');
     } finally {
       setReverting(null);
+    }
+  };
+
+  const handleStatusChange = async (ticketId: number, newStatus: string) => {
+    setChangingStatus(ticketId);
+    try {
+      const headers = await getAuthHeader();
+      const res = await fetch('/api/zendesk/followup-customers', {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ticket_id: ticketId,
+          status: newStatus,
+          action_comment: `Admin changed status to ${newStatus}`,
+          ...(newStatus === 'lost' ? { lost_reason: 'other', lost_reason_detail: 'Admin decision' } : {}),
+        }),
+      });
+      if (res.ok) {
+        setFetchKey(prev => prev + 1);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`상태 변경 실패: ${err.error || res.status}`);
+      }
+    } catch (err) {
+      console.error('[SalesPerformance] Status change failed:', err);
+    } finally {
+      setChangingStatus(null);
     }
   };
 
@@ -1054,18 +1082,25 @@ function FollowupCustomerTable({ getAuthHeader }: { getAuthHeader: () => Promise
                     <td className="px-3 py-2 text-slate-600 text-xs">{c.followup_reason || '-'}</td>
                     <td className="px-3 py-2 text-xs text-slate-500">{c.subject || `#${c.ticket_id}`}</td>
                     <td className="text-center px-3 py-2">
-                      {isLost ? (
-                        <button
-                          onClick={() => handleRevert(c.ticket_id)}
-                          disabled={reverting === c.ticket_id}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50 transition-colors"
-                        >
-                          <RotateCcw className={`w-3 h-3 ${reverting === c.ticket_id ? 'animate-spin' : ''}`} />
-                          되돌리기
-                        </button>
-                      ) : (
-                        <span className="text-slate-400">-</span>
-                      )}
+                      <select
+                        value={status}
+                        onChange={(e) => {
+                          const newStatus = e.target.value;
+                          if (newStatus !== status) {
+                            if (confirm(`상태를 "${FOLLOWUP_STATUS_CONFIG[newStatus]?.label || newStatus}"(으)로 변경하시겠습니까?`)) {
+                              handleStatusChange(c.ticket_id, newStatus);
+                            }
+                          }
+                        }}
+                        disabled={changingStatus === c.ticket_id}
+                        className="text-xs border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:opacity-50"
+                      >
+                        <option value="pending">대기</option>
+                        <option value="contacted">연락완료</option>
+                        <option value="scheduled">예약됨</option>
+                        <option value="converted">성공</option>
+                        <option value="lost">Lost</option>
+                      </select>
                     </td>
                   </tr>
                 );

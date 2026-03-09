@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Bell, ChevronDown, ChevronUp, Clock, Star, Info, X, AlertTriangle } from 'lucide-react';
+import { Bell, ChevronDown, ChevronUp, Clock, Star, Info, AlertTriangle } from 'lucide-react';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -54,8 +54,6 @@ interface FollowupNotification {
 
 type FollowupStatus = 'pending' | 'contacted' | 'scheduled' | 'converted' | 'lost';
 
-type LostReason = 'no_response' | 'customer_rejected' | 'competitor' | 'price_issue' | 'other';
-
 // ─── Constants ──────────────────────────────────────────────────────
 
 const STATUS_CONFIG: Record<FollowupStatus, { label: string; bg: string; text: string }> = {
@@ -65,21 +63,6 @@ const STATUS_CONFIG: Record<FollowupStatus, { label: string; bg: string; text: s
   converted: { label: 'สำเร็จ',      bg: 'bg-emerald-100', text: 'text-emerald-700' },
   lost:      { label: 'ไม่สำเร็จ',   bg: 'bg-red-100',     text: 'text-red-700' },
 };
-
-const ACTION_BUTTONS: { status: FollowupStatus; label: string; color: string }[] = [
-  { status: 'contacted', label: 'ติดต่อแล้ว',  color: 'bg-blue-500 hover:bg-blue-600 text-white' },
-  { status: 'scheduled', label: 'นัดหมายแล้ว', color: 'bg-indigo-500 hover:bg-indigo-600 text-white' },
-  { status: 'converted', label: 'สำเร็จ',      color: 'bg-emerald-500 hover:bg-emerald-600 text-white' },
-  { status: 'lost',      label: 'ไม่สำเร็จ',   color: 'bg-red-500 hover:bg-red-600 text-white' },
-];
-
-const LOST_REASONS: { value: LostReason; label: string }[] = [
-  { value: 'no_response',       label: 'ติดต่อไม่ได้' },
-  { value: 'customer_rejected', label: 'ลูกค้าปฏิเสธ' },
-  { value: 'competitor',        label: 'เลือกคู่แข่ง' },
-  { value: 'price_issue',       label: 'ปัญหาเรื่องราคา' },
-  { value: 'other',             label: 'อื่นๆ' },
-];
 
 const LOST_REASON_LABELS: Record<string, string> = {
   no_response: 'ติดต่อไม่ได้',
@@ -127,103 +110,6 @@ function formatTimestamp(dateStr: string): string {
     hour: '2-digit',
     minute: '2-digit',
   });
-}
-
-// ─── Lost Modal ─────────────────────────────────────────────────────
-
-function FollowupLostModal({
-  customerName,
-  onConfirm,
-  onClose,
-  isSubmitting,
-}: {
-  customerName: string;
-  onConfirm: (reason: LostReason, detail: string | null, comment: string) => void;
-  onClose: () => void;
-  isSubmitting: boolean;
-}) {
-  const [reason, setReason] = useState<LostReason | ''>('');
-  const [detail, setDetail] = useState('');
-  const [comment, setComment] = useState('');
-
-  const canConfirm = reason !== '' && (reason !== 'other' || detail.trim().length > 0);
-
-  return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold text-slate-900">บันทึกเหตุผล</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
-            <X size={18} />
-          </button>
-        </div>
-
-        <p className="text-sm text-slate-600">
-          ลูกค้า: <span className="font-medium text-slate-800">{customerName}</span>
-        </p>
-
-        {/* Reason dropdown */}
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">เหตุผล</label>
-          <select
-            value={reason}
-            onChange={(e) => setReason(e.target.value as LostReason | '')}
-            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400"
-          >
-            <option value="">เลือกเหตุผล...</option>
-            {LOST_REASONS.map((r) => (
-              <option key={r.value} value={r.value}>{r.label}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Detail textarea (shown when reason is 'other') */}
-        {reason === 'other' && (
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">รายละเอียด (จำเป็น)</label>
-            <textarea
-              value={detail}
-              onChange={(e) => setDetail(e.target.value)}
-              placeholder="กรุณาระบุเหตุผล..."
-              rows={2}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 resize-none"
-            />
-          </div>
-        )}
-
-        {/* Action comment */}
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">บันทึกเพิ่มเติม</label>
-          <textarea
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            placeholder="สรุปสิ่งที่ทำ เช่น โทรหาลูกค้าแล้ว รอตอบกลับ / ส่งข้อมูลเพิ่มเติมให้ลูกค้าแล้ว..."
-            rows={2}
-            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 resize-none"
-          />
-        </div>
-
-        {/* Actions */}
-        <div className="flex gap-2 justify-end">
-          <button
-            onClick={onClose}
-            disabled={isSubmitting}
-            className="text-sm px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50"
-          >
-            ยกเลิก
-          </button>
-          <button
-            onClick={() => onConfirm(reason as LostReason, reason === 'other' ? detail : null, comment)}
-            disabled={!canConfirm || isSubmitting}
-            className="text-sm px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white font-medium transition-colors disabled:opacity-50"
-          >
-            {isSubmitting ? 'กำลังบันทึก...' : 'ยืนยัน'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 // ─── Action Timeline ────────────────────────────────────────────────
@@ -320,8 +206,6 @@ export default function WorkerFollowup({ userId }: { userId: string }) {
   // Timeline expand state
   const [expandedTimelines, setExpandedTimelines] = useState<Record<number, boolean>>({});
 
-  // Lost modal state
-  const [lostModalTicketId, setLostModalTicketId] = useState<number | null>(null);
 
   // ─── Data fetching ─────────────────────────────────────────────
 
@@ -439,33 +323,16 @@ export default function WorkerFollowup({ userId }: { userId: string }) {
     }
   };
 
-  // ─── Status change ────────────────────────────────────────────
+  // ─── Submit comment ──────────────────────────────────────────
 
-  const handleStatusChange = async (
-    ticketId: number,
-    status: FollowupStatus,
-    lostReason?: LostReason,
-    lostReasonDetail?: string | null,
-    lostComment?: string,
-  ) => {
+  const handleSubmitComment = async (ticketId: number) => {
+    const comment = comments[ticketId]?.trim();
+    if (!comment) return;
+
     setUpdating(ticketId);
     try {
       const session = await getSession();
       if (!session) return;
-
-      const body: Record<string, any> = {
-        ticket_id: ticketId,
-        status,
-        note: comments[ticketId] || undefined,
-        action_comment: lostComment ?? (comments[ticketId] || undefined),
-      };
-
-      if (status === 'lost' && lostReason) {
-        body.lost_reason = lostReason;
-        if (lostReasonDetail) {
-          body.lost_reason_detail = lostReasonDetail;
-        }
-      }
 
       const res = await fetch('/api/zendesk/followup-customers', {
         method: 'PATCH',
@@ -473,7 +340,10 @@ export default function WorkerFollowup({ userId }: { userId: string }) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          ticket_id: ticketId,
+          action_comment: comment,
+        }),
       });
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -485,14 +355,11 @@ export default function WorkerFollowup({ userId }: { userId: string }) {
         return next;
       });
 
-      // Close lost modal
-      setLostModalTicketId(null);
-
       // Refresh
       await fetchCustomers();
     } catch (err) {
-      console.error('[WorkerFollowup] Failed to update status:', err);
-      setError('ไม่สามารถอัปเดตสถานะได้ กรุณาลองใหม่');
+      console.error('[WorkerFollowup] Failed to submit comment:', err);
+      setError('ไม่สามารถบันทึกได้ กรุณาลองใหม่');
     } finally {
       setUpdating(null);
     }
@@ -668,39 +535,24 @@ export default function WorkerFollowup({ userId }: { userId: string }) {
           </div>
         )}
 
-        {/* Action comment textarea (disabled for terminal statuses) */}
-        {!terminal && (
+        {/* Action comment */}
+        <div className="flex gap-2">
           <textarea
             placeholder="สรุปสิ่งที่ทำ เช่น โทรหาลูกค้าแล้ว รอตอบกลับ / ส่งข้อมูลเพิ่มเติมให้ลูกค้าแล้ว..."
             value={comments[customer.ticket_id] || ''}
             onChange={(e) => setComments((prev) => ({ ...prev, [customer.ticket_id]: e.target.value }))}
             rows={2}
-            className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 resize-none"
+            className="flex-1 text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 resize-none"
             disabled={isUpdating}
           />
-        )}
-
-        {/* Action buttons (hidden for terminal statuses) */}
-        {!terminal && (
-          <div className="flex flex-wrap gap-2">
-            {ACTION_BUTTONS.filter((a) => a.status !== customer.followup_status).map((action) => (
-              <button
-                key={action.status}
-                onClick={() => {
-                  if (action.status === 'lost') {
-                    setLostModalTicketId(customer.ticket_id);
-                  } else {
-                    handleStatusChange(customer.ticket_id, action.status);
-                  }
-                }}
-                disabled={isUpdating}
-                className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-50 ${action.color}`}
-              >
-                {isUpdating ? '...' : action.label}
-              </button>
-            ))}
-          </div>
-        )}
+          <button
+            onClick={() => handleSubmitComment(customer.ticket_id)}
+            disabled={isUpdating || !comments[customer.ticket_id]?.trim()}
+            className="self-end px-4 py-2 text-xs font-medium bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
+          >
+            {isUpdating ? '...' : 'บันทึก'}
+          </button>
+        </div>
 
         {/* Timeline toggle */}
         <button
@@ -722,10 +574,6 @@ export default function WorkerFollowup({ userId }: { userId: string }) {
   };
 
   // ─── Main Render ───────────────────────────────────────────────
-
-  const lostModalCustomer = lostModalTicketId
-    ? customers.find((c) => c.ticket_id === lostModalTicketId)
-    : null;
 
   return (
     <div className="space-y-4">
@@ -772,17 +620,6 @@ export default function WorkerFollowup({ userId }: { userId: string }) {
         {sortedCustomers.map((customer) => renderCustomerCard(customer))}
       </div>
 
-      {/* Lost Modal */}
-      {lostModalCustomer && (
-        <FollowupLostModal
-          customerName={lostModalCustomer.customer_name}
-          isSubmitting={updating === lostModalCustomer.ticket_id}
-          onClose={() => setLostModalTicketId(null)}
-          onConfirm={(reason, detail, comment) => {
-            handleStatusChange(lostModalCustomer.ticket_id, 'lost', reason, detail, comment);
-          }}
-        />
-      )}
     </div>
   );
 }

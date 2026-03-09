@@ -170,22 +170,8 @@ export async function PATCH(req: NextRequest) {
     const body = await req.json();
     const { ticket_id, status, note, action_comment, lost_reason, lost_reason_detail } = body;
 
-    if (!ticket_id || !status) {
-      return withCors(NextResponse.json({ error: 'ticket_id and status are required' }, { status: 400 }));
-    }
-
-    if (!VALID_STATUSES.includes(status)) {
-      return withCors(NextResponse.json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` }, { status: 400 }));
-    }
-
-    // Validate lost status requires lost_reason
-    if (status === 'lost' && !lost_reason) {
-      return withCors(NextResponse.json({ error: 'lost_reason is required when status is lost' }, { status: 400 }));
-    }
-
-    // Validate lost_reason='other' requires detail
-    if (lost_reason === 'other' && !lost_reason_detail) {
-      return withCors(NextResponse.json({ error: 'lost_reason_detail is required when lost_reason is other' }, { status: 400 }));
+    if (!ticket_id) {
+      return withCors(NextResponse.json({ error: 'ticket_id is required' }, { status: 400 }));
     }
 
     // Fetch current status before update
@@ -200,7 +186,29 @@ export async function PATCH(req: NextRequest) {
     }
 
     const statusBefore = current.followup_status;
-    const isRevert = statusBefore === 'lost' && status === 'contacted';
+
+    // If no explicit status provided, auto-determine
+    let targetStatus = status;
+    if (!targetStatus) {
+      // Worker comment-only: auto-set to "contacted" if pending, otherwise keep current
+      targetStatus = statusBefore === 'pending' ? 'contacted' : statusBefore;
+    }
+
+    if (!VALID_STATUSES.includes(targetStatus)) {
+      return withCors(NextResponse.json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` }, { status: 400 }));
+    }
+
+    // Validate lost status requires lost_reason
+    if (targetStatus === 'lost' && !lost_reason) {
+      return withCors(NextResponse.json({ error: 'lost_reason is required when status is lost' }, { status: 400 }));
+    }
+
+    // Validate lost_reason='other' requires detail
+    if (lost_reason === 'other' && !lost_reason_detail) {
+      return withCors(NextResponse.json({ error: 'lost_reason_detail is required when lost_reason is other' }, { status: 400 }));
+    }
+
+    const isRevert = statusBefore === 'lost' && targetStatus === 'contacted';
 
     // Validate: lost→contacted revert is bbg_admin only
     if (isRevert && authUser.role !== 'bbg_admin') {
@@ -209,7 +217,7 @@ export async function PATCH(req: NextRequest) {
 
     // Build update data
     const updateData: Record<string, any> = {
-      followup_status: status,
+      followup_status: targetStatus,
       followup_updated_by: authUser.userId,
       followup_updated_at: new Date().toISOString(),
     };
@@ -218,15 +226,15 @@ export async function PATCH(req: NextRequest) {
       updateData.followup_note = note;
     }
 
-    // Set next_check_at based on status transition
-    if (status === 'contacted' || status === 'scheduled') {
+    // Set next_check_at: active statuses get refreshed, terminal statuses get null
+    if (targetStatus === 'contacted' || targetStatus === 'scheduled') {
       updateData.next_check_at = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
-    } else if (status === 'lost' || status === 'converted') {
+    } else if (targetStatus === 'lost' || targetStatus === 'converted') {
       updateData.next_check_at = null;
     }
 
     // Handle lost status: save reason
-    if (status === 'lost') {
+    if (targetStatus === 'lost') {
       updateData.lost_reason = lost_reason;
       updateData.lost_reason_detail = lost_reason_detail || null;
     }
@@ -264,12 +272,12 @@ export async function PATCH(req: NextRequest) {
       action_type: isRevert ? 'system_note' : 'worker_action',
       content: isRevert
         ? `Admin reverted status from lost to contacted (previous reason: ${current.lost_reason || 'unknown'})`
-        : (action_comment || `Status changed to ${status}`),
+        : (action_comment || `Status changed to ${targetStatus}`),
       content_th: isRevert
         ? `แอดมินเปลี่ยนสถานะจาก ไม่สำเร็จ เป็น ติดต่อแล้ว (เหตุผลเดิม: ${LOST_REASON_LABELS_TH[current.lost_reason] || current.lost_reason || '-'})`
-        : (action_comment || `เปลี่ยนสถานะเป็น ${STATUS_LABELS_TH[status] || status}`),
+        : (action_comment || `เปลี่ยนสถานะเป็น ${STATUS_LABELS_TH[targetStatus] || targetStatus}`),
       status_before: statusBefore,
-      status_after: status,
+      status_after: targetStatus,
       created_by: authUser.userId,
     };
 

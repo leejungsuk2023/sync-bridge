@@ -21,9 +21,10 @@ interface ChatPanelProps {
   locale?: 'ko' | 'th';
   roomLabel?: string;
   onBack?: () => void;
+  onMarkRead?: (taskId: string) => void;
 }
 
-export default function ChatPanel({ userId, clientId, roomSentinel, taskId: taskIdProp, locale = 'ko', roomLabel, onBack }: ChatPanelProps) {
+export default function ChatPanel({ userId, clientId, roomSentinel, taskId: taskIdProp, locale = 'ko', roomLabel, onBack, onMarkRead }: ChatPanelProps) {
   const L = locale === 'th' ? {
     noMessages: 'ยังไม่มีข้อความ ส่งข้อความแรกเลย',
     inputPlaceholder: 'พิมพ์ข้อความ... (ใช้ @ เพื่อเมนชัน)',
@@ -178,6 +179,15 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
         });
       }
     }
+
+    // Mark as read
+    if (chatTaskId && userId) {
+      supabase
+        .from('chat_read_status')
+        .upsert({ user_id: userId, task_id: chatTaskId, last_read_at: new Date().toISOString() }, { onConflict: 'user_id,task_id' })
+        .then(({ error }) => { if (error) console.error('[ChatPanel] mark read error:', error.message); });
+      onMarkRead?.(chatTaskId);
+    }
   }, [chatTaskId]);
 
   useEffect(() => {
@@ -187,6 +197,14 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
       .channel('chat_panel_' + chatTaskId)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `task_id=eq.${chatTaskId}` }, (payload) => {
         fetchMessages();
+        // Mark as read if tab is visible
+        if (!document.hidden && chatTaskId && userId) {
+          supabase
+            .from('chat_read_status')
+            .upsert({ user_id: userId, task_id: chatTaskId, last_read_at: new Date().toISOString() }, { onConflict: 'user_id,task_id' })
+            .then(({ error }) => { if (error) console.error('[ChatPanel] mark read error:', error.message); });
+          onMarkRead?.(chatTaskId);
+        }
         // Show browser notification if tab is hidden and message is from someone else
         if (document.hidden && payload.new && (payload.new as any).sender_id !== userId) {
           const senderName = profiles[(payload.new as any).sender_id] || '';

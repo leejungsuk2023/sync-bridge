@@ -29,10 +29,21 @@ export default function ChatLayout({ userId, clientId, locale = 'ko', assigneeId
     sentinel: defaultRoom.sentinel,
   });
   const [showPanel, setShowPanel] = useState(false); // mobile: show panel vs sidebar
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
   const handleSelect = (sel: Selection) => {
     setSelected(sel);
     setShowPanel(true); // on mobile, switch to panel view
+    // For tasks, we know the task_id immediately
+    if (sel.type === 'task') {
+      setActiveTaskId(sel.id);
+    } else {
+      setActiveTaskId(null); // will be set by ChatPanel's onMarkRead
+    }
+  };
+
+  const handleMarkRead = (taskId: string) => {
+    setActiveTaskId(taskId);
   };
 
   const handleBack = () => {
@@ -51,6 +62,7 @@ export default function ChatLayout({ userId, clientId, locale = 'ko', assigneeId
             locale={locale}
             selected={selected}
             onSelect={handleSelect}
+            activeTaskId={activeTaskId}
           />
         </div>
 
@@ -66,6 +78,7 @@ export default function ChatLayout({ userId, clientId, locale = 'ko', assigneeId
               locale={locale}
               roomLabel={selected.label}
               onBack={handleBack}
+              onMarkRead={handleMarkRead}
             />
           ) : (
             <div className="h-full flex items-center justify-center text-sm text-slate-400">

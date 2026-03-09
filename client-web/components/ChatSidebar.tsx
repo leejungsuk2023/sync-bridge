@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { CHAT_ROOMS } from '@/lib/chat-rooms';
 import { MessageSquare, ClipboardList } from 'lucide-react';
@@ -12,9 +12,20 @@ interface ChatSidebarProps {
   locale?: 'ko' | 'th';
   selected: { type: 'room' | 'task'; id: string } | null;
   onSelect: (selection: { type: 'room' | 'task'; id: string; label: string; sentinel?: string }) => void;
+  activeTaskId?: string | null; // task_id of the currently open chat panel
 }
 
-export default function ChatSidebar({ userId, clientId, assigneeId, locale = 'ko', selected, onSelect }: ChatSidebarProps) {
+function UnreadBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  const display = count > 99 ? '99+' : String(count);
+  return (
+    <span className="bg-red-500 text-white text-[10px] min-w-[18px] h-[18px] rounded-full flex items-center justify-center font-bold px-1 ml-auto flex-shrink-0">
+      {display}
+    </span>
+  );
+}
+
+export default function ChatSidebar({ userId, clientId, assigneeId, locale = 'ko', selected, onSelect, activeTaskId }: ChatSidebarProps) {
   const L = locale === 'th' ? {
     chatRooms: 'ห้องแชท',
     tasks: 'งาน',
@@ -31,7 +42,66 @@ export default function ChatSidebar({ userId, clientId, assigneeId, locale = 'ko
 
   const [tasks, setTasks] = useState<any[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(true);
+  const [roomTaskIds, setRoomTaskIds] = useState<Record<string, string>>({});
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
+  // Keep refs for values used in realtime callback
+  const activeTaskIdRef = useRef(activeTaskId);
+  activeTaskIdRef.current = activeTaskId;
+
+  // Reset unread count when activeTaskId changes
+  useEffect(() => {
+    if (activeTaskId) {
+      setUnreadCounts(prev => {
+        if (prev[activeTaskId] && prev[activeTaskId] > 0) {
+          return { ...prev, [activeTaskId]: 0 };
+        }
+        return prev;
+      });
+    }
+  }, [activeTaskId]);
+
+  // Fetch unread counts for a list of task IDs
+  const fetchUnreadCounts = useCallback(async (taskIds: string[]) => {
+    if (taskIds.length === 0 || !userId) return;
+
+    try {
+      // Get all read statuses for this user
+      const { data: readStatuses } = await supabase
+        .from('chat_read_status')
+        .select('task_id, last_read_at')
+        .eq('user_id', userId);
+
+      const counts: Record<string, number> = {};
+
+      for (const taskId of taskIds) {
+        const readStatus = readStatuses?.find(r => r.task_id === taskId);
+        let query = supabase
+          .from('messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('task_id', taskId)
+          .neq('sender_id', userId);
+
+        if (readStatus) {
+          query = query.gt('created_at', readStatus.last_read_at);
+        }
+
+        const { count } = await query;
+        counts[taskId] = count || 0;
+      }
+
+      // Reset count for currently active chat
+      if (activeTaskIdRef.current && counts[activeTaskIdRef.current] !== undefined) {
+        counts[activeTaskIdRef.current] = 0;
+      }
+
+      setUnreadCounts(prev => ({ ...prev, ...counts }));
+    } catch (err) {
+      console.error('[ChatSidebar] Error fetching unread counts:', err);
+    }
+  }, [userId]);
+
+  // Fetch tasks and room task IDs
   useEffect(() => {
     const fetchTasks = async () => {
       const session = (await supabase.auth.getSession()).data.session;
@@ -44,21 +114,84 @@ export default function ChatSidebar({ userId, clientId, assigneeId, locale = 'ko
       });
       if (res.ok) {
         const data = await res.json();
-        setTasks((data.tasks || []).filter((t: any) => t.status !== 'done'));
+        const filteredTasks = (data.tasks || []).filter((t: any) => t.status !== 'done');
+        setTasks(filteredTasks);
+        return filteredTasks;
       }
       setLoadingTasks(false);
+      return [];
     };
-    fetchTasks();
+
+    const fetchRoomTaskIds = async () => {
+      if (!clientId) return {};
+      const session = (await supabase.auth.getSession()).data.session;
+      const roomRes = await fetch(`/api/tasks?list_chat_rooms=true&client_id=${clientId}`, {
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (roomRes.ok) {
+        const roomData = await roomRes.json();
+        const map: Record<string, string> = {};
+        (roomData.rooms || []).forEach((r: any) => {
+          if (r.taskId) map[r.key] = r.taskId;
+        });
+        setRoomTaskIds(map);
+        return map;
+      }
+      return {};
+    };
+
+    const init = async () => {
+      const [fetchedTasks, roomMap] = await Promise.all([
+        fetchTasks(),
+        fetchRoomTaskIds(),
+      ]);
+      setLoadingTasks(false);
+
+      // Collect all task IDs (rooms + tasks) for unread count fetch
+      const allTaskIds = [
+        ...Object.values(roomMap),
+        ...fetchedTasks.map((t: any) => t.id),
+      ];
+      fetchUnreadCounts(allTaskIds);
+    };
+
+    init();
 
     const channelName = `sidebar_tasks_${assigneeId || clientId || 'all'}`;
     const channel = supabase
       .channel(channelName)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
-        fetchTasks();
+        // Re-fetch tasks when task table changes; also re-fetch unread counts
+        init();
       })
       .subscribe();
     return () => { channel.unsubscribe(); };
-  }, [clientId, assigneeId]);
+  }, [clientId, assigneeId, fetchUnreadCounts]);
+
+  // Realtime subscription for new messages → increment unread counts
+  useEffect(() => {
+    const channel = supabase
+      .channel('sidebar_unread_' + userId)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+        const msg = payload.new as any;
+        if (msg.sender_id === userId) return; // own message
+        if (msg.task_id === activeTaskIdRef.current) return; // currently viewing
+        setUnreadCounts(prev => ({
+          ...prev,
+          [msg.task_id]: (prev[msg.task_id] || 0) + 1,
+        }));
+      })
+      .subscribe();
+
+    return () => { channel.unsubscribe(); };
+  }, [userId]);
+
+  // Helper to get unread count for a room key (via roomTaskIds mapping)
+  const getRoomUnread = (roomKey: string): number => {
+    const taskId = roomTaskIds[roomKey];
+    if (!taskId) return 0;
+    return unreadCounts[taskId] || 0;
+  };
 
   const isSelected = (type: string, id: string) =>
     selected?.type === type && selected?.id === id;
@@ -85,6 +218,7 @@ export default function ChatSidebar({ userId, clientId, assigneeId, locale = 'ko
             >
               <span className="text-base">{room.icon}</span>
               <span>{room.label}</span>
+              <UnreadBadge count={getRoomUnread(room.key)} />
             </button>
           ))}
         </div>
@@ -122,9 +256,12 @@ export default function ChatSidebar({ userId, clientId, assigneeId, locale = 'ko
                     : 'text-slate-700 hover:bg-slate-50'
                 }`}
               >
-                <p className="text-sm truncate">
-                  {locale === 'th' ? (task.content_th || task.content) : task.content}
-                </p>
+                <div className="flex items-center gap-1">
+                  <p className="text-sm truncate flex-1">
+                    {locale === 'th' ? (task.content_th || task.content) : task.content}
+                  </p>
+                  <UnreadBadge count={unreadCounts[task.id] || 0} />
+                </div>
                 <div className="flex items-center gap-2 mt-0.5">
                   {task.profiles && (
                     <span className="text-[10px] text-slate-400 truncate">

@@ -640,7 +640,7 @@ LIMIT 5;
 | 4-3 | 피드백 루프 (워커가 추천 채택/수정/거부 기록) | 1일 | 4-2 |
 | **총 MVP** | | **4-6주** | |
 
-> **Phase 5 (자동 응답):** Phase 1-4 MVP의 결과(검색 정확도, 워커 채택률)를 검증한 후 설계한다. 상세 기획은 섹션 6 참조. MVP 검증 없이 자동 응답을 구축하면 Phase 1-4의 품질 문제가 고객에게 직접 노출되는 리스크가 있다.
+> **Phase 5 (자동 응답):** Phase 1-4 MVP의 결과(검색 정확도, 워커 채택률)를 검증한 후 설계한다. 상세 기획은 섹션 6 참조, Zendesk Suite Team 플랜 제약은 섹션 7 참조. MVP 검증 없이 자동 응답을 구축하면 Phase 1-4의 품질 문제가 고객에게 직접 노출되는 리스크가 있다. Bot Agent 추가 비용 $55/월 발생.
 
 ---
 
@@ -890,7 +890,7 @@ Authorization: Basic {base64(email/token:api_token)}
 
 | 항목 | 설명 |
 |------|------|
-| Zendesk Bot Agent 계정 | 전용 에이전트 계정 생성 (auto-reply 구분용) |
+| Zendesk Bot Agent 계정 | 전용 에이전트 계정 생성 — Suite Team에서는 정식 시트 필요 (+$55/월, 섹션 7.2C 참조) |
 | Zendesk Webhook 설정 | Trigger → 우리 API 호출 |
 | `/api/rag/auto-reply` | 신규 API (webhook 수신 + RAG + 응답 생성 + Zendesk 댓글) |
 | `followup_actions.action_type` | `'auto_reply'` 타입 추가 |
@@ -917,3 +917,141 @@ CREATE TABLE hospital_auto_reply_settings (
   updated_at timestamptz DEFAULT now()
 );
 ```
+
+---
+
+## 7. Zendesk Suite Team 플랜 제약 사항
+
+현재 사용 중인 Suite Team($55/agent/month) 플랜에서의 구현 가능 범위 및 제약.
+
+### 7.1 지원 가능 기능 (Phase 1-5 전체)
+
+| 기능 | 지원 여부 | 비고 |
+|------|----------|------|
+| Webhook + Trigger 설정 | ✅ | Suite Team 이상 모든 플랜 |
+| Ticket API 댓글 쓰기 (자동 응답 핵심) | ✅ | 모든 Suite/Support 플랜 |
+| Trigger 조건 Agent Reply Count | ✅ | Suite Team부터 지원 |
+| Bot Agent 계정 생성 (`author_id` 구분) | ✅ | 정식 에이전트 시트 필요 |
+| API를 통한 티켓 CRUD | ✅ | 모든 플랜 |
+
+**결론:** Phase 1-4(RAG Copilot)는 전혀 문제없고, Phase 5(자동 응답)도 기술적으로 구현 가능.
+
+### 7.2 핵심 제약 사항
+
+#### (A) API Rate Limit — 분당 200 요청
+
+Suite Team의 API rate limit은 **분당 약 200 요청**. 현재 규모에서는 충분하지만, 자동 응답 볼륨이 커지면 체감될 수 있음.
+
+**주의:** High Volume API 애드온은 **Suite Growth 이상**부터만 구매 가능. Suite Team에서는 rate limit을 올릴 수 없음.
+
+**대응 전략:**
+- API 호출 최적화: 배치 처리, 불필요한 호출 제거
+- 로컬 캐싱: 자주 조회하는 티켓/댓글 데이터를 Supabase에 캐시
+- Rate limit 모니터링: `X-RateLimit-Remaining` 헤더 추적
+- 큐 기반 처리: 자동 응답을 즉시 전송하지 않고 큐에 넣어 속도 조절
+
+```
+현재 예상 API 사용량:
+- Cron 동기화 (1일 2회): ~50-100 요청/회
+- 팔로업 체크 (1일 1회): ~10-30 요청/회
+- 자동 응답 (Phase 5): 티켓당 2-3 요청 (댓글 조회 + 응답 작성)
+- 합계: 일 기준 200-500 요청 → 분당 200 한도 내 충분
+```
+
+**플랜 업그레이드 기준:** 자동 응답 볼륨이 **일 1,000건 이상**이 되면 Suite Growth($89/agent/month)로 업그레이드 검토.
+
+#### (B) Webhook 10초 타임아웃
+
+Zendesk webhook은 **10초 타임아웃이 하드코딩**되어 있음. 이를 초과하면 Zendesk이 webhook을 실패로 처리하고 재시도함.
+
+**문제 시나리오:**
+```
+고객 댓글 → Zendesk Webhook → /api/rag/auto-reply
+                                    ↓
+                              RAG 검색 (1-2초)
+                              + AI 응답 생성 (3-5초)
+                              + Zendesk API 댓글 작성 (1-2초)
+                              = 총 5-9초 (경계선)
+```
+
+**대응 전략:**
+1. **Webhook은 즉시 202 Accepted 응답** — 요청을 수신하자마자 HTTP 응답 반환
+2. **비동기 처리** — 실제 RAG + 응답 생성은 백그라운드에서 수행
+3. **멱등성 보장** — Zendesk 재시도 시 중복 처리 방지 (`ticket_id + comment_id` 기준 중복 체크)
+
+```typescript
+// Webhook 핸들러 패턴
+export async function POST(req: NextRequest) {
+  const payload = await req.json();
+
+  // 1. 즉시 응답 (타임아웃 방지)
+  const ticketId = payload.ticket_id;
+  const commentId = payload.latest_comment_id;
+
+  // 2. 중복 체크
+  const { data: existing } = await supabase
+    .from('followup_actions')
+    .select('id')
+    .eq('ticket_id', ticketId)
+    .eq('zendesk_comment_id', commentId)
+    .single();
+
+  if (existing) {
+    return NextResponse.json({ status: 'duplicate', skipped: true });
+  }
+
+  // 3. 비동기 처리 트리거 (Vercel에서는 waitUntil 사용)
+  // Note: Vercel Serverless는 응답 후 실행이 제한적이므로
+  // 별도 API endpoint를 fetch()로 호출하거나 큐 사용
+  fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/rag/process-auto-reply`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${process.env.CRON_SECRET}` },
+    body: JSON.stringify({ ticket_id: ticketId, comment_id: commentId }),
+  }); // fire-and-forget
+
+  return NextResponse.json({ status: 'accepted' });
+}
+```
+
+**Vercel 제한 참고:** Vercel Serverless Function은 응답 후 background execution이 제한적. 대안:
+- **Vercel Edge Function + `waitUntil`**: Edge Runtime에서 응답 후 비동기 작업 가능
+- **별도 API 호출**: fire-and-forget로 다른 serverless function 트리거
+- **Supabase Edge Function**: Webhook 수신을 Supabase Edge Function으로 이관
+
+#### (C) Bot Agent 계정 비용
+
+Suite Team에서는 **Light Agent가 애드온**이라 Bot Agent 계정을 정식 에이전트 시트로 만들어야 함.
+
+| 항목 | 비용 |
+|------|------|
+| Bot Agent 1석 추가 | **$55/월** (Suite Team 에이전트 단가) |
+| Light Agent (Suite Growth+) | $0 (Growth 이상에서 무료 제공) |
+
+**대응 전략:**
+- Phase 1-4(RAG Copilot)에서는 Bot Agent 불필요 — 워커가 직접 응답 전송
+- Phase 5(자동 응답) 진입 시 Bot Agent 1석 추가 ($55/월)
+- Suite Growth 업그레이드 시 Light Agent로 전환하면 비용 절감
+
+### 7.3 플랜별 비교 (업그레이드 판단 기준)
+
+| 기능 | Suite Team ($55) | Suite Growth ($89) |
+|------|-----------------|-------------------|
+| API Rate Limit | 분당 200 | 분당 400+ |
+| High Volume API 애드온 | ❌ | ✅ 구매 가능 |
+| Light Agent | ❌ (유료 애드온) | ✅ 무료 포함 |
+| Webhook | ✅ | ✅ |
+| Trigger/Automation | ✅ | ✅ |
+| Bot Agent 추가 비용 | $55/월 (정식 시트) | $0 (Light Agent) |
+
+**업그레이드 시점 판단 기준:**
+1. 자동 응답 일 처리량 > 1,000건 (rate limit 압박)
+2. Phase 5 안정화 후 Bot Agent를 Light Agent로 전환 필요 시
+3. 에이전트 시트 3개 이상 필요 시 (Growth의 Light Agent가 경제적)
+
+### 7.4 비용 요약
+
+| 단계 | 추가 비용 | 설명 |
+|------|----------|------|
+| Phase 1-4 (RAG Copilot) | **$0** | 기존 Suite Team으로 충분 |
+| Phase 5 진입 | **+$55/월** | Bot Agent 1석 추가 |
+| 볼륨 증가 시 | 업그레이드 검토 | Suite Growth $89/agent/month |

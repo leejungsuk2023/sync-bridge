@@ -39,7 +39,10 @@ g sync/
 │   │   ├── api/zendesk/analyze/route.ts # Zendesk 티켓 AI 분석 API (bbg_admin + hospital)
 │   │   ├── api/zendesk/hospital-stats/route.ts # 병원별 상세 통계 API (bbg_admin + hospital)
 │   │   ├── api/zendesk/insights/route.ts # 병원별 AI 인사이트 3종 (bbg_admin + hospital)
-│   │   ├── api/zendesk/followup-customers/route.ts # 팔로업 고객 관리 API (bbg_admin + worker)
+│   │   ├── api/zendesk/followup-customers/route.ts # 팔로업 고객 관리 API (GET/PATCH, bbg_admin + worker)
+│   │   ├── api/zendesk/followup-actions/route.ts  # 팔로업 액션 이력 API (GET/POST/PATCH, bbg_admin + worker)
+│   │   ├── api/zendesk/followup-notifications/route.ts # 워커 인앱 알림 API (GET/PATCH, bbg_admin + worker)
+│   │   ├── api/zendesk/followup-check/route.ts    # AI 자동 팔로업 체크 Cron (POST, CRON_SECRET 인증)
 │   │   └── api/zendesk/cron/route.ts   # Vercel Cron endpoint (자동 sync + analyze)
 │   ├── components/
 │   │   ├── LoginPage.tsx           # 로그인 페이지
@@ -64,7 +67,7 @@ g sync/
 │   ├── lib/
 │   │   ├── supabase.ts
 │   │   └── chat-rooms.ts           # 채팅방 상수, 센티넬 값, 타입 정의
-│   └── vercel.json                 # Vercel Cron 스케줄 설정 (00:00 UTC + 07:00 UTC)
+│   └── vercel.json                 # Vercel Cron 스케줄 설정 (00:00 UTC + 07:00 UTC + 03:00 UTC)
 │
 └── supabase/
     ├── schema.sql              # clients, profiles, time_logs, tasks + RLS
@@ -83,6 +86,10 @@ g sync/
     ├── zendesk_customer_fields.sql # zendesk_analyses 고객 정보 컬럼 (customer_name, customer_phone, interested_procedure, customer_age)
     ├── hospital_role.sql       # profiles 테이블 hospital_prefix 컬럼 추가
     ├── followup_status.sql     # zendesk_analyses 팔로업 추적 컬럼 (followup_status, followup_note, followup_updated_by, followup_updated_at)
+    ├── followup_tracking.sql   # followup_actions + followup_notifications 신규 테이블, zendesk_analyses 체크 사이클 컬럼
+    ├── followup_thai_fields.sql # zendesk_analyses 태국어 번역 컬럼 (followup_reason_th, interested_procedure_th)
+    ├── chat_read_status.sql    # 채팅 읽음 상태 추적 테이블 (chat_read_status)
+    ├── glossary.sql            # 의료/비즈니스 용어 한↔태 번역 용어집 테이블
     ├── v1.4_improvements.sql   # 기타 개선사항
     ├── setup_test_client.sql   # 테스트 데이터 셋업
     └── README.md
@@ -128,7 +135,11 @@ g sync/
    14. `supabase/zendesk_customer_fields.sql` — zendesk_analyses 고객 정보 컬럼
    15. `supabase/hospital_role.sql` — profiles hospital_prefix 컬럼
    16. `supabase/followup_status.sql` — zendesk_analyses 팔로업 추적 컬럼
-   17. `supabase/v1.4_improvements.sql` — 기타 개선사항
+   17. `supabase/followup_tracking.sql` — followup_actions + followup_notifications 테이블, zendesk_analyses 체크 사이클 컬럼
+   18. `supabase/followup_thai_fields.sql` — zendesk_analyses 태국어 번역 컬럼 (followup_reason_th, interested_procedure_th)
+   19. `supabase/chat_read_status.sql` — 채팅 읽음 상태 추적 테이블
+   20. `supabase/glossary.sql` — 의료/비즈니스 용어 한↔태 번역 용어집 테이블
+   21. `supabase/v1.4_improvements.sql` — 기타 개선사항
 3. **Authentication** → Providers → **Email** 활성화
 
 ### 2. Client Web 실행
@@ -183,7 +194,7 @@ npm run dev
 | 근무 리포트 | 오늘 일간 근태 요약, 출근율 프로그레스 바 + 색상 코딩 |
 | 계정 관리 | 병원/직원 계정 생성·삭제 (bbg_admin 전용, service_role API) |
 | AI 어시스트 API | 환자 메시지 분석 → 한국어 번역 + 의도 파악 + 추천 답변 3개 |
-| Sales 성과 분석 | `/sales` — Zendesk 티켓 기반 AI 분석, 담당자별 품질 평가, 예약 전환율, 팔로업 고객 관리 (3탭: Sales 성과 / 병원별 분석 / 팔로업 고객) |
+| Sales 성과 분석 | `/sales` — Zendesk 티켓 기반 AI 분석, 담당자별 품질 평가, 예약 전환율, 팔로업 고객 관리 (3탭: Sales 성과 / 병원별 분석 / 팔로업 고객). 팔로업 탭: BI 요약 카드, 상세 모달(타임라인 + Push 지시 + Drop 처리) |
 | 병원 파트너 대시보드 | hospital role 로그인 시 전용 대시보드 — 자사 병원 데이터만 조회, AI 인사이트(병원전략/Sales개선/본사관리) 확인 |
 
 ### 관리자/파트너 페이지 구조

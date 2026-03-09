@@ -73,7 +73,7 @@
 | AI 인사이트 | ✅ | 병원별 3종 인사이트: 병원전략, Sales팀 개선방향, 본사관리방향 (Gemini, 한국어, /api/zendesk/insights) |
 | 미분석 사유 표시 | ✅ | 분석 제외 사유 표시 (댓글 수 부족, 비활성 상태 등) |
 | 더보기 페이지네이션 | ✅ | 티켓 목록 더보기 방식 페이지네이션 (`limit` 파라미터) |
-| 자동 배치 실행 | ✅ | Vercel Cron — 매일 09:00 KST, 16:00 KST 자동 sync + analyze |
+| 자동 배치 실행 | ✅ | Vercel Cron — 매일 09:00 KST, 16:00 KST 자동 sync + analyze; 12:00 KST 팔로업 자동 체크 |
 | 수동 배치 실행 | ✅ | 수동 동기화/분석 버튼 (API 직접 호출) |
 | 3탭 구성 | ✅ | Sales 성과 / 병원별 분석 / 팔로업 고객 탭 |
 
@@ -95,10 +95,18 @@ thebb, delphic, will, mikclinicthai, jyclinicthai, du, koreandiet, ourpthai, eve
 | 기능 | 상태 | 설명 |
 |------|------|------|
 | 팔로업 지정 | ✅ | 어드민이 분석된 티켓에 "팔로업" 버튼 클릭 → `followup_status = 'pending'` 저장 |
-| 상태 워크플로 | ✅ | pending → contacted → scheduled → converted / lost |
-| 워커 팔로업 탭 | ✅ | WorkerDashboard "ติดตาม" 탭 — `WorkerFollowup.tsx`, 상태 업데이트 가능 |
-| API | ✅ | `GET /api/zendesk/followup-customers` (bbg_admin + worker) / `PATCH` (상태 업데이트) |
+| 상태 워크플로 | ✅ | pending → contacted → scheduled → converted / lost. lost 처리에 lost_reason 필수 |
+| 상태별 BI 요약 카드 | ✅ | SalesPerformance 팔로업 탭 — 대기/연락완료/예약됨/성공/Lost 건수 카드 |
+| 상세 모달 | ✅ | 티켓 클릭 → 상세 모달 — 채팅 버블 타임라인(워커 액션/AI 지시/시스템노트), Push 지시 전송, Drop(Lost 처리) |
+| Push (지시 전송) | ✅ | 어드민/클라이언트가 워커에게 재접근 지시 전송 → `followup_actions` + `followup_notifications` 생성 |
+| AI 자동 체크 | ✅ | Vercel Cron (03:00 UTC, 12:00 KST) — `followup-check` — contacted/scheduled 상태 티켓 최대 10건, Zendesk 댓글 분석 + Gemini로 태국어 다음 행동 지시 자동 생성 |
+| 워커 팔로업 탭 | ✅ | WorkerDashboard "ติดตาม" 탭 — `WorkerFollowup.tsx`. 카드 레이아웃, 코멘트 입력 전용 플로우 (PATCH `action_comment`). AI 지시는 황색 강조 카드로 표시 |
+| 알림 뱃지 | ✅ | WorkerDashboard ติดตาม 탭 — 미읽은 알림 수 뱃지, 긴급(urgency:high) 시 헤더 배너 |
+| 워커 코멘트 자동 번역 | ✅ | 워커 태국어 코멘트 → Gemini로 한국어 자동 번역, `followup_actions.content`에 저장 (어드민 확인용) |
+| 알림 API | ✅ | `GET /api/zendesk/followup-notifications` (미읽은 알림 조회) / `PATCH` (mark_all_read) |
+| 액션 이력 API | ✅ | `GET /api/zendesk/followup-actions?ticket_id=` / `POST` (어드민 Push) / `PATCH` (read 표시) |
 | 고객 정보 | ✅ | customer_name, customer_phone, interested_procedure, customer_age 컬럼 (zendesk_analyses)
+| 태국어 번역 컬럼 | ✅ | followup_reason_th, interested_procedure_th — GET 요청 시 누락분 Gemini로 자동 번역 후 DB 저장
 
 ### 3.2 Client Web — God Mode 관제 (`/admin/monitoring`)
 
@@ -126,7 +134,11 @@ thebb, delphic, will, mikclinicthai, jyclinicthai, du, koreandiet, ourpthai, eve
 | `quick_replies` | 자동답변 템플릿 (title/body × ko/th, client_id) |
 | `task_presets` | 업무 프리셋 (title/content × ko/th, client_id) |
 | `zendesk_tickets` | Zendesk 티켓 동기화 (ticket_id, subject, status, tags, comments, created_at_zd, updated_at_zd) |
-| `zendesk_analyses` | Zendesk 티켓 AI 분석 결과 (quality_score, reservation_converted, summary, hospital_name, needs_followup, followup_reason, **followup_status**, **followup_note**, **followup_updated_by**, **followup_updated_at**, **customer_name**, **customer_phone**, **interested_procedure**, **customer_age**) |
+| `zendesk_analyses` | Zendesk 티켓 AI 분석 결과 (quality_score, reservation_converted, summary, hospital_name, needs_followup, followup_reason, followup_reason_th, **followup_status**, **followup_note**, **followup_updated_by**, **followup_updated_at**, **customer_name**, **customer_phone**, **interested_procedure**, interested_procedure_th, **customer_age**, next_check_at, last_checked_at, last_zendesk_comment_id, check_count, lost_reason, lost_reason_detail) |
+| `followup_actions` | 팔로업 액션 이력 (ticket_id, action_type: worker_action\|ai_instruction\|system_note, content, content_th, status_before, status_after, zendesk_changes, created_by, read_at) |
+| `followup_notifications` | 워커 인앱 알림 (user_id, action_id, ticket_id, title, body, channel, read_at) |
+| `chat_read_status` | 채팅 읽음 상태 추적 (user_id, task_id, last_read_at) |
+| `glossary` | 의료/비즈니스 용어 한↔태 번역 용어집 (korean, thai, category) |
 
 **RLS 정책:**
 - bbg_admin: 전체 CRUD
@@ -193,8 +205,14 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | `/api/zendesk/analyze` | GET/POST | active tickets AI 분석 (bbg_admin + hospital). GET: 미분석 티켓 목록; POST: 특정 ticket_id 분석 또는 일괄 분석 |
 | `/api/zendesk/hospital-stats` | GET | 병원별 상세 통계 (문의 수, 예약 전환율, 성장률, 일별 트렌드) — ?hospital=prefix&period=week|month (bbg_admin + hospital) |
 | `/api/zendesk/insights` | POST | 병원별 AI 인사이트 3종 생성 — hospital_strategy, sales_improvement, hq_management (bbg_admin + hospital) |
-| `/api/zendesk/followup-customers` | GET | 팔로업 고객 목록 — ?status= 필터 가능 (bbg_admin + worker) |
-| `/api/zendesk/followup-customers` | PATCH | 팔로업 상태 업데이트 — ticket_id, status, note (bbg_admin + worker) |
+| `/api/zendesk/followup-customers` | GET | 팔로업 고객 목록 — ?status= 필터 가능 (bbg_admin + worker). 태국어 번역 자동 백필 |
+| `/api/zendesk/followup-customers` | PATCH | 팔로업 상태 업데이트 — ticket_id, status, note, action_comment, lost_reason, lost_reason_detail (bbg_admin + worker). 워커 코멘트 태국어→한국어 자동 번역 |
+| `/api/zendesk/followup-actions` | GET | 티켓별 액션 이력 조회 — ?ticket_id= (bbg_admin + worker) |
+| `/api/zendesk/followup-actions` | POST | 어드민 Push 지시 전송 — ticket_id, content (bbg_admin 전용). followup_actions + followup_notifications 동시 생성 |
+| `/api/zendesk/followup-actions` | PATCH | 액션 읽음 처리 — action_id (bbg_admin + worker) |
+| `/api/zendesk/followup-notifications` | GET | 현재 사용자 미읽은 알림 목록 (bbg_admin + worker) |
+| `/api/zendesk/followup-notifications` | PATCH | 알림 읽음 처리 — notification_ids 배열 또는 mark_all_read (bbg_admin + worker) |
+| `/api/zendesk/followup-check` | POST | AI 자동 팔로업 체크 Cron — contacted/scheduled 티켓 분석 후 태국어 지시 생성 (CRON_SECRET 인증) |
 | `/api/zendesk/cron` | GET | Vercel Cron endpoint — sync + analyze 자동 실행 (CRON_SECRET 인증) |
 
 ---
@@ -241,7 +259,8 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | 3.0 | Zendesk AI 분석, Sales 성과 분석 (/sales), God Mode 관제 강화 |
 | 4.0 | 병원 파트너 대시보드, 팔로업 고객 추적, AI 인사이트 시스템 |
 | 5.0 | 모바일 반응형, TaskChat 번역 동적화 (locale prop), Ctrl+V 이미지 붙여넣기, 이미지 어노테이션 (ImageAnnotator), Desktop App·Extension 삭제 |
+| 6.0 | 팔로업 시스템 개편: AI 자동 체크 Cron (followup-check), Push/Drop, 타임라인 모달, 워커 알림 뱃지/긴급 배너, 워커 코멘트 태국어→한국어 자동 번역, 신규 테이블(followup_actions, followup_notifications, chat_read_status, glossary), zendesk_analyses 신규 컬럼 |
 
 ---
 
-**문서 버전:** 5.0 · 모바일 반응형 / ImageAnnotator / TaskChat 번역 동적화 / Desktop·Extension 삭제 반영 (WorkerStatus 접기토글, TaskAssign 세로배치, TaskList 줄바꿈, Dashboard 모바일헤더, ImageAnnotator.tsx, Ctrl+V 이미지붙여넣기, locale prop 기반 TaskChat 번역, syncbridge-desktop·syncbridge-extension 삭제)
+**문서 버전:** 6.0 · 팔로업 시스템 전면 개편 반영 (AI 자동 체크 Cron, Push/Drop, 타임라인 모달, 워커 알림, 코멘트 자동번역, followup_actions/followup_notifications/chat_read_status/glossary 테이블, zendesk_analyses 체크 사이클·태국어 번역·lost 관리 컬럼 추가)

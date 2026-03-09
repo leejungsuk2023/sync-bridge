@@ -131,6 +131,42 @@ function formatTimestamp(dateStr: string, locale: 'ko' | 'th' = 'th'): string {
   });
 }
 
+// Parse multi-message comment body into individual sub-messages
+// Zendesk batches social channel messages like: "(13:29:39) BBG: สวัสดี\n(13:30:02) Customer: ขอปรึกษา"
+interface SubMessage {
+  time: string;
+  author: string;
+  text: string;
+  isAgent: boolean;
+}
+
+function parseMultiMessage(body: string, requesterName: string | null): SubMessage[] | null {
+  // Match pattern: (HH:MM:SS) Author: message
+  const pattern = /^\((\d{2}:\d{2}:\d{2})\)\s+(.+?):\s+(.+)/;
+  const lines = body.split('\n');
+  const messages: SubMessage[] = [];
+  let currentMsg: SubMessage | null = null;
+
+  for (const line of lines) {
+    const match = line.match(pattern);
+    if (match) {
+      if (currentMsg) messages.push(currentMsg);
+      const [, time, author, text] = match;
+      // Determine if agent: BBG or agent name vs customer name
+      const isAgent = author === 'BBG' || (requesterName ? !author.includes(requesterName.split(' ')[0]) : false);
+      currentMsg = { time, author, text, isAgent };
+    } else if (currentMsg && line.trim()) {
+      // Continuation of previous message
+      currentMsg.text += '\n' + line;
+    }
+  }
+  if (currentMsg) messages.push(currentMsg);
+
+  // Only return parsed result if we found at least 2 sub-messages
+  // (otherwise it's a normal single message, render as-is)
+  return messages.length >= 2 ? messages : null;
+}
+
 function isImageUrl(url: string): boolean {
   return /\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/i.test(url);
 }
@@ -487,6 +523,36 @@ export default function ZendeskChatPanel({
                 <span className="text-[11px] text-slate-400 bg-slate-50 px-3 py-1 rounded-full">
                   {conv.body}
                 </span>
+              </div>
+            );
+          }
+
+          // Try to parse multi-message comment (social channels batch messages)
+          const subMessages = parseMultiMessage(conv.body, ticket?.requester_name || null);
+
+          if (subMessages) {
+            return (
+              <div key={conv.id} className="space-y-2">
+                {subMessages.map((sub, idx) => (
+                  <div key={`${conv.id}-${idx}`} className={`flex flex-col ${sub.isAgent ? 'items-end' : 'items-start'}`}>
+                    <span className={`text-[11px] font-medium mb-0.5 ${sub.isAgent ? 'text-indigo-600 mr-1' : 'text-slate-600 ml-1'}`}>
+                      {sub.author}
+                      <span className="ml-1 text-slate-400 font-normal">{sub.time}</span>
+                    </span>
+                    <div
+                      className={`max-w-[75%] rounded-lg px-4 py-2.5 ${
+                        sub.isAgent
+                          ? 'bg-indigo-50 text-slate-900'
+                          : 'bg-white border border-slate-200 text-slate-900'
+                      }`}
+                    >
+                      <p className="text-sm whitespace-pre-wrap break-words">{sub.text}</p>
+                    </div>
+                  </div>
+                ))}
+                <div className="flex justify-center">
+                  <span className="text-[10px] text-slate-300">{formatTimestamp(conv.created_at_zd, locale)}</span>
+                </div>
               </div>
             );
           }

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Send, Paperclip, ArrowLeft, Lock, Globe, ChevronDown, Download, FileText, X } from 'lucide-react';
+import { Send, Paperclip, ArrowLeft, Lock, Globe, ChevronDown, Download, FileText, X, ClipboardList } from 'lucide-react';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -38,6 +38,7 @@ interface ZendeskChatPanelProps {
   injectedReply?: string | null;
   onInjectedReplyConsumed?: () => void;
   locale?: 'ko' | 'th';
+  onCollectLead?: (ticketId: number) => void;
 }
 
 const CHAT_TEXT = {
@@ -63,6 +64,8 @@ const CHAT_TEXT = {
     statusHold: '보류',
     statusSolved: '해결됨',
     statusClosed: '종료',
+    collectLead: '정보수집',
+    editLead: '정보수정',
   },
   th: {
     public: 'สาธารณะ',
@@ -86,6 +89,8 @@ const CHAT_TEXT = {
     statusHold: 'พักไว้',
     statusSolved: 'แก้แล้ว',
     statusClosed: 'ปิดแล้ว',
+    collectLead: 'รวบรวมข้อมูล',
+    editLead: 'แก้ไขข้อมูล',
   },
 } as const;
 
@@ -275,6 +280,7 @@ export default function ZendeskChatPanel({
   injectedReply,
   onInjectedReplyConsumed,
   locale = 'th',
+  onCollectLead,
 }: ZendeskChatPanelProps) {
   const t = CHAT_TEXT[locale];
   const STATUS_CONFIG = getChatStatusConfig(locale);
@@ -288,6 +294,7 @@ export default function ZendeskChatPanel({
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
   const [showOriginal, setShowOriginal] = useState<Set<string>>(new Set());
+  const [hasExistingLead, setHasExistingLead] = useState(false);
 
   const messagesRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -302,6 +309,26 @@ export default function ZendeskChatPanel({
       textareaRef.current?.focus();
     }
   }, [injectedReply, onInjectedReplyConsumed]);
+
+  // ─── Check existing lead ─────────────────────────────────────
+  useEffect(() => {
+    const checkLead = async () => {
+      try {
+        const { data, error: fetchErr } = await supabase
+          .from('sales_leads')
+          .select('id')
+          .eq('ticket_id', ticketId)
+          .maybeSingle();
+
+        if (!fetchErr && data) {
+          setHasExistingLead(true);
+        }
+      } catch (err) {
+        console.error('[ZendeskChatPanel] Lead check error:', err);
+      }
+    };
+    checkLead();
+  }, [ticketId]);
 
   const getSession = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -529,6 +556,18 @@ export default function ZendeskChatPanel({
               </span>
             </div>
           </div>
+
+          {/* Lead collect button */}
+          {onCollectLead && (
+            <button
+              type="button"
+              onClick={() => onCollectLead(ticketId)}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 hover:bg-emerald-200 transition-colors"
+            >
+              <ClipboardList className="w-3 h-3" />
+              {hasExistingLead ? t.editLead : t.collectLead}
+            </button>
+          )}
 
           {/* Status dropdown */}
           <div className="relative" ref={statusMenuRef}>

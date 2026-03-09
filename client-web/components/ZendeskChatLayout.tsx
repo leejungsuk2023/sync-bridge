@@ -6,6 +6,7 @@ import { MessageSquare } from 'lucide-react';
 import ZendeskTicketList from './ZendeskTicketList';
 import ZendeskChatPanel from './ZendeskChatPanel';
 import AISuggestPanel from './AISuggestPanel';
+import LeadInfoPanel from './LeadInfoPanel';
 
 interface Ticket {
   ticket_id: number;
@@ -37,6 +38,7 @@ export default function ZendeskChatLayout({ user, profile, locale = 'th' }: { us
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [injectedReply, setInjectedReply] = useState<string | null>(null);
+  const [collectingLead, setCollectingLead] = useState<number | null>(null);
   // Bump this to force a re-sort in the ticket list (e.g. on filter/hospital change)
   const [sortEpoch, setSortEpoch] = useState(0);
   const selectedTicketIdRef = useRef(selectedTicketId);
@@ -233,6 +235,7 @@ export default function ZendeskChatLayout({ user, profile, locale = 'th' }: { us
               injectedReply={injectedReply}
               onInjectedReplyConsumed={() => setInjectedReply(null)}
               locale={locale}
+              onCollectLead={(tid) => setCollectingLead(tid)}
             />
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-3">
@@ -242,14 +245,29 @@ export default function ZendeskChatLayout({ user, profile, locale = 'th' }: { us
           )}
         </div>
 
-        {/* AI Suggest Panel — desktop only, collapsible */}
+        {/* Right Panel — Lead Info or AI Suggest, desktop only */}
         <div className="hidden lg:block w-72 shrink-0 border-l border-slate-200 overflow-y-auto bg-slate-50">
-          <AISuggestPanel
-            ticketId={selectedTicketId}
-            onUseReply={(text) => setInjectedReply(text)}
-            user={user}
-            locale={locale}
-          />
+          {collectingLead ? (
+            <LeadInfoPanel
+              ticketId={collectingLead}
+              user={user}
+              profile={profile}
+              locale={locale}
+              onClose={() => setCollectingLead(null)}
+              onQuestionInject={(text) => setInjectedReply(text)}
+              onSubmitted={() => {
+                setCollectingLead(null);
+                fetchTickets();
+              }}
+            />
+          ) : (
+            <AISuggestPanel
+              ticketId={selectedTicketId}
+              onUseReply={(text) => setInjectedReply(text)}
+              user={user}
+              locale={locale}
+            />
+          )}
         </div>
       </div>
     </div>

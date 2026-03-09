@@ -12,6 +12,7 @@ interface Conversation {
   author_type: 'customer' | 'agent' | 'system';
   author_name: string | null;
   body: string;
+  body_ko: string | null;
   body_html: string | null;
   is_public: boolean;
   channel: string | null;
@@ -194,6 +195,7 @@ export default function ZendeskChatPanel({
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
+  const [showOriginal, setShowOriginal] = useState<Set<string>>(new Set());
 
   const messagesRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -221,7 +223,7 @@ export default function ZendeskChatPanel({
       const session = await getSession();
       if (!session) return;
 
-      const res = await fetch(`/api/zendesk/conversations?ticket_id=${ticketId}`, {
+      const res = await fetch(`/api/zendesk/conversations?ticket_id=${ticketId}&locale=${locale}`, {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
 
@@ -240,7 +242,7 @@ export default function ZendeskChatPanel({
     } finally {
       setLoading(false);
     }
-  }, [ticketId, getSession]);
+  }, [ticketId, locale, getSession]);
 
   useEffect(() => {
     fetchConversations();
@@ -527,8 +529,12 @@ export default function ZendeskChatPanel({
             );
           }
 
+          // Determine display body: use Korean translation if available and locale is ko
+          const displayBody = locale === 'ko' && conv.body_ko ? conv.body_ko : conv.body;
+
           // Try to parse multi-message comment (social channels batch messages)
-          const subMessages = parseMultiMessage(conv.body, ticket?.requester_name || null);
+          // Skip parsing for translated text since it won't have the timestamp format
+          const subMessages = (locale === 'ko' && conv.body_ko) ? null : parseMultiMessage(conv.body, ticket?.requester_name || null);
 
           if (subMessages) {
             return (
@@ -584,14 +590,32 @@ export default function ZendeskChatPanel({
                   </div>
                 )}
 
-                {/* Body — render HTML if available, else plain text */}
-                {conv.body_html ? (
+                {/* Body — render HTML if available (and not showing translation), else plain text */}
+                {conv.body_html && !(locale === 'ko' && conv.body_ko) ? (
                   <div
                     className="text-sm prose prose-sm max-w-none [&_a]:text-indigo-600 [&_a]:underline [&_img]:max-w-xs [&_img]:rounded"
                     dangerouslySetInnerHTML={{ __html: conv.body_html }}
                   />
                 ) : (
-                  <p className="text-sm whitespace-pre-wrap">{conv.body}</p>
+                  <p className="text-sm whitespace-pre-wrap">{displayBody}</p>
+                )}
+
+                {/* Korean translation toggle */}
+                {locale === 'ko' && conv.body_ko && (
+                  <button
+                    type="button"
+                    onClick={() => setShowOriginal(prev => {
+                      const next = new Set(prev);
+                      next.has(conv.id) ? next.delete(conv.id) : next.add(conv.id);
+                      return next;
+                    })}
+                    className="text-[10px] text-slate-400 hover:text-indigo-500 mt-0.5"
+                  >
+                    {showOriginal.has(conv.id) ? '번역 보기' : '원문 보기'}
+                  </button>
+                )}
+                {showOriginal.has(conv.id) && (
+                  <p className="text-xs text-slate-400 mt-1 whitespace-pre-wrap">{conv.body}</p>
                 )}
 
                 {/* Attachments */}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export const maxDuration = 30;
 
@@ -24,6 +25,37 @@ const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
+
+async function translateToKorean(texts: { id: string; body: string }[]): Promise<Map<string, string>> {
+  if (texts.length === 0) return new Map();
+
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+  const prompt = `You are a translator for a Korean medical tourism company. Translate these Thai customer service messages to Korean. Keep emojis. Return ONLY a JSON array of translated strings in the same order.
+
+Messages:
+${texts.map((t, i) => `${i + 1}. ${t.body}`).join('\n')}
+
+Return JSON array like: ["translation1", "translation2", ...]`;
+
+  const result = await model.generateContent(prompt);
+  const responseText = result.response.text();
+
+  const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+  if (!jsonMatch) return new Map();
+
+  try {
+    const translations: string[] = JSON.parse(jsonMatch[0]);
+    const map = new Map<string, string>();
+    texts.forEach((t, i) => {
+      if (translations[i]) map.set(t.id, translations[i]);
+    });
+    return map;
+  } catch {
+    return new Map();
+  }
+}
 
 async function verifyUser(req: NextRequest): Promise<{ role: string; userId: string } | null> {
   const authHeader = req.headers.get('authorization');
@@ -82,7 +114,57 @@ export async function GET(req: NextRequest) {
       console.error('[Conversations] Error fetching ticket:', ticketError);
     }
 
-    console.log(`[Conversations] Returned ${(conversations || []).length} messages for ticket #${ticketIdNum}`);
+    const locale = searchParams.get('locale');
+
+    // If locale=ko, translate Thai messages to Korean and cache
+    if (locale === 'ko' && conversations && conversations.length > 0) {
+      // Find conversations needing translation: customer messages and short agent messages, excluding system
+      const needTranslation = conversations.filter(
+        (c: any) =>
+          c.body_ko === null &&
+          c.body &&
+          c.author_type !== 'system' &&
+          (c.author_type === 'customer' || c.body.length < 500)
+      );
+
+      if (needTranslation.length > 0) {
+        // Batch translate up to 20 at a time
+        const BATCH_SIZE = 20;
+        for (let i = 0; i < needTranslation.length; i += BATCH_SIZE) {
+          const batch = needTranslation.slice(i, i + BATCH_SIZE).map((c: any) => ({
+            id: c.id,
+            body: c.body,
+          }));
+
+          try {
+            const translations = await translateToKorean(batch);
+
+            // Cache translations back to DB
+            for (const [id, translation] of translations) {
+              const { error: updateErr } = await supabaseAdmin
+                .from('zendesk_conversations')
+                .update({ body_ko: translation })
+                .eq('id', id);
+
+              if (updateErr) {
+                console.error(`[Conversations] Failed to cache body_ko for ${id}:`, updateErr);
+              } else {
+                // Update in-memory data too
+                const conv = conversations.find((c: any) => c.id === id);
+                if (conv) (conv as any).body_ko = translation;
+              }
+            }
+
+            console.log(`[Conversations] Translated ${translations.size}/${batch.length} messages to Korean for ticket #${ticketIdNum}`);
+          } catch (translateErr) {
+            console.error('[Conversations] Translation error:', translateErr);
+            // Continue without translation — original Thai text will be shown
+          }
+        }
+      }
+    }
+
+    console.log(`[Conversations] Returned ${(conversations || []).length} messages for ticket #${ticketIdNum}${locale === 'ko' ? ' (locale=ko)' : ''}`);
 
     return withCors(NextResponse.json({
       conversations: conversations || [],

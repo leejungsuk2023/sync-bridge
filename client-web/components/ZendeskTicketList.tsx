@@ -52,6 +52,8 @@ interface ZendeskTicketListProps {
   loadingMore?: boolean;
   hospital?: string;
   onHospitalChange?: (hospital: string) => void;
+  /** Increment to force a re-sort (e.g. on filter/hospital change) */
+  sortEpoch?: number;
 }
 
 const TEXT = {
@@ -171,6 +173,7 @@ export default function ZendeskTicketList({
   loadingMore = false,
   hospital = '',
   onHospitalChange,
+  sortEpoch = 0,
 }: ZendeskTicketListProps) {
   const [search, setSearch] = useState('');
   const t = TEXT[locale];
@@ -188,18 +191,60 @@ export default function ZendeskTicketList({
     );
   }, [tickets, search]);
 
-  // Sort: unread first, then by last message time
+  // Stable sort order ref: holds the ticket_id order from the last "full sort".
+  // During polling, tickets keep their positions — only data (is_read, preview) updates.
+  // A full re-sort happens when: sortEpoch changes (filter/hospital switch), or search changes.
+  const stableOrderRef = useRef<number[]>([]);
+  const lastSortEpochRef = useRef(sortEpoch);
+  const lastSearchRef = useRef(search);
+
+  // Determine if we need a full re-sort
+  const needsResort = stableOrderRef.current.length === 0
+    || lastSortEpochRef.current !== sortEpoch
+    || lastSearchRef.current !== search;
+
   const sortedTickets = useMemo(() => {
-    return [...filteredTickets].sort((a, b) => {
-      // Unread first
-      if (!a.is_read && b.is_read) return -1;
-      if (a.is_read && !b.is_read) return 1;
-      // Then by most recent message
-      const dateA = a.last_message_at || a.last_customer_comment_at || a.last_agent_comment_at || '';
-      const dateB = b.last_message_at || b.last_customer_comment_at || b.last_agent_comment_at || '';
-      return new Date(dateB).getTime() - new Date(dateA).getTime();
-    });
-  }, [filteredTickets]);
+    if (needsResort) {
+      // Full sort: unread first, then by last message time
+      const sorted = [...filteredTickets].sort((a, b) => {
+        if (!a.is_read && b.is_read) return -1;
+        if (a.is_read && !b.is_read) return 1;
+        const dateA = a.last_message_at || a.last_customer_comment_at || a.last_agent_comment_at || '';
+        const dateB = b.last_message_at || b.last_customer_comment_at || b.last_agent_comment_at || '';
+        return new Date(dateB).getTime() - new Date(dateA).getTime();
+      });
+      stableOrderRef.current = sorted.map(t => t.ticket_id);
+      lastSortEpochRef.current = sortEpoch;
+      lastSearchRef.current = search;
+      return sorted;
+    }
+
+    // Stable mode: keep existing order, slot in tickets by their saved position.
+    // New tickets (not in stableOrder) go to the top.
+    const ticketMap = new Map(filteredTickets.map(t => [t.ticket_id, t]));
+    const result: Ticket[] = [];
+    const placed = new Set<number>();
+
+    // Place tickets that are in the stable order
+    for (const id of stableOrderRef.current) {
+      const ticket = ticketMap.get(id);
+      if (ticket) {
+        result.push(ticket);
+        placed.add(id);
+      }
+    }
+
+    // Prepend any new tickets not in the stable order
+    const brandNew = filteredTickets.filter(t => !placed.has(t.ticket_id));
+    if (brandNew.length > 0) {
+      // Add new ticket IDs to stable order for next time
+      stableOrderRef.current = [...brandNew.map(t => t.ticket_id), ...stableOrderRef.current];
+      return [...brandNew, ...result];
+    }
+
+    return result;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredTickets, sortEpoch, search]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 

@@ -37,6 +37,8 @@ export default function ZendeskChatLayout({ user, profile, locale = 'th' }: { us
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [injectedReply, setInjectedReply] = useState<string | null>(null);
+  // Bump this to force a re-sort in the ticket list (e.g. on filter/hospital change)
+  const [sortEpoch, setSortEpoch] = useState(0);
   const selectedTicketIdRef = useRef(selectedTicketId);
   selectedTicketIdRef.current = selectedTicketId;
 
@@ -62,14 +64,42 @@ export default function ZendeskChatLayout({ user, profile, locale = 'th' }: { us
       }
 
       const data = await res.json();
-      const newTickets = data.tickets || [];
+      const newTickets: Ticket[] = data.tickets || [];
 
       if (pageNum === 1) {
-        setTickets(newTickets);
+        // Merge strategy: update existing tickets in-place, append truly new ones.
+        // This preserves the user's visual order during polling.
+        setTickets(prev => {
+          if (prev.length === 0) {
+            // First load — just set directly
+            return newTickets;
+          }
+          const merged: Ticket[] = [];
+          const seenIds = new Set<number>();
+
+          // Keep existing tickets in their current order, update their data
+          for (const old of prev) {
+            const fresh = newTickets.find(t => t.ticket_id === old.ticket_id);
+            if (fresh) {
+              merged.push(fresh);
+              seenIds.add(fresh.ticket_id);
+            }
+            // If ticket disappeared from API response, still keep it
+            // (it may have been filtered out server-side, but removing mid-scroll is jarring)
+            else {
+              merged.push(old);
+              seenIds.add(old.ticket_id);
+            }
+          }
+
+          // Prepend truly new tickets (not seen before) at the top
+          const brandNew = newTickets.filter(t => !seenIds.has(t.ticket_id));
+          return [...brandNew, ...merged];
+        });
       } else {
         setTickets(prev => {
           const existingIds = new Set(prev.map(t => t.ticket_id));
-          const unique = newTickets.filter((t: any) => !existingIds.has(t.ticket_id));
+          const unique = newTickets.filter((t: Ticket) => !existingIds.has(t.ticket_id));
           return [...prev, ...unique];
         });
       }
@@ -85,6 +115,8 @@ export default function ZendeskChatLayout({ user, profile, locale = 'th' }: { us
 
   useEffect(() => {
     setLoading(true);
+    // Bump sortEpoch so ticket list re-sorts when filter/hospital changes
+    setSortEpoch(e => e + 1);
     fetchTickets();
   }, [fetchTickets]);
 
@@ -170,6 +202,7 @@ export default function ZendeskChatLayout({ user, profile, locale = 'th' }: { us
             loadingMore={loadingMore}
             hospital={hospital}
             onHospitalChange={setHospital}
+            sortEpoch={sortEpoch}
           />
         </div>
 

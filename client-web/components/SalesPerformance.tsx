@@ -28,6 +28,7 @@ interface RecentTicket {
   quality_score: number | null;
   reservation_converted: boolean | null;
   needs_followup: boolean | null;
+  followup_status: string | null;
   summary: string | null;
   created_at_zd: string;
   comment_count: number;
@@ -596,7 +597,15 @@ export default function SalesPerformance() {
                             )}
                           </td>
                           <td className="text-center px-3 py-2">
-                            {t.quality_score != null ? (
+                            {t.followup_status ? (
+                              <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                FOLLOWUP_STATUS_CONFIG[t.followup_status]?.bg || 'bg-slate-100'
+                              } ${
+                                FOLLOWUP_STATUS_CONFIG[t.followup_status]?.color || 'text-slate-600'
+                              }`}>
+                                {FOLLOWUP_STATUS_CONFIG[t.followup_status]?.label || t.followup_status}
+                              </span>
+                            ) : t.quality_score != null ? (
                               <button
                                 onClick={() => handleMarkFollowup(t.ticket_id)}
                                 className="px-2 py-1 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
@@ -1196,11 +1205,11 @@ function FollowupCustomerTable({ getAuthHeader }: { getAuthHeader: () => Promise
                 </div>
               )}
 
-              {/* Chronological Timeline */}
+              {/* Chat-style Timeline */}
               <div>
-                <div className="text-xs font-medium text-slate-500 mb-2 flex items-center gap-1">
+                <div className="text-xs font-medium text-slate-500 mb-3 flex items-center gap-1">
                   <Clock className="w-3 h-3" />
-                  타임라인
+                  대화 타임라인
                 </div>
                 {actionsLoading ? (
                   <div className="flex items-center gap-2 text-slate-400 py-4 text-sm">
@@ -1216,38 +1225,69 @@ function FollowupCustomerTable({ getAuthHeader }: { getAuthHeader: () => Promise
                     {actions.map((action) => {
                       const isWorker = action.action_type === 'worker_action';
                       const isAI = action.action_type === 'ai_instruction';
-                      // system_note is the default
-                      return (
-                        <div key={action.id} className="flex gap-3">
-                          {/* Icon */}
-                          <div className="flex-shrink-0 mt-0.5">
-                            {isWorker && (
-                              <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center">
-                                <div className="w-2 h-2 rounded-full bg-blue-500" />
-                              </div>
-                            )}
-                            {isAI && (
-                              <div className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center">
-                                <Star className="w-3 h-3 text-amber-600" />
-                              </div>
-                            )}
-                            {!isWorker && !isAI && (
-                              <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center">
-                                <Info className="w-3 h-3 text-slate-400" />
-                              </div>
-                            )}
+                      const isSystem = action.action_type === 'system_note';
+
+                      // System notes: centered small pill
+                      if (isSystem) {
+                        return (
+                          <div key={action.id} className="flex justify-center">
+                            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 rounded-full">
+                              <Info className="w-3 h-3 text-slate-400" />
+                              <span className="text-xs text-slate-500">{action.content}</span>
+                              {action.status_before && action.status_after && action.status_before !== action.status_after && (
+                                <span className="text-xs text-slate-400">
+                                  ({FOLLOWUP_STATUS_CONFIG[action.status_before]?.label || action.status_before}
+                                  {' → '}
+                                  {FOLLOWUP_STATUS_CONFIG[action.status_after]?.label || action.status_after})
+                                </span>
+                              )}
+                              <span className="text-[10px] text-slate-400 ml-1">{formatDateTime(action.created_at)}</span>
+                            </div>
                           </div>
-                          {/* Content */}
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm text-slate-800">{action.content}</div>
-                            {action.status_before && action.status_after && action.status_before !== action.status_after && (
-                              <div className="text-xs text-slate-400 mt-0.5">
-                                {FOLLOWUP_STATUS_CONFIG[action.status_before]?.label || action.status_before}
-                                {' → '}
-                                {FOLLOWUP_STATUS_CONFIG[action.status_after]?.label || action.status_after}
+                        );
+                      }
+
+                      // AI instruction: left-aligned bubble (like incoming message)
+                      if (isAI) {
+                        return (
+                          <div key={action.id} className="flex items-start gap-2 max-w-[85%]">
+                            <div className="flex-shrink-0 w-7 h-7 rounded-full bg-amber-100 flex items-center justify-center mt-0.5">
+                              <Star className="w-3.5 h-3.5 text-amber-600" />
+                            </div>
+                            <div>
+                              <div className="text-[10px] font-medium text-amber-600 mb-0.5">AI 분석 / 관리자 지시</div>
+                              <div className="bg-amber-50 border border-amber-200 rounded-2xl rounded-tl-sm px-3.5 py-2.5">
+                                <p className="text-sm text-amber-900 whitespace-pre-wrap">{action.content}</p>
+                                {action.status_before && action.status_after && action.status_before !== action.status_after && (
+                                  <p className="text-xs text-amber-600 mt-1.5 pt-1.5 border-t border-amber-200">
+                                    {FOLLOWUP_STATUS_CONFIG[action.status_before]?.label || action.status_before}
+                                    {' → '}
+                                    {FOLLOWUP_STATUS_CONFIG[action.status_after]?.label || action.status_after}
+                                  </p>
+                                )}
                               </div>
-                            )}
-                            <div className="text-xs text-slate-400 mt-0.5">{formatDateTime(action.created_at)}</div>
+                              <div className="text-[10px] text-slate-400 mt-0.5 ml-1">{formatDateTime(action.created_at)}</div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // Worker action: right-aligned bubble (like outgoing message)
+                      return (
+                        <div key={action.id} className="flex justify-end">
+                          <div className="max-w-[85%]">
+                            <div className="text-[10px] font-medium text-blue-600 mb-0.5 text-right">워커 보고</div>
+                            <div className="bg-blue-500 rounded-2xl rounded-tr-sm px-3.5 py-2.5">
+                              <p className="text-sm text-white whitespace-pre-wrap">{action.content}</p>
+                              {action.status_before && action.status_after && action.status_before !== action.status_after && (
+                                <p className="text-xs text-blue-100 mt-1.5 pt-1.5 border-t border-blue-400">
+                                  {FOLLOWUP_STATUS_CONFIG[action.status_before]?.label || action.status_before}
+                                  {' → '}
+                                  {FOLLOWUP_STATUS_CONFIG[action.status_after]?.label || action.status_after}
+                                </p>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-slate-400 mt-0.5 mr-1 text-right">{formatDateTime(action.created_at)}</div>
                           </div>
                         </div>
                       );

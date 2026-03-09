@@ -110,7 +110,7 @@ export async function GET(req: NextRequest) {
   if (ticketIds.length > 0) {
     const { data } = await supabaseAdmin
       .from('zendesk_analyses')
-      .select('ticket_id, quality_score, reservation_converted, needs_followup, summary')
+      .select('ticket_id, quality_score, reservation_converted, needs_followup, summary, followup_status')
       .in('ticket_id', ticketIds);
     analyses = data || [];
   }
@@ -216,6 +216,7 @@ export async function GET(req: NextRequest) {
       quality_score: analysis?.quality_score ?? null,
       reservation_converted: analysis?.reservation_converted ?? null,
       needs_followup: analysis?.needs_followup ?? null,
+      followup_status: analysis?.followup_status ?? null,
       summary: analysis?.summary ?? null,
       created_at_zd: t.created_at_zd,
       comment_count: Array.isArray(t.comments) ? t.comments.length : 0,

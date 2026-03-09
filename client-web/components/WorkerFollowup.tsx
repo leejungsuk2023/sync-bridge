@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Bell, ChevronDown, ChevronUp, Clock, Star, Info, AlertTriangle } from 'lucide-react';
+import { X, Star, Info, Send, ChevronDown, AlertTriangle, Bell } from 'lucide-react';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -56,134 +56,248 @@ type FollowupStatus = 'pending' | 'contacted' | 'scheduled' | 'converted' | 'los
 
 // ─── Constants ──────────────────────────────────────────────────────
 
-const STATUS_CONFIG: Record<FollowupStatus, { label: string; bg: string; text: string }> = {
-  pending:   { label: 'รอดำเนินการ', bg: 'bg-amber-100',   text: 'text-amber-700' },
-  contacted: { label: 'ติดต่อแล้ว',  bg: 'bg-blue-100',    text: 'text-blue-700' },
-  scheduled: { label: 'นัดหมายแล้ว', bg: 'bg-indigo-100',  text: 'text-indigo-700' },
-  converted: { label: 'สำเร็จ',      bg: 'bg-emerald-100', text: 'text-emerald-700' },
-  lost:      { label: 'ไม่สำเร็จ',   bg: 'bg-red-100',     text: 'text-red-700' },
+const STATUS_CONFIG: Record<FollowupStatus, { label: string; bg: string; text: string; dot: string }> = {
+  pending:   { label: 'รอดำเนินการ', bg: 'bg-amber-100',   text: 'text-amber-700',   dot: 'bg-amber-400' },
+  contacted: { label: 'ติดต่อแล้ว',  bg: 'bg-blue-100',    text: 'text-blue-700',    dot: 'bg-blue-400' },
+  scheduled: { label: 'นัดหมายแล้ว', bg: 'bg-indigo-100',  text: 'text-indigo-700',  dot: 'bg-indigo-400' },
+  converted: { label: 'สำเร็จ',      bg: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-400' },
+  lost:      { label: 'ไม่สำเร็จ',   bg: 'bg-red-100',     text: 'text-red-700',     dot: 'bg-red-400' },
 };
 
-const LOST_REASON_LABELS: Record<string, string> = {
-  no_response: 'ติดต่อไม่ได้',
-  customer_rejected: 'ลูกค้าปฏิเสธ',
-  competitor: 'เลือกคู่แข่ง',
-  price_issue: 'ปัญหาเรื่องราคา',
-  other: 'อื่นๆ',
-};
-
-// Active statuses are sorted first, then converted, then lost
 const STATUS_ORDER: Record<string, number> = {
-  pending: 0,
-  contacted: 1,
-  scheduled: 2,
-  converted: 3,
-  lost: 4,
+  pending: 0, contacted: 1, scheduled: 2, converted: 3, lost: 4,
 };
+
+const DROP_REASONS = [
+  { value: 'no_response', label: 'ติดต่อไม่ได้' },
+  { value: 'customer_rejected', label: 'ลูกค้าปฏิเสธ' },
+  { value: 'competitor', label: 'เลือกคู่แข่ง' },
+  { value: 'price_issue', label: 'ปัญหาเรื่องราคา' },
+  { value: 'other', label: 'อื่นๆ' },
+];
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
-function formatRelativeTime(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = date.getTime() - now.getTime();
-  const absDiffMs = Math.abs(diffMs);
-  const hours = absDiffMs / (1000 * 60 * 60);
-
-  if (hours < 6) {
-    if (hours < 1) {
-      const mins = Math.round(absDiffMs / (1000 * 60));
-      return diffMs > 0 ? `อีก ${mins} นาที` : `${mins} นาทีที่แล้ว`;
-    }
-    const h = Math.round(hours * 10) / 10;
-    return diffMs > 0 ? `อีก ${h} ชม.` : `${h} ชม.ที่แล้ว`;
-  }
-
-  return date.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-}
-
 function formatTimestamp(dateStr: string): string {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('th-TH', {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
+  return new Date(dateStr).toLocaleDateString('th-TH', {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
   });
 }
 
-// ─── Action Timeline ────────────────────────────────────────────────
+// ─── Detail Modal ────────────────────────────────────────────────────
 
-function ActionTimeline({ ticketId }: { ticketId: number }) {
+function TicketDetailModal({
+  customer,
+  onClose,
+  onPush,
+  onDrop,
+  pushing,
+  dropping,
+}: {
+  customer: FollowupCustomer;
+  onClose: () => void;
+  onPush: (ticketId: number, comment: string) => Promise<void>;
+  onDrop: (ticketId: number, reason: string, detail: string | null) => Promise<void>;
+  pushing: boolean;
+  dropping: boolean;
+}) {
   const [actions, setActions] = useState<FollowupAction[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingActions, setLoadingActions] = useState(true);
+  const [comment, setComment] = useState('');
+  const [dropReason, setDropReason] = useState('');
+  const [dropDetail, setDropDetail] = useState('');
+  const [showDropConfirm, setShowDropConfirm] = useState(false);
+
+  const statusConf = STATUS_CONFIG[customer.followup_status as FollowupStatus] || STATUS_CONFIG.pending;
+  const isTerminal = customer.followup_status === 'lost' || customer.followup_status === 'converted';
 
   useEffect(() => {
     const load = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
-
-        const res = await fetch(`/api/zendesk/followup-actions?ticket_id=${ticketId}`, {
-          headers: { 'Authorization': `Bearer ${session.access_token}` },
+        const res = await fetch(`/api/zendesk/followup-actions?ticket_id=${customer.ticket_id}`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
         });
-
         if (res.ok) {
           const data = await res.json();
-          setActions(data.actions || []);
+          // Reverse to show oldest first (chronological)
+          setActions((data.actions || []).reverse());
         }
       } catch (err) {
         console.error('[WorkerFollowup] Failed to load actions:', err);
       } finally {
-        setLoading(false);
+        setLoadingActions(false);
       }
     };
     load();
-  }, [ticketId]);
+  }, [customer.ticket_id]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center gap-2 py-2">
-        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400" />
-        <span className="text-xs text-slate-400">กำลังโหลดประวัติ...</span>
-      </div>
-    );
-  }
+  const handlePush = async () => {
+    if (!comment.trim()) return;
+    await onPush(customer.ticket_id, comment.trim());
+    setComment('');
+  };
 
-  if (actions.length === 0) {
-    return <p className="text-xs text-slate-400 py-2">ยังไม่มีประวัติ</p>;
-  }
+  const handleDrop = async () => {
+    if (!dropReason) return;
+    await onDrop(customer.ticket_id, dropReason, dropReason === 'other' ? dropDetail : null);
+    setShowDropConfirm(false);
+  };
 
   return (
-    <div className="space-y-2 py-2">
-      {actions.map((action) => {
-        const isWorker = action.action_type === 'worker_action';
-        const isAI = action.action_type === 'ai_instruction';
-        // system_note is the default
-
-        return (
-          <div key={action.id} className="flex gap-2 text-xs">
-            {/* Icon */}
-            <div className="flex-shrink-0 mt-0.5">
-              {isWorker && <div className="w-4 h-4 rounded-full bg-blue-400 flex items-center justify-center"><div className="w-2 h-2 rounded-full bg-white" /></div>}
-              {isAI && <Star size={16} className="text-amber-400 fill-amber-400" />}
-              {!isWorker && !isAI && <Info size={16} className="text-slate-400" />}
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="shrink-0 border-b border-slate-200 px-5 py-4">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-semibold text-slate-900">{customer.customer_name}</h3>
+                <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">#{customer.ticket_id}</span>
+              </div>
+              <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
+                {customer.hospital_name && <span>{customer.hospital_name}</span>}
+                {customer.interested_procedure && (
+                  <span>{customer.interested_procedure_th || customer.interested_procedure}</span>
+                )}
+                {customer.customer_phone && <span>{customer.customer_phone}</span>}
+              </div>
             </div>
-            {/* Content */}
-            <div className="flex-1 min-w-0">
-              <p className="text-slate-700">{action.content_th || action.content}</p>
-              {action.status_before && action.status_after && action.status_before !== action.status_after && (
-                <p className="text-slate-400 mt-0.5">
-                  {STATUS_CONFIG[action.status_before as FollowupStatus]?.label || action.status_before}
-                  {' → '}
-                  {STATUS_CONFIG[action.status_after as FollowupStatus]?.label || action.status_after}
-                </p>
-              )}
-              <p className="text-slate-400 mt-0.5">{formatTimestamp(action.created_at)}</p>
+            <div className="flex items-center gap-2">
+              <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${statusConf.bg} ${statusConf.text}`}>
+                {statusConf.label}
+              </span>
+              <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X size={20} />
+              </button>
             </div>
           </div>
-        );
-      })}
+        </div>
+
+        {/* Timeline */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {/* Followup Reason — first item in timeline */}
+          {customer.followup_reason && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <p className="text-xs font-medium text-amber-700 mb-1">เหตุผลในการติดตาม</p>
+              <p className="text-sm text-amber-900">{customer.followup_reason_th || customer.followup_reason}</p>
+            </div>
+          )}
+
+          {/* Action Timeline */}
+          {loadingActions ? (
+            <div className="flex items-center gap-2 py-4 justify-center">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-400" />
+              <span className="text-sm text-slate-400">กำลังโหลด...</span>
+            </div>
+          ) : actions.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-4">ยังไม่มีประวัติการดำเนินการ</p>
+          ) : (
+            <div className="space-y-3">
+              {actions.map((action) => {
+                const isWorker = action.action_type === 'worker_action';
+                const isAI = action.action_type === 'ai_instruction';
+                return (
+                  <div key={action.id} className={`rounded-lg p-3 ${
+                    isAI ? 'bg-blue-50 border border-blue-200' :
+                    isWorker ? 'bg-slate-50 border border-slate-200' :
+                    'bg-slate-50 border border-slate-100'
+                  }`}>
+                    <div className="flex items-center gap-2 mb-1">
+                      {isWorker && <div className="w-3 h-3 rounded-full bg-blue-400" />}
+                      {isAI && <Star size={14} className="text-amber-500 fill-amber-500" />}
+                      {!isWorker && !isAI && <Info size={14} className="text-slate-400" />}
+                      <span className="text-[10px] font-medium text-slate-400">
+                        {isAI ? 'คำแนะนำ AI' : isWorker ? 'การดำเนินการ' : 'ระบบ'}
+                      </span>
+                      <span className="text-[10px] text-slate-400 ml-auto">{formatTimestamp(action.created_at)}</span>
+                    </div>
+                    <p className="text-sm text-slate-700">{action.content_th || action.content}</p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Bottom Actions */}
+        {!isTerminal && (
+          <div className="shrink-0 border-t border-slate-200 px-5 py-3 space-y-3">
+            {/* Comment + Push */}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) handlePush(); }}
+                placeholder="บันทึกสิ่งที่ทำ แล้วกด Push..."
+                className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                disabled={pushing}
+              />
+              <button
+                onClick={handlePush}
+                disabled={pushing || !comment.trim()}
+                className="px-4 py-2 text-sm font-medium bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1.5 flex-shrink-0"
+              >
+                <Send size={14} />
+                {pushing ? '...' : 'Push'}
+              </button>
+            </div>
+
+            {/* Drop */}
+            {!showDropConfirm ? (
+              <button
+                onClick={() => setShowDropConfirm(true)}
+                className="text-xs text-slate-400 hover:text-red-500 transition-colors"
+              >
+                Drop ลูกค้านี้...
+              </button>
+            ) : (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 space-y-2">
+                <p className="text-xs font-medium text-red-700">ยืนยันการ Drop</p>
+                <select
+                  value={dropReason}
+                  onChange={(e) => setDropReason(e.target.value)}
+                  className="w-full text-sm border border-red-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-red-400"
+                >
+                  <option value="">เลือกเหตุผล...</option>
+                  {DROP_REASONS.map((r) => (
+                    <option key={r.value} value={r.value}>{r.label}</option>
+                  ))}
+                </select>
+                {dropReason === 'other' && (
+                  <input
+                    type="text"
+                    value={dropDetail}
+                    onChange={(e) => setDropDetail(e.target.value)}
+                    placeholder="ระบุเหตุผล..."
+                    className="w-full text-sm border border-red-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-red-400"
+                  />
+                )}
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={() => { setShowDropConfirm(false); setDropReason(''); setDropDetail(''); }}
+                    className="text-xs px-3 py-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    onClick={handleDrop}
+                    disabled={dropping || !dropReason || (dropReason === 'other' && !dropDetail.trim())}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white font-medium transition-colors disabled:opacity-50"
+                  >
+                    {dropping ? '...' : 'ยืนยัน Drop'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -193,21 +307,13 @@ function ActionTimeline({ ticketId }: { ticketId: number }) {
 export default function WorkerFollowup({ userId }: { userId: string }) {
   const [customers, setCustomers] = useState<FollowupCustomer[]>([]);
   const [loading, setLoading] = useState(true);
-  const [updating, setUpdating] = useState<number | null>(null);
-  const [comments, setComments] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [selectedTicket, setSelectedTicket] = useState<FollowupCustomer | null>(null);
+  const [pushing, setPushing] = useState(false);
+  const [dropping, setDropping] = useState(false);
 
-  // Notification state
+  // Notifications
   const [notifications, setNotifications] = useState<FollowupNotification[]>([]);
-
-  // AI instruction state per customer: latest unread ai_instruction
-  const [aiInstructions, setAiInstructions] = useState<Record<number, FollowupAction>>({});
-
-  // Timeline expand state
-  const [expandedTimelines, setExpandedTimelines] = useState<Record<number, boolean>>({});
-
-
-  // ─── Data fetching ─────────────────────────────────────────────
 
   const getSession = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -218,29 +324,13 @@ export default function WorkerFollowup({ userId }: { userId: string }) {
     try {
       setError(null);
       const session = await getSession();
-      if (!session) {
-        setError('กรุณาเข้าสู่ระบบใหม่');
-        return;
-      }
-
+      if (!session) { setError('กรุณาเข้าสู่ระบบใหม่'); return; }
       const res = await fetch('/api/zendesk/followup-customers', {
-        headers: { 'Authorization': `Bearer ${session.access_token}` },
+        headers: { Authorization: `Bearer ${session.access_token}` },
       });
-
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
       const data = await res.json();
-      const fetched: FollowupCustomer[] = data.customers || [];
-      setCustomers(fetched);
-
-      // Extract latest unread AI instruction per customer from response if available
-      if (data.latest_ai_instructions) {
-        const instructions: Record<number, FollowupAction> = {};
-        for (const instr of data.latest_ai_instructions) {
-          instructions[instr.ticket_id] = instr;
-        }
-        setAiInstructions(instructions);
-      }
+      setCustomers(data.customers || []);
     } catch (err) {
       console.error('[WorkerFollowup] Failed to fetch customers:', err);
       setError('ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่');
@@ -253,11 +343,9 @@ export default function WorkerFollowup({ userId }: { userId: string }) {
     try {
       const session = await getSession();
       if (!session) return;
-
       const res = await fetch('/api/zendesk/followup-notifications', {
-        headers: { 'Authorization': `Bearer ${session.access_token}` },
+        headers: { Authorization: `Bearer ${session.access_token}` },
       });
-
       if (res.ok) {
         const data = await res.json();
         setNotifications(data.notifications || []);
@@ -272,135 +360,99 @@ export default function WorkerFollowup({ userId }: { userId: string }) {
     fetchNotifications();
   }, [fetchCustomers, fetchNotifications]);
 
-  // ─── Notification actions ──────────────────────────────────────
-
   const markAllNotificationsRead = async () => {
     try {
       const session = await getSession();
       if (!session) return;
-
-      const res = await fetch('/api/zendesk/followup-notifications', {
+      await fetch('/api/zendesk/followup-notifications', {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ mark_all_read: true }),
       });
-
-      if (res.ok) {
-        setNotifications([]);
-      }
+      setNotifications([]);
     } catch (err) {
       console.error('[WorkerFollowup] Failed to mark notifications read:', err);
     }
   };
 
-  // ─── AI instruction read ──────────────────────────────────────
-
-  const markInstructionRead = async (ticketId: number, actionId: string) => {
+  // Push = submit comment, auto-trigger followup loop
+  const handlePush = async (ticketId: number, comment: string) => {
+    setPushing(true);
     try {
       const session = await getSession();
       if (!session) return;
-
-      await fetch('/api/zendesk/followup-actions', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ action_id: actionId }),
-      });
-
-      // Remove from local state
-      setAiInstructions((prev) => {
-        const next = { ...prev };
-        delete next[ticketId];
-        return next;
-      });
-    } catch (err) {
-      console.error('[WorkerFollowup] Failed to mark instruction read:', err);
-    }
-  };
-
-  // ─── Submit comment ──────────────────────────────────────────
-
-  const handleSubmitComment = async (ticketId: number) => {
-    const comment = comments[ticketId]?.trim();
-    if (!comment) return;
-
-    setUpdating(ticketId);
-    try {
-      const session = await getSession();
-      if (!session) return;
-
       const res = await fetch('/api/zendesk/followup-customers', {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          ticket_id: ticketId,
-          action_comment: comment,
-        }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ ticket_id: ticketId, action_comment: comment }),
       });
-
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      // Clear comment
-      setComments((prev) => {
-        const next = { ...prev };
-        delete next[ticketId];
-        return next;
-      });
-
-      // Refresh
       await fetchCustomers();
+      // Refresh modal data by re-selecting
+      const updated = (await res.json()).updated;
+      if (selectedTicket?.ticket_id === ticketId) {
+        setSelectedTicket((prev) => prev ? { ...prev, ...updated, followup_status: updated?.followup_status || prev.followup_status } : prev);
+      }
     } catch (err) {
-      console.error('[WorkerFollowup] Failed to submit comment:', err);
-      setError('ไม่สามารถบันทึกได้ กรุณาลองใหม่');
+      console.error('[WorkerFollowup] Push failed:', err);
     } finally {
-      setUpdating(null);
+      setPushing(false);
     }
   };
 
-  // ─── Sorting ──────────────────────────────────────────────────
+  // Drop = mark as lost
+  const handleDrop = async (ticketId: number, reason: string, detail: string | null) => {
+    setDropping(true);
+    try {
+      const session = await getSession();
+      if (!session) return;
+      const res = await fetch('/api/zendesk/followup-customers', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({
+          ticket_id: ticketId,
+          status: 'lost',
+          lost_reason: reason,
+          lost_reason_detail: detail,
+          action_comment: `Dropped: ${reason}${detail ? ` - ${detail}` : ''}`,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setSelectedTicket(null);
+      await fetchCustomers();
+    } catch (err) {
+      console.error('[WorkerFollowup] Drop failed:', err);
+    } finally {
+      setDropping(false);
+    }
+  };
+
+  // ─── Sorting ──────────────────────────────────────────────────────
 
   const sortedCustomers = useMemo(() => {
     return [...customers].sort((a, b) => {
       const orderA = STATUS_ORDER[a.followup_status] ?? 99;
       const orderB = STATUS_ORDER[b.followup_status] ?? 99;
       if (orderA !== orderB) return orderA - orderB;
-
-      // Within active statuses, sort by next_check_at (soonest first)
       if (a.next_check_at && b.next_check_at) {
         return new Date(a.next_check_at).getTime() - new Date(b.next_check_at).getTime();
       }
-      if (a.next_check_at) return -1;
-      if (b.next_check_at) return 1;
-
-      return 0;
+      return a.next_check_at ? -1 : b.next_check_at ? 1 : 0;
     });
   }, [customers]);
 
-  const pendingCount = customers.filter((c) => c.followup_status === 'pending').length;
+  // ─── BI Summary ───────────────────────────────────────────────────
+
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = { pending: 0, contacted: 0, scheduled: 0, converted: 0, lost: 0 };
+    customers.forEach((c) => { counts[c.followup_status] = (counts[c.followup_status] || 0) + 1; });
+    return counts;
+  }, [customers]);
+
+  const activeCount = statusCounts.pending + statusCounts.contacted + statusCounts.scheduled;
   const unreadNotifCount = notifications.length;
-  const hasHighUrgency = notifications.some((n) => n.body.toLowerCase().includes('urgency: high') || n.body.toLowerCase().includes('urgency:high'));
 
-  // ─── Timeline toggle ──────────────────────────────────────────
-
-  const toggleTimeline = (ticketId: number) => {
-    setExpandedTimelines((prev) => ({ ...prev, [ticketId]: !prev[ticketId] }));
-  };
-
-  // ─── Render helpers ────────────────────────────────────────────
-
-  const isLost = (status: string) => status === 'lost';
-  const isConverted = (status: string) => status === 'converted';
-  const isTerminal = (status: string) => isLost(status) || isConverted(status);
-
-  // ─── Loading / Error / Empty ───────────────────────────────────
+  // ─── Loading / Error / Empty ──────────────────────────────────────
 
   if (loading) {
     return (
@@ -415,10 +467,7 @@ export default function WorkerFollowup({ userId }: { userId: string }) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
         <p className="text-sm text-red-600">{error}</p>
-        <button
-          onClick={() => { setLoading(true); fetchCustomers(); }}
-          className="mt-2 text-sm text-red-500 hover:text-red-700 underline"
-        >
+        <button onClick={() => { setLoading(true); fetchCustomers(); }} className="mt-2 text-sm text-red-500 hover:text-red-700 underline">
           ลองใหม่
         </button>
       </div>
@@ -428,198 +477,112 @@ export default function WorkerFollowup({ userId }: { userId: string }) {
   if (customers.length === 0) {
     return (
       <div className="bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm">
-        <div className="text-3xl mb-2">-</div>
         <p className="text-sm text-slate-500">ยังไม่มีลูกค้าที่ต้องติดตาม</p>
       </div>
     );
   }
 
-  // ─── Customer Card (shared for mobile + desktop) ───────────────
-
-  const renderCustomerCard = (customer: FollowupCustomer) => {
-    const statusConf = STATUS_CONFIG[customer.followup_status as FollowupStatus] || STATUS_CONFIG.pending;
-    const isUpdating = updating === customer.ticket_id;
-    const lost = isLost(customer.followup_status);
-    const converted = isConverted(customer.followup_status);
-    const terminal = isTerminal(customer.followup_status);
-    const aiInstruction = aiInstructions[customer.ticket_id];
-    const timelineExpanded = expandedTimelines[customer.ticket_id] || false;
-
-    return (
-      <div
-        key={customer.id}
-        className={`bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3 ${
-          lost ? 'opacity-60' : converted ? 'opacity-80' : ''
-        }`}
-      >
-        {/* AI Instruction Highlight */}
-        {aiInstruction && !aiInstruction.read_at && (
-          <div
-            className="bg-amber-50 border border-amber-200 rounded-lg p-3 cursor-pointer relative"
-            onClick={() => markInstructionRead(customer.ticket_id, aiInstruction.id)}
-          >
-            <div className="flex items-start gap-2">
-              <Star size={14} className="text-amber-500 fill-amber-500 flex-shrink-0 mt-0.5" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-medium text-amber-700">คำแนะนำจาก AI</span>
-                  {/* Blue unread dot */}
-                  <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
-                </div>
-                <p className="text-xs text-amber-800 mt-1">
-                  {aiInstruction.content_th || aiInstruction.content}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Customer info */}
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <p className="font-medium text-slate-900">{customer.customer_name}</p>
-              <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono font-medium bg-slate-100 text-slate-500 rounded border border-slate-200">
-                #{customer.ticket_id}
-              </span>
-            </div>
-            {customer.customer_phone && (
-              <p className="text-xs text-slate-500 mt-0.5">{customer.customer_phone}</p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Next check timer */}
-            {customer.next_check_at && !terminal && (
-              <span className="text-[10px] text-slate-400 flex items-center gap-0.5">
-                <Clock size={10} />
-                {formatRelativeTime(customer.next_check_at)}
-              </span>
-            )}
-            <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${statusConf.bg} ${statusConf.text}`}>
-              {statusConf.label}
-            </span>
-          </div>
-        </div>
-
-        {/* Details */}
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          {customer.interested_procedure && (
-            <div>
-              <span className="text-slate-400">หัตถการ:</span>
-              <p className="text-slate-700">{customer.interested_procedure_th || customer.interested_procedure}</p>
-            </div>
-          )}
-          {customer.hospital_name && (
-            <div>
-              <span className="text-slate-400">โรงพยาบาล:</span>
-              <p className="text-slate-700">{customer.hospital_name}</p>
-            </div>
-          )}
-          {customer.followup_reason && (
-            <div className="col-span-2">
-              <span className="text-slate-400">เหตุผล:</span>
-              <p className="text-slate-700">{customer.followup_reason_th || customer.followup_reason}</p>
-            </div>
-          )}
-        </div>
-
-        {/* Lost reason badge */}
-        {lost && customer.lost_reason && (
-          <div className="flex items-center gap-1">
-            <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-500 border border-red-200">
-              {LOST_REASON_LABELS[customer.lost_reason] || customer.lost_reason}
-            </span>
-            {customer.lost_reason === 'other' && customer.lost_reason_detail && (
-              <span className="text-xs text-slate-400 truncate">— {customer.lost_reason_detail}</span>
-            )}
-          </div>
-        )}
-
-        {/* Action comment */}
-        <div className="flex gap-2">
-          <textarea
-            placeholder="สรุปสิ่งที่ทำ เช่น โทรหาลูกค้าแล้ว รอตอบกลับ / ส่งข้อมูลเพิ่มเติมให้ลูกค้าแล้ว..."
-            value={comments[customer.ticket_id] || ''}
-            onChange={(e) => setComments((prev) => ({ ...prev, [customer.ticket_id]: e.target.value }))}
-            rows={2}
-            className="flex-1 text-xs border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 resize-none"
-            disabled={isUpdating}
-          />
-          <button
-            onClick={() => handleSubmitComment(customer.ticket_id)}
-            disabled={isUpdating || !comments[customer.ticket_id]?.trim()}
-            className="self-end px-4 py-2 text-xs font-medium bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
-          >
-            {isUpdating ? '...' : 'บันทึก'}
-          </button>
-        </div>
-
-        {/* Timeline toggle */}
-        <button
-          onClick={() => toggleTimeline(customer.ticket_id)}
-          className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-600 transition-colors"
-        >
-          {timelineExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          {timelineExpanded ? 'ซ่อนประวัติ' : 'ดูประวัติ'}
-        </button>
-
-        {/* Timeline */}
-        {timelineExpanded && (
-          <div className="border-t border-slate-100 pt-2">
-            <ActionTimeline ticketId={customer.ticket_id} />
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // ─── Main Render ───────────────────────────────────────────────
-
   return (
     <div className="space-y-4">
       {/* Notification Banner */}
       {unreadNotifCount > 0 && (
-        <div className={`rounded-xl p-3 flex items-center justify-between ${
-          hasHighUrgency ? 'bg-red-50 border border-red-200' : 'bg-blue-50 border border-blue-200'
-        }`}>
+        <div className="rounded-xl p-3 flex items-center justify-between bg-blue-50 border border-blue-200">
           <div className="flex items-center gap-2">
-            {hasHighUrgency ? (
-              <AlertTriangle size={16} className="text-red-500" />
-            ) : (
-              <Bell size={16} className="text-blue-500" />
-            )}
-            <span className={`text-sm font-medium ${hasHighUrgency ? 'text-red-700' : 'text-blue-700'}`}>
-              มีคำแนะนำใหม่ {unreadNotifCount} รายการ
-            </span>
+            <Bell size={16} className="text-blue-500" />
+            <span className="text-sm font-medium text-blue-700">มีคำแนะนำใหม่ {unreadNotifCount} รายการ</span>
           </div>
-          <button
-            onClick={markAllNotificationsRead}
-            className={`text-xs font-medium px-3 py-1 rounded-lg transition-colors ${
-              hasHighUrgency
-                ? 'text-red-600 hover:bg-red-100'
-                : 'text-blue-600 hover:bg-blue-100'
-            }`}
-          >
+          <button onClick={markAllNotificationsRead} className="text-xs font-medium px-3 py-1 rounded-lg text-blue-600 hover:bg-blue-100 transition-colors">
             อ่านทั้งหมด
           </button>
         </div>
       )}
 
-      {/* Header with count */}
-      <div className="flex items-center gap-2">
-        <h2 className="text-base font-semibold text-slate-900">ลูกค้าติดตาม</h2>
-        {pendingCount > 0 && (
-          <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 rounded-full">
-            {pendingCount} รอดำเนินการ
-          </span>
-        )}
+      {/* BI Summary */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base font-semibold text-slate-900">ลูกค้าติดตาม</h2>
+          <span className="text-sm text-slate-500">ทั้งหมด {customers.length} ราย</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {(['pending', 'contacted', 'scheduled', 'converted', 'lost'] as FollowupStatus[]).map((s) => {
+            const conf = STATUS_CONFIG[s];
+            const count = statusCounts[s] || 0;
+            if (count === 0) return null;
+            return (
+              <div key={s} className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${conf.bg} ${conf.text}`}>
+                <div className={`w-2 h-2 rounded-full ${conf.dot}`} />
+                {conf.label} {count}
+              </div>
+            );
+          })}
+          {activeCount > 0 && (
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 ml-auto">
+              ต้องดำเนินการ {activeCount}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Card Layout (unified for mobile and desktop) */}
-      <div className="space-y-3">
-        {sortedCustomers.map((customer) => renderCustomerCard(customer))}
+      {/* Customer List */}
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="divide-y divide-slate-100">
+          {sortedCustomers.map((customer) => {
+            const conf = STATUS_CONFIG[customer.followup_status as FollowupStatus] || STATUS_CONFIG.pending;
+            const isLost = customer.followup_status === 'lost';
+            const isConverted = customer.followup_status === 'converted';
+            const reason = customer.followup_reason_th || customer.followup_reason;
+
+            return (
+              <div
+                key={customer.id}
+                className={`px-4 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors ${
+                  isLost ? 'opacity-50' : isConverted ? 'opacity-70' : ''
+                }`}
+              >
+                {/* Status dot */}
+                <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${conf.dot}`} />
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-slate-900 truncate">{customer.customer_name}</span>
+                    <span className="text-[10px] font-mono text-slate-400">#{customer.ticket_id}</span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {customer.hospital_name && (
+                      <span className="text-xs text-slate-500">{customer.hospital_name}</span>
+                    )}
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${conf.bg} ${conf.text}`}>{conf.label}</span>
+                  </div>
+                  {reason && (
+                    <p className="text-xs text-slate-400 mt-0.5 truncate">{reason}</p>
+                  )}
+                </div>
+
+                {/* Detail Button */}
+                <button
+                  onClick={() => setSelectedTicket(customer)}
+                  className="flex-shrink-0 text-xs px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-slate-300 transition-colors"
+                >
+                  ดูรายละเอียด
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
+      {/* Detail Modal */}
+      {selectedTicket && (
+        <TicketDetailModal
+          customer={selectedTicket}
+          onClose={() => setSelectedTicket(null)}
+          onPush={handlePush}
+          onDrop={handleDrop}
+          pushing={pushing}
+          dropping={dropping}
+        />
+      )}
     </div>
   );
 }

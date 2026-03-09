@@ -299,8 +299,8 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
       task_id: chatTaskId,
       sender_id: userId,
       content: original,
-      content_ko: original,
-      content_th: original,
+      content_ko: locale === 'ko' ? original : null,
+      content_th: locale === 'th' ? original : null,
       sender_lang: locale === 'th' ? 'th' : 'ko',
       mentions: mentionedIds,
     }).select('id').single();
@@ -414,7 +414,8 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
   if (!chatTaskId) return null;
 
   const onlineCount = members.filter(m => m.status === 'online' || m.status === 'client').length;
-  const contentField = locale === 'th' ? 'content_th' : 'content_ko';
+  const myLang = locale === 'th' ? 'th' : 'ko';
+  const myField = locale === 'th' ? 'content_th' : 'content_ko';
 
   return (
     <div className="h-full flex flex-col bg-white" onPaste={handlePaste}>
@@ -481,7 +482,35 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
         {messages.map((m) => {
           const isMine = m.sender_id === userId;
           const senderName = profiles[m.sender_id] || '...';
-          const displayText = m[contentField] || m.content;
+          // Smart display: same language → original, different → translated field
+          const senderLang = m.sender_lang || 'ko';
+          let displayText: string;
+          if (senderLang === myLang) {
+            // Same language — show original content
+            displayText = m.content;
+          } else {
+            // Different language — show translated field
+            const translated = m[myField];
+            // Check if translation exists and is different from original
+            if (translated && translated !== m.content) {
+              displayText = translated;
+            } else {
+              // Translation not ready or failed — show placeholder and trigger re-translate
+              displayText = m.content;
+              if (!m._retrying && m.id) {
+                m._retrying = true;
+                fetch('/api/translate', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ text: m.content, targetLang: myLang }),
+                }).then(r => r.ok ? r.json() : null).then(d => {
+                  if (d?.translated && d.translated !== m.content) {
+                    supabase.from('messages').update({ [myField]: d.translated }).eq('id', m.id);
+                  }
+                }).catch(() => {});
+              }
+            }
+          }
           return (
             <div key={m.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
               {!isMine && (

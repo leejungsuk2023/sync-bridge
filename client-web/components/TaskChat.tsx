@@ -174,8 +174,8 @@ export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { t
       task_id: taskId,
       sender_id: userId,
       content: original,
-      content_ko: original,
-      content_th: original,
+      content_ko: locale === 'ko' ? original : null,
+      content_th: locale === 'th' ? original : null,
       sender_lang: locale === 'th' ? 'th' : 'ko',
       mentions: mentionedIds,
     }).select('id').single();
@@ -284,6 +284,33 @@ export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { t
         {messages.map((m) => {
           const isMine = m.sender_id === userId;
           const senderName = profiles[m.sender_id] || '';
+          // Smart display: same language → original, different → translated
+          const senderLang = m.sender_lang || 'ko';
+          const myLang = locale === 'th' ? 'th' : 'ko';
+          const myField = locale === 'th' ? 'content_th' : 'content_ko';
+          let displayText: string;
+          if (senderLang === myLang) {
+            displayText = m.content;
+          } else {
+            const translated = m[myField];
+            if (translated && translated !== m.content) {
+              displayText = translated;
+            } else {
+              displayText = m.content;
+              if (!m._retrying && m.id) {
+                m._retrying = true;
+                fetch('/api/translate', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ text: m.content, targetLang: myLang }),
+                }).then(r => r.ok ? r.json() : null).then(d => {
+                  if (d?.translated && d.translated !== m.content) {
+                    supabase.from('messages').update({ [myField]: d.translated }).eq('id', m.id);
+                  }
+                }).catch(() => {});
+              }
+            }
+          }
           return (
             <div key={m.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
               {!isMine && senderName && (
@@ -325,7 +352,7 @@ export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { t
                     </a>
                   )
                 ) : (
-                  <p className="text-sm">{renderContent(m[locale === 'th' ? 'content_th' : 'content_ko'] || m.content, isMine)}</p>
+                  <p className="text-sm">{renderContent(displayText, isMine)}</p>
                 )}
               </div>
               <span className={`text-[10px] mt-1 ${isMine ? 'text-emerald-700' : 'text-slate-500'}`}>

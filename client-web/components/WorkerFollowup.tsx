@@ -14,6 +14,8 @@ interface FollowupCustomer {
   interested_procedure: string | null;
   hospital_name: string | null;
   followup_reason: string | null;
+  followup_reason_th: string | null;
+  interested_procedure_th: string | null;
   followup_status: string;
   followup_note: string | null;
   subject: string | null;
@@ -637,7 +639,7 @@ export default function WorkerFollowup({ userId }: { userId: string }) {
           {customer.interested_procedure && (
             <div>
               <span className="text-slate-400">หัตถการ:</span>
-              <p className="text-slate-700">{customer.interested_procedure}</p>
+              <p className="text-slate-700">{customer.interested_procedure_th || customer.interested_procedure}</p>
             </div>
           )}
           {customer.hospital_name && (
@@ -649,7 +651,7 @@ export default function WorkerFollowup({ userId }: { userId: string }) {
           {customer.followup_reason && (
             <div className="col-span-2">
               <span className="text-slate-400">เหตุผล:</span>
-              <p className="text-slate-700">{customer.followup_reason}</p>
+              <p className="text-slate-700">{customer.followup_reason_th || customer.followup_reason}</p>
             </div>
           )}
           {customer.subject && (

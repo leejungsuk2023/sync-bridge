@@ -58,8 +58,11 @@ Analyze the following support ticket conversation and return a JSON response wit
 - customer_phone (string or null): Customer's phone number if mentioned (any format)
 - interested_procedure (string or null): The medical procedure/surgery the customer is interested in, IN KOREAN (e.g., 눈성형, 코성형, 지방흡입, 가슴성형, 리프팅)
 - customer_age (number or null): Customer's age if mentioned or inferable
+- followup_reason_th (string or null): If needs_followup is true, translate the followup_reason to Thai
+- interested_procedure_th (string or null): Thai translation of interested_procedure (e.g., ทำตาสองชั้น, เสริมจมูก, ดูดไขมัน, เสริมหน้าอก, ยกกระชับ)
 
 IMPORTANT: summary, followup_reason, issues, and interested_procedure MUST be written in Korean (한국어).
+followup_reason_th and interested_procedure_th MUST be written in Thai (ภาษาไทย).
 
 Ticket Subject: ${ticket.subject}
 Ticket Status: ${ticket.status}
@@ -168,6 +171,8 @@ export async function POST(req: NextRequest) {
           customer_phone: analysis.customer_phone || null,
           interested_procedure: analysis.interested_procedure || null,
           customer_age: analysis.customer_age || null,
+          followup_reason_th: analysis.followup_reason_th || null,
+          interested_procedure_th: analysis.interested_procedure_th || null,
           analyzed_at: new Date().toISOString(),
         });
 

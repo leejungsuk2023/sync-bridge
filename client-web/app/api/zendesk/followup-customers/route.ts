@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabaseAdmin
       .from('zendesk_analyses')
-      .select('ticket_id, customer_name, customer_phone, interested_procedure, customer_age, hospital_name, followup_reason, needs_followup, followup_status, followup_note, followup_updated_by, followup_updated_at, next_check_at, last_checked_at, check_count, lost_reason, lost_reason_detail')
+      .select('ticket_id, customer_name, customer_phone, interested_procedure, customer_age, hospital_name, followup_reason, needs_followup, followup_status, followup_note, followup_updated_by, followup_updated_at, next_check_at, last_checked_at, check_count, lost_reason, lost_reason_detail, followup_reason_th, interested_procedure_th')
       .not('followup_status', 'is', null)
       .order('followup_updated_at', { ascending: false });
 
@@ -80,6 +80,77 @@ export async function GET(req: NextRequest) {
       ...a,
       subject: ticketMap.get(a.ticket_id) || null,
     }));
+
+    // Translate Korean fields to Thai for workers (backfill missing translations)
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+    if (GEMINI_API_KEY) {
+      const needsTranslation = customers.filter((c: any) =>
+        (c.followup_reason && !c.followup_reason_th) ||
+        (c.interested_procedure && !c.interested_procedure_th)
+      );
+
+      if (needsTranslation.length > 0) {
+        try {
+          // Build a batch translation request
+          const toTranslate = needsTranslation.map((c: any) => ({
+            ticket_id: c.ticket_id,
+            followup_reason: c.followup_reason && !c.followup_reason_th ? c.followup_reason : null,
+            interested_procedure: c.interested_procedure && !c.interested_procedure_th ? c.interested_procedure : null,
+          }));
+
+          const translationPrompt = `Translate the following Korean medical/business texts to Thai. Return a JSON array with the same structure, replacing Korean text with Thai translations. Keep null values as null.
+
+Input:
+${JSON.stringify(toTranslate, null, 2)}
+
+Return ONLY valid JSON array with objects having: ticket_id, followup_reason (Thai), interested_procedure (Thai). Keep ticket_id as-is.`;
+
+          const geminiRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ role: 'user', parts: [{ text: translationPrompt }] }],
+                generationConfig: { temperature: 0.1, maxOutputTokens: 4096, responseMimeType: 'application/json' },
+              }),
+            }
+          );
+
+          if (geminiRes.ok) {
+            const geminiData = await geminiRes.json();
+            const translatedText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+            if (translatedText) {
+              const translations: any[] = JSON.parse(translatedText);
+
+              // Apply translations to customers array and save to DB
+              for (const t of translations) {
+                const customer = customers.find((c: any) => c.ticket_id === t.ticket_id);
+                if (!customer) continue;
+
+                const dbUpdate: Record<string, any> = {};
+                if (t.followup_reason && customer.followup_reason && !customer.followup_reason_th) {
+                  customer.followup_reason_th = t.followup_reason;
+                  dbUpdate.followup_reason_th = t.followup_reason;
+                }
+                if (t.interested_procedure && customer.interested_procedure && !customer.interested_procedure_th) {
+                  customer.interested_procedure_th = t.interested_procedure;
+                  dbUpdate.interested_procedure_th = t.interested_procedure;
+                }
+
+                // Save back to DB for caching
+                if (Object.keys(dbUpdate).length > 0) {
+                  supabaseAdmin.from('zendesk_analyses').update(dbUpdate).eq('ticket_id', t.ticket_id).then(() => {});
+                }
+              }
+            }
+          }
+        } catch (translateErr) {
+          console.error('[followup-customers] Translation backfill error:', translateErr);
+          // Continue without translation — Korean text is better than no text
+        }
+      }
+    }
 
     return withCors(NextResponse.json({ customers }));
   } catch (err: any) {

@@ -65,6 +65,7 @@ export default function SalesPerformance() {
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insightsError, setInsightsError] = useState(false);
   const [insightsKey, setInsightsKey] = useState(0);
+  const [followupBadge, setFollowupBadge] = useState(0);
 
   const getAuthHeader = async () => {
     const session = (await supabase.auth.getSession()).data.session;
@@ -170,6 +171,25 @@ export default function SalesPerformance() {
     };
     fetchInsights();
   }, [ticketHospitalFilter, insightsKey]);
+
+  // Fetch unread followup actions count for badge
+  useEffect(() => {
+    const fetchBadge = async () => {
+      try {
+        const headers = await getAuthHeader();
+        const res = await fetch('/api/zendesk/followup-actions?unread_count=true', { headers });
+        if (res.ok) {
+          const data = await res.json();
+          setFollowupBadge(data.unread_count || 0);
+        }
+      } catch (err) {
+        console.error('[SalesPerformance] Badge fetch error:', err);
+      }
+    };
+    fetchBadge();
+    const interval = setInterval(fetchBadge, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleMarkFollowup = async (ticketId: number) => {
     try {
@@ -359,7 +379,7 @@ export default function SalesPerformance() {
         </button>
         <button
           onClick={() => setActiveTab('followup')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+          className={`relative px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
             activeTab === 'followup'
               ? 'border-indigo-600 text-indigo-600'
               : 'border-transparent text-slate-500 hover:text-slate-700'
@@ -369,6 +389,11 @@ export default function SalesPerformance() {
             <Users className="w-4 h-4" />
             팔로업 고객
           </span>
+          {followupBadge > 0 && (
+            <span className="absolute -top-1 -right-1 inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold text-white bg-red-500 rounded-full min-w-[18px] leading-none">
+              {followupBadge > 99 ? '99+' : followupBadge}
+            </span>
+          )}
         </button>
       </div>
 
@@ -793,7 +818,7 @@ export default function SalesPerformance() {
       {activeTab === 'followup' && (
       <div className="space-y-4">
         <p className="text-sm text-slate-500">팔로업이 필요한 고객의 정보를 자동으로 추출합니다. (AI 분석 시 대화에서 추출)</p>
-        <FollowupCustomerTable getAuthHeader={getAuthHeader} />
+        <FollowupCustomerTable getAuthHeader={getAuthHeader} onBadgeUpdate={(n: number) => setFollowupBadge(n)} />
       </div>
       )}
     </div>
@@ -831,7 +856,7 @@ interface FollowupAction {
   read_at: string | null;
 }
 
-function FollowupCustomerTable({ getAuthHeader }: { getAuthHeader: () => Promise<{ Authorization: string }> }) {
+function FollowupCustomerTable({ getAuthHeader, onBadgeUpdate }: { getAuthHeader: () => Promise<{ Authorization: string }>; onBadgeUpdate?: (count: number) => void }) {
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('');
@@ -879,6 +904,12 @@ function FollowupCustomerTable({ getAuthHeader }: { getAuthHeader: () => Promise
           const data = await res.json();
           // API returns desc order, reverse for chronological (oldest first)
           setActions((data.actions || []).reverse());
+          // Refresh badge (actions were marked read by API)
+          const badgeRes = await fetch('/api/zendesk/followup-actions?unread_count=true', { headers });
+          if (badgeRes.ok) {
+            const badgeData = await badgeRes.json();
+            onBadgeUpdate?.(badgeData.unread_count || 0);
+          }
         }
       } catch (err) {
         console.error('[SalesPerformance] Failed to fetch actions:', err);

@@ -48,6 +48,21 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const ticketId = searchParams.get('ticket_id');
+    const unreadCount = searchParams.get('unread_count');
+
+    // Return unread action count for badge
+    if (unreadCount === 'true') {
+      const { count, error } = await supabaseAdmin
+        .from('followup_actions')
+        .select('*', { count: 'exact', head: true })
+        .is('read_at', null)
+        .in('action_type', ['worker_action', 'ai_instruction']);
+
+      if (error) {
+        return withCors(NextResponse.json({ error: error.message }, { status: 500 }));
+      }
+      return withCors(NextResponse.json({ unread_count: count || 0 }));
+    }
 
     if (!ticketId) {
       return withCors(NextResponse.json({ error: 'ticket_id is required' }, { status: 400 }));
@@ -62,6 +77,17 @@ export async function GET(req: NextRequest) {
 
     if (error) {
       return withCors(NextResponse.json({ error: error.message }, { status: 500 }));
+    }
+
+    // Mark these actions as read for admin
+    if (authUser.role === 'bbg_admin' && actions && actions.length > 0) {
+      const unreadIds = actions.filter((a: any) => !a.read_at).map((a: any) => a.id);
+      if (unreadIds.length > 0) {
+        await supabaseAdmin
+          .from('followup_actions')
+          .update({ read_at: new Date().toISOString() })
+          .in('id', unreadIds);
+      }
     }
 
     return withCors(NextResponse.json({ actions: actions || [] }));

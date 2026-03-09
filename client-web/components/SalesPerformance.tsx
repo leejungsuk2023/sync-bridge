@@ -1134,11 +1134,18 @@ function FollowupCustomerTable({ getAuthHeader, onBadgeUpdate }: { getAuthHeader
               </tr>
             </thead>
             <tbody>
-              {customers.map((c, i) => {
+              {customers
+                .filter(c => {
+                  // Hide lost tickets in "전체" view (only show when Lost filter is active)
+                  if (!statusFilter && c.followup_status === 'lost') return false;
+                  return true;
+                })
+                .map((c, i) => {
                 const status = c.followup_status || 'pending';
                 const isLost = status === 'lost';
                 const reason = c.followup_reason || '-';
                 const truncatedReason = reason.length > 50 ? reason.slice(0, 50) + '...' : reason;
+                const unread = c.unread_count || 0;
                 return (
                   <tr
                     key={c.ticket_id || i}
@@ -1149,16 +1156,23 @@ function FollowupCustomerTable({ getAuthHeader, onBadgeUpdate }: { getAuthHeader
                     <td className="text-center px-3 py-2.5">{statusBadge(status)}</td>
                     <td className="px-3 py-2.5 text-slate-600 text-xs" title={reason}>{truncatedReason}</td>
                     <td className="text-center px-3 py-2.5">
-                      <button
-                        onClick={() => {
-                          setSelectedTicket(c.ticket_id);
-                          setPushMessage('');
-                        }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors"
-                      >
-                        <Eye className="w-3 h-3" />
-                        상세
-                      </button>
+                      <div className="inline-flex items-center gap-1.5">
+                        <button
+                          onClick={() => {
+                            setSelectedTicket(c.ticket_id);
+                            setPushMessage('');
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors"
+                        >
+                          <Eye className="w-3 h-3" />
+                          상세
+                        </button>
+                        {unread > 0 && (
+                          <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold text-white bg-red-500 rounded-full min-w-[18px] leading-none">
+                            {unread}
+                          </span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

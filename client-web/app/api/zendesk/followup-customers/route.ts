@@ -76,9 +76,25 @@ export async function GET(req: NextRequest) {
 
     const ticketMap = new Map((tickets || []).map(t => [t.ticket_id, t.subject]));
 
+    // Fetch unread action counts per ticket for admin badge
+    const { data: unreadActions } = ticketIds.length > 0
+      ? await supabaseAdmin
+          .from('followup_actions')
+          .select('ticket_id')
+          .in('ticket_id', ticketIds)
+          .is('read_at', null)
+          .in('action_type', ['worker_action', 'ai_instruction'])
+      : { data: [] };
+
+    const unreadMap = new Map<number, number>();
+    for (const a of (unreadActions || [])) {
+      unreadMap.set(a.ticket_id, (unreadMap.get(a.ticket_id) || 0) + 1);
+    }
+
     const customers = (analyses || []).map(a => ({
       ...a,
       subject: ticketMap.get(a.ticket_id) || null,
+      unread_count: unreadMap.get(a.ticket_id) || 0,
     }));
 
     // Translate Korean fields to Thai for workers (backfill missing translations)

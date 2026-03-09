@@ -163,13 +163,27 @@ export default function ZendeskChatLayout({ user, profile, locale = 'th' }: { us
     }
   }, [fetchTickets, page, loadingMore, hasMore]);
 
-  const handleSelectTicket = (ticketId: number) => {
+  const handleSelectTicket = async (ticketId: number) => {
     setSelectedTicketId(ticketId);
     setShowChat(true);
     // Mark selected ticket as read in local state
     setTickets((prev) =>
       prev.map((t) => (t.ticket_id === ticketId ? { ...t, is_read: true } : t))
     );
+    // Persist to DB so polling doesn't revert the blue dot
+    try {
+      const session = await getSession();
+      if (session) {
+        fetch('/api/zendesk/ticket-update', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ ticket_id: ticketId, is_read: true }),
+        });
+      }
+    } catch {}
   };
 
   const handleBack = () => {

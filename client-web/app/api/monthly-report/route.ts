@@ -56,7 +56,8 @@ function getCurrentMonth(): string {
   const now = new Date();
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, '0');
-  return `${y}-${m}`;
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 export async function GET(req: NextRequest) {

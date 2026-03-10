@@ -57,16 +57,18 @@ function ticketMatchesHospital(tags: any, hospitalTag: string): boolean {
 }
 
 async function collectConsultationData(hospitalTag: string, month: string) {
-  const startDate = `${month}-01T00:00:00Z`;
-  const endDate = new Date(startDate);
-  endDate.setMonth(endDate.getMonth() + 1);
+  // month is now YYYY-MM-DD (end date of 30-day window)
+  const endDate = new Date(`${month}T23:59:59Z`);
+  const startDate = new Date(endDate);
+  startDate.setDate(startDate.getDate() - 30);
+  const startDateISO = startDate.toISOString();
   const endDateISO = endDate.toISOString();
 
   // Fetch tickets for this month
   const { data: allTickets, error: ticketsErr } = await supabaseAdmin
     .from('zendesk_tickets')
     .select('ticket_id, tags, comments, status, created_at_zd')
-    .gte('created_at_zd', startDate)
+    .gte('created_at_zd', startDateISO)
     .lt('created_at_zd', endDateISO);
 
   if (ticketsErr) {
@@ -110,10 +112,10 @@ async function collectConsultationData(hospitalTag: string, month: string) {
     .sort((a, b) => (b[1] as number) - (a[1] as number))
     .slice(0, 5);
 
-  // Previous month data for growth calculation
+  // Previous 30-day period for growth calculation
   const prevEnd = new Date(startDate);
-  const prevStart = new Date(startDate);
-  prevStart.setMonth(prevStart.getMonth() - 1);
+  const prevStart = new Date(prevEnd);
+  prevStart.setDate(prevStart.getDate() - 30);
 
   const { data: prevTickets } = await supabaseAdmin
     .from('zendesk_tickets')
@@ -167,15 +169,16 @@ async function collectConsultationData(hospitalTag: string, month: string) {
 }
 
 async function collectLeadData(hospitalTag: string, month: string) {
-  const startDate = `${month}-01T00:00:00Z`;
-  const endDate = new Date(startDate);
-  endDate.setMonth(endDate.getMonth() + 1);
+  // month is now YYYY-MM-DD (end date of 30-day window)
+  const endDate = new Date(`${month}T23:59:59Z`);
+  const startDate = new Date(endDate);
+  startDate.setDate(startDate.getDate() - 30);
 
   const { data: leads } = await supabaseAdmin
     .from('sales_leads')
     .select('status, procedures, collected_at')
     .eq('hospital_tag', hospitalTag)
-    .gte('collected_at', startDate)
+    .gte('collected_at', startDate.toISOString())
     .lt('collected_at', endDate.toISOString());
 
   const statusCounts: Record<string, number> = {};
@@ -273,7 +276,7 @@ export async function POST(req: NextRequest) {
       : '리드 데이터 없음';
 
     const prompt = `You are a marketing analyst for BBG, a medical tourism agency.
-Generate a monthly performance report for hospital "${hospitalName}" for ${month}.
+Generate a monthly performance report for hospital "${hospitalName}" for 최근 30일 (ending ${month}).
 
 All output MUST be in Korean (한국어).
 

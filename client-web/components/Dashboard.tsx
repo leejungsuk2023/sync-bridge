@@ -14,6 +14,7 @@ import UserManager from './UserManager';
 import WorkerDashboard from './WorkerDashboard';
 import HospitalDashboard from './HospitalDashboard';
 import GlossaryManager from './GlossaryManager';
+import MonthlyReport from './MonthlyReport';
 
 export default function Dashboard({ user }: { user: any }) {
   const [profile, setProfile] = useState<any>(null);
@@ -147,6 +148,14 @@ export default function Dashboard({ user }: { user: any }) {
         )}
         {profile?.role === 'bbg_admin' && (
           <UserManager clients={clients} />
+        )}
+        {(profile?.role === 'bbg_admin' || profile?.role === 'client' || profile?.role === 'hospital') && (
+          <MonthlyReport
+            userId={user.id}
+            clientId={profile?.client_id}
+            role={profile?.role}
+            hospitalPrefix={profile?.hospital_prefix}
+          />
         )}
       </main>
     </div>

@@ -196,8 +196,7 @@ async function processMessagingEvent(event: any, req: NextRequest) {
         facebook_user_id: senderId,
         display_name: displayName,
         avatar_url: avatarUrl ?? null,
-        channel_type: 'facebook',
-        hospital_prefix: hospitalPrefix,
+        first_contact_at: new Date(timestamp).toISOString(),
         last_contact_at: new Date(timestamp).toISOString(),
       })
       .select('id')

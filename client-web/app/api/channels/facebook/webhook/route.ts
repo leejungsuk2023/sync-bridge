@@ -215,7 +215,7 @@ async function processMessagingEvent(event: any, req: NextRequest) {
   // ── Find or create conversation ───────────────────────────────────────────
 
   const { data: existingConversation } = await supabaseAdmin
-    .from('conversations')
+    .from('channel_conversations')
     .select('id')
     .eq('customer_id', customerId)
     .eq('channel_type', 'facebook')
@@ -231,7 +231,7 @@ async function processMessagingEvent(event: any, req: NextRequest) {
     conversationId = existingConversation.id;
   } else {
     const { data: newConversation, error: convError } = await supabaseAdmin
-      .from('conversations')
+      .from('channel_conversations')
       .insert({
         customer_id: customerId,
         channel_type: 'facebook',
@@ -259,7 +259,7 @@ async function processMessagingEvent(event: any, req: NextRequest) {
   // Idempotency check — skip if already stored
   if (externalMessageId) {
     const { data: existing } = await supabaseAdmin
-      .from('messages')
+      .from('channel_messages')
       .select('id')
       .eq('external_message_id', externalMessageId)
       .single();
@@ -308,7 +308,7 @@ async function processMessagingEvent(event: any, req: NextRequest) {
   // ── Insert message ────────────────────────────────────────────────────────
 
   const { data: insertedMessage, error: msgError } = await supabaseAdmin
-    .from('messages')
+    .from('channel_messages')
     .insert({
       conversation_id: conversationId,
       sender_type: 'customer',
@@ -337,7 +337,7 @@ async function processMessagingEvent(event: any, req: NextRequest) {
   // ── Update conversation metadata ──────────────────────────────────────────
 
   await supabaseAdmin
-    .from('conversations')
+    .from('channel_conversations')
     .update({
       last_message_at: new Date(timestamp).toISOString(),
       is_read: false,

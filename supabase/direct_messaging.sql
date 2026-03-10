@@ -40,9 +40,9 @@ CREATE INDEX IF NOT EXISTS idx_customers_line_user ON customers(line_user_id);
 CREATE INDEX IF NOT EXISTS idx_customers_fb_user ON customers(facebook_user_id);
 
 -- ============================================================
--- 3. conversations: replaces zendesk_tickets
+-- 3. channel_conversations: replaces zendesk_tickets
 -- ============================================================
-CREATE TABLE IF NOT EXISTS conversations (
+CREATE TABLE IF NOT EXISTS channel_conversations (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   customer_id UUID NOT NULL REFERENCES customers(id),
   channel_id UUID NOT NULL REFERENCES messaging_channels(id),
@@ -62,20 +62,20 @@ CREATE TABLE IF NOT EXISTS conversations (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_conv_customer ON conversations(customer_id);
-CREATE INDEX IF NOT EXISTS idx_conv_status ON conversations(status);
-CREATE INDEX IF NOT EXISTS idx_conv_channel_type ON conversations(channel_type);
-CREATE INDEX IF NOT EXISTS idx_conv_agent ON conversations(assigned_agent_id);
-CREATE INDEX IF NOT EXISTS idx_conv_last_message ON conversations(last_message_at DESC);
-CREATE INDEX IF NOT EXISTS idx_conv_hospital ON conversations(hospital_prefix);
-CREATE INDEX IF NOT EXISTS idx_conv_tags ON conversations USING GIN (tags);
+CREATE INDEX IF NOT EXISTS idx_conv_customer ON channel_conversations(customer_id);
+CREATE INDEX IF NOT EXISTS idx_conv_status ON channel_conversations(status);
+CREATE INDEX IF NOT EXISTS idx_conv_channel_type ON channel_conversations(channel_type);
+CREATE INDEX IF NOT EXISTS idx_conv_agent ON channel_conversations(assigned_agent_id);
+CREATE INDEX IF NOT EXISTS idx_conv_last_message ON channel_conversations(last_message_at DESC);
+CREATE INDEX IF NOT EXISTS idx_conv_hospital ON channel_conversations(hospital_prefix);
+CREATE INDEX IF NOT EXISTS idx_conv_tags ON channel_conversations USING GIN (tags);
 
 -- ============================================================
--- 4. messages: replaces zendesk_conversations
+-- 4. channel_messages: replaces zendesk_conversations
 -- ============================================================
-CREATE TABLE IF NOT EXISTS messages (
+CREATE TABLE IF NOT EXISTS channel_messages (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  conversation_id UUID NOT NULL REFERENCES channel_conversations(id) ON DELETE CASCADE,
   sender_type TEXT NOT NULL CHECK (sender_type IN ('customer', 'agent', 'system', 'bot')),
   sender_customer_id UUID REFERENCES customers(id),
   sender_agent_id UUID REFERENCES auth.users(id),
@@ -97,15 +97,15 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_messages_external_id ON messages(external_message_id);
+CREATE INDEX IF NOT EXISTS idx_messages_conversation ON channel_messages(conversation_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_messages_external_id ON channel_messages(external_message_id);
 
 -- ============================================================
 -- 5. conversation_analyses: replaces zendesk_analyses
 -- ============================================================
 CREATE TABLE IF NOT EXISTS conversation_analyses (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  conversation_id UUID UNIQUE NOT NULL REFERENCES conversations(id),
+  conversation_id UUID UNIQUE NOT NULL REFERENCES channel_conversations(id),
   customer_id UUID REFERENCES customers(id),
   quality_score INTEGER CHECK (quality_score BETWEEN 1 AND 5),
   reservation_converted BOOLEAN DEFAULT false,
@@ -128,8 +128,8 @@ CREATE TABLE IF NOT EXISTS conversation_analyses (
 -- ============================================================
 CREATE TABLE IF NOT EXISTS ai_suggestions (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  conversation_id UUID NOT NULL REFERENCES conversations(id),
-  trigger_message_id UUID REFERENCES messages(id),
+  conversation_id UUID NOT NULL REFERENCES channel_conversations(id),
+  trigger_message_id UUID REFERENCES channel_messages(id),
   suggestions JSONB NOT NULL,
   context_used JSONB,
   model_version TEXT DEFAULT 'gemini-2.5-flash',
@@ -177,27 +177,27 @@ CREATE POLICY "Service role full access on customers"
   ON customers FOR ALL
   USING (true) WITH CHECK (true);
 
--- conversations
-ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
+-- channel_conversations
+ALTER TABLE channel_conversations ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Service role full access on conversations"
-  ON conversations FOR ALL
+CREATE POLICY "Service role full access on channel_conversations"
+  ON channel_conversations FOR ALL
   USING (true) WITH CHECK (true);
 
-CREATE POLICY "Authenticated users can read conversations"
-  ON conversations FOR SELECT
+CREATE POLICY "Authenticated users can read channel_conversations"
+  ON channel_conversations FOR SELECT
   TO authenticated
   USING (true);
 
--- messages
-ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+-- channel_messages
+ALTER TABLE channel_messages ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Service role full access on messages"
-  ON messages FOR ALL
+CREATE POLICY "Service role full access on channel_messages"
+  ON channel_messages FOR ALL
   USING (true) WITH CHECK (true);
 
-CREATE POLICY "Authenticated users can read messages"
-  ON messages FOR SELECT
+CREATE POLICY "Authenticated users can read channel_messages"
+  ON channel_messages FOR SELECT
   TO authenticated
   USING (true);
 
@@ -225,8 +225,8 @@ CREATE POLICY "Service role full access on webhook_log"
 -- ============================================================
 -- 9. Supabase Realtime
 -- ============================================================
-ALTER PUBLICATION supabase_realtime ADD TABLE messages;
-ALTER PUBLICATION supabase_realtime ADD TABLE conversations;
+ALTER PUBLICATION supabase_realtime ADD TABLE channel_messages;
+ALTER PUBLICATION supabase_realtime ADD TABLE channel_conversations;
 
 -- ============================================================
 -- 10. Seed data: messaging_channels (1 LINE + 16 Facebook)

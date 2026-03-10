@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
 
     // Look up conversation (channel_type, channel_id, customer_id)
     const { data: conversation, error: convError } = await supabaseAdmin
-      .from('conversations')
+      .from('channel_conversations')
       .select('id, channel_type, channel_id, customer_id, status')
       .eq('id', conversation_id)
       .single();
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
       console.log(`[Messaging] Status-only update for conversation ${conversation_id} to "${status}" (user: ${authUser.userId})`);
 
       const { error: updateError } = await supabaseAdmin
-        .from('conversations')
+        .from('channel_conversations')
         .update({ status })
         .eq('id', conversation_id);
 
@@ -127,7 +127,7 @@ export async function POST(req: NextRequest) {
 
     // INSERT into messages table
     const { data: insertedMsg, error: msgInsertError } = await supabaseAdmin
-      .from('messages')
+      .from('channel_messages')
       .insert({
         conversation_id,
         sender_type: 'agent',
@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { error: convUpdateError } = await supabaseAdmin
-      .from('conversations')
+      .from('channel_conversations')
       .update(conversationUpdate)
       .eq('id', conversation_id);
 

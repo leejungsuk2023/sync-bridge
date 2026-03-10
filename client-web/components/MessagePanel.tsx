@@ -522,7 +522,7 @@ export default function MessagePanel({
         {
           event: 'INSERT',
           schema: 'public',
-          table: 'messages',
+          table: 'channel_messages',
           filter: `conversation_id=eq.${conversationId}`,
         },
         (payload) => {

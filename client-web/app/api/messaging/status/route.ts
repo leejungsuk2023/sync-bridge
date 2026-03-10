@@ -67,7 +67,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     const { error } = await supabaseAdmin
-      .from('conversations')
+      .from('channel_conversations')
       .update({ status })
       .eq('id', conversation_id);
 

@@ -89,7 +89,7 @@ export async function GET(req: NextRequest) {
 
     // Fetch messages ordered by creation time ascending
     const { data: messages, error: msgsError } = await supabaseAdmin
-      .from('messages')
+      .from('channel_messages')
       .select('id, conversation_id, sender_type, sender_agent_id, sender_customer_id, sender_name, message_type, body, body_ko, media_url, media_metadata, is_public, external_message_id, created_at')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true });
@@ -128,7 +128,7 @@ export async function GET(req: NextRequest) {
 
     // Fetch conversation metadata
     const { data: conversation, error: convError } = await supabaseAdmin
-      .from('conversations')
+      .from('channel_conversations')
       .select(
         `id, channel_type, status, is_read, last_message_at, last_customer_message_at, last_agent_message_at, assigned_agent_id, hospital_prefix, created_at,
          customers(display_name, avatar_url, line_user_id, facebook_user_id),
@@ -160,7 +160,7 @@ export async function GET(req: NextRequest) {
 
             for (const [id, translation] of translations) {
               const { error: updateErr } = await supabaseAdmin
-                .from('messages')
+                .from('channel_messages')
                 .update({ body_ko: translation })
                 .eq('id', id);
 

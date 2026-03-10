@@ -154,7 +154,7 @@ export async function POST(req: NextRequest) {
         let conversationId: string;
 
         const { data: existingConv } = await supabaseAdmin
-          .from('conversations')
+          .from('channel_conversations')
           .select('id')
           .eq('customer_id', customerId)
           .eq('channel_type', 'line')
@@ -172,7 +172,7 @@ export async function POST(req: NextRequest) {
           }
 
           const { data: newConv, error: insertConvError } = await supabaseAdmin
-            .from('conversations')
+            .from('channel_conversations')
             .insert({
               customer_id: customerId,
               channel_id: lineChannelId,
@@ -193,7 +193,7 @@ export async function POST(req: NextRequest) {
         const externalMsgId = event.message?.id ?? null;
         if (externalMsgId) {
           const { data: dupMsg } = await supabaseAdmin
-            .from('messages')
+            .from('channel_messages')
             .select('id')
             .eq('external_message_id', externalMsgId)
             .single();
@@ -259,7 +259,7 @@ export async function POST(req: NextRequest) {
         }
 
         const { data: insertedMsg, error: msgInsertError } = await supabaseAdmin
-          .from('messages')
+          .from('channel_messages')
           .insert(messageInsert)
           .select('id')
           .single();
@@ -271,7 +271,7 @@ export async function POST(req: NextRequest) {
 
         // ── Update conversation timestamps ────────────────────────────────
         await supabaseAdmin
-          .from('conversations')
+          .from('channel_conversations')
           .update({
             last_message_at: now,
             last_customer_message_at: now,

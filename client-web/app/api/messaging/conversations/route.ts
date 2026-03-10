@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
 
     // Build query joining conversations with customers and messaging_channels
     let query = supabaseAdmin
-      .from('conversations')
+      .from('channel_conversations')
       .select(
         `id, channel_type, channel_id, customer_id, status, is_read,
          last_message_at, last_customer_message_at, last_agent_message_at,

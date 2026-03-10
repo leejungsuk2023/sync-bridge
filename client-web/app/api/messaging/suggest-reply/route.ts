@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
 
     // 1. Fetch recent messages for context (last 10, chronological)
     const { data: messages } = await supabaseAdmin
-      .from('messages')
+      .from('channel_messages')
       .select('sender_type, body, created_at')
       .eq('conversation_id', conversation_id)
       .order('created_at', { ascending: false })
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
 
     // 2. Fetch conversation and linked customer info
     const { data: conversation } = await supabaseAdmin
-      .from('conversations')
+      .from('channel_conversations')
       .select('*, customers(*)')
       .eq('id', conversation_id)
       .single();

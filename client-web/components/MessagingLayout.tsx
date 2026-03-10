@@ -132,7 +132,7 @@ export default function MessagingLayout({
       .channel('messaging_realtime_' + userId)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages' },
+        { event: 'INSERT', schema: 'public', table: 'channel_messages' },
         (payload) => {
           const row = payload.new as any;
           if (row.conversation_id === selectedConversationIdRef.current) {
@@ -160,7 +160,7 @@ export default function MessagingLayout({
       )
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'conversations' },
+        { event: 'UPDATE', schema: 'public', table: 'channel_conversations' },
         (payload) => {
           const row = payload.new as any;
           setConversations((prev) =>

@@ -189,8 +189,9 @@ export class LineAdapter implements ChannelAdapter {
         case 'image':
         case 'video':
         case 'audio': {
-          // Media content must be fetched with auth; provide the content URL pattern
-          const mediaUrl = `${LINE_DATA_BASE}/message/${msgId}/content`;
+          // LINE content URLs require auth headers; store a proxied URL so the
+          // browser can load the media without needing Authorization headers.
+          const mediaUrl = `/api/channels/line/media?messageId=${msgId}`;
           return {
             ...base,
             type: 'message',
@@ -205,7 +206,8 @@ export class LineAdapter implements ChannelAdapter {
             message: {
               id: msgId,
               type: 'file',
-              mediaUrl: `${LINE_DATA_BASE}/message/${msgId}/content`,
+              // Same proxy pattern for file downloads
+              mediaUrl: `/api/channels/line/media?messageId=${msgId}`,
               metadata: { fileName: lineMsg.fileName, fileSize: lineMsg.fileSize },
             },
           };

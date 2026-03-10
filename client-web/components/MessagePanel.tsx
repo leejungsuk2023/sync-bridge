@@ -434,6 +434,12 @@ export default function MessagePanel({
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null);
+  const [pendingAttachment, setPendingAttachment] = useState<{
+    file: File;
+    localUrl: string;
+    messageType: 'image' | 'file';
+  } | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   // Track whether user has scrolled up (suppress auto-scroll)
   const [userScrolledUp, setUserScrolledUp] = useState(false);
@@ -569,12 +575,60 @@ export default function MessagePanel({
   // ─── Send message ─────────────────────────────────────────────
 
   const sendMessage = async () => {
-    if (!input.trim() || sending) return;
+    const hasText = input.trim().length > 0;
+    const hasAttachment = !!pendingAttachment;
+    if ((!hasText && !hasAttachment) || sending || uploading) return;
+
     setSending(true);
 
     try {
       const session = await getSession();
       if (!session) return;
+
+      let mediaUrl: string | undefined;
+      let messageType: string | undefined;
+      let fileName: string | undefined;
+
+      // ── Step 1: upload attachment if present ──────────────────
+      if (pendingAttachment) {
+        setUploading(true);
+        try {
+          const formData = new FormData();
+          formData.append('file', pendingAttachment.file);
+
+          const uploadRes = await fetch('/api/messaging/upload', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${session.access_token}` },
+            body: formData,
+          });
+
+          if (!uploadRes.ok) {
+            const errData = await uploadRes.json().catch(() => ({}));
+            console.error('[MessagePanel] Upload failed:', uploadRes.status, errData);
+            alert(t.sendFailed + (errData.error || uploadRes.statusText));
+            return;
+          }
+
+          const uploadData = await uploadRes.json();
+          mediaUrl = uploadData.url;
+          messageType = uploadData.message_type;
+          fileName = uploadData.file_name;
+        } finally {
+          setUploading(false);
+        }
+      }
+
+      // ── Step 2: send the reply ────────────────────────────────
+      const replyPayload: Record<string, any> = {
+        conversation_id: conversationId,
+        is_public: isPublic,
+      };
+      if (hasText) replyPayload.body = input.trim();
+      if (mediaUrl) {
+        replyPayload.media_url = mediaUrl;
+        replyPayload.message_type = messageType;
+        if (fileName) replyPayload.file_name = fileName;
+      }
 
       const res = await fetch('/api/messaging/reply', {
         method: 'POST',
@@ -582,11 +636,7 @@ export default function MessagePanel({
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({
-          conversation_id: conversationId,
-          body: input.trim(),
-          is_public: isPublic,
-        }),
+        body: JSON.stringify(replyPayload),
       });
 
       if (!res.ok) {
@@ -597,6 +647,7 @@ export default function MessagePanel({
       }
 
       setInput('');
+      clearAttachment();
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
@@ -642,12 +693,25 @@ export default function MessagePanel({
     }
   };
 
-  // ─── File upload placeholder ──────────────────────────────────
+  // ─── File select — stage the attachment for preview ──────────
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files?.[0]) return;
-    alert(t.attachSoon);
+    const file = e.target.files?.[0];
+    if (!file) return;
     if (fileInputRef.current) fileInputRef.current.value = '';
+
+    const isImage = file.type.startsWith('image/');
+    const localUrl = URL.createObjectURL(file);
+    setPendingAttachment({ file, localUrl, messageType: isImage ? 'image' : 'file' });
+  };
+
+  // ─── Clear pending attachment ──────────────────────────────────
+
+  const clearAttachment = () => {
+    if (pendingAttachment) {
+      URL.revokeObjectURL(pendingAttachment.localUrl);
+    }
+    setPendingAttachment(null);
   };
 
   // ─── Close status menu on outside click ───────────────────────
@@ -895,6 +959,32 @@ export default function MessagePanel({
           </button>
         </div>
 
+        {/* Pending attachment preview */}
+        {pendingAttachment && (
+          <div className="px-3 pb-2 flex items-center gap-2">
+            {pendingAttachment.messageType === 'image' ? (
+              <img
+                src={pendingAttachment.localUrl}
+                alt="attachment preview"
+                className="h-16 w-16 object-cover rounded-lg border border-slate-200"
+              />
+            ) : (
+              <div className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700">
+                <File className="w-4 h-4 shrink-0 text-slate-400" />
+                <span className="truncate max-w-[160px]">{pendingAttachment.file.name}</span>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={clearAttachment}
+              className="w-6 h-6 rounded-full bg-slate-200 hover:bg-slate-300 flex items-center justify-center text-slate-600 transition-colors"
+              title="Remove attachment"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         {/* Text input + actions */}
         <div className="p-3 flex gap-2">
           <input
@@ -931,15 +1021,15 @@ export default function MessagePanel({
           <button
             type="button"
             onClick={sendMessage}
-            disabled={sending || !input.trim()}
+            disabled={sending || uploading || (!input.trim() && !pendingAttachment)}
             className="inline-flex items-center gap-1.5 px-5 h-10 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors flex-shrink-0"
           >
-            {sending ? (
+            {sending || uploading ? (
               <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
             ) : (
               <Send className="w-4 h-4" />
             )}
-            {sending ? t.sending : t.send}
+            {sending || uploading ? t.sending : t.send}
           </button>
         </div>
       </div>

@@ -49,17 +49,32 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { conversation_id, body: replyBody, is_public, status, suggestion_id, suggestion_index, was_edited } = body;
+    const {
+      conversation_id,
+      body: replyBody,
+      media_url: replyMediaUrl,
+      message_type: replyMessageType,
+      file_name: replyFileName,
+      is_public,
+      status,
+      suggestion_id,
+      suggestion_index,
+      was_edited,
+    } = body;
 
     if (!conversation_id) {
       return withCors(NextResponse.json({ error: 'conversation_id is required' }, { status: 400 }));
     }
 
     // Status-only update: no message sent, just update conversation status
-    const isStatusOnly = status && !replyBody;
+    const isStatusOnly = status && !replyBody && !replyMediaUrl;
     if (!isStatusOnly) {
-      if (!replyBody || typeof replyBody !== 'string' || replyBody.trim().length === 0) {
-        return withCors(NextResponse.json({ error: 'body is required and must be non-empty' }, { status: 400 }));
+      const hasText = replyBody && typeof replyBody === 'string' && replyBody.trim().length > 0;
+      const hasMedia = replyMediaUrl && typeof replyMediaUrl === 'string';
+      if (!hasText && !hasMedia) {
+        return withCors(
+          NextResponse.json({ error: 'body or media_url is required' }, { status: 400 })
+        );
       }
     }
 
@@ -121,7 +136,24 @@ export async function POST(req: NextRequest) {
     // Get channel adapter and send message
     console.log(`[Messaging] Sending reply via ${conversation.channel_type} to ${recipientId} (user: ${authUser.userId})`);
     const adapter = await getChannelAdapter(conversation.channel_type, conversation.channel_id);
-    const sendResult = await adapter.sendTextMessage(recipientId, replyBody.trim());
+
+    // Determine effective message type: explicit type from client, or infer from presence of media
+    const effectiveType: string =
+      replyMessageType ??
+      (replyMediaUrl ? 'image' : 'text');
+
+    let sendResult: { messageId: string };
+    if (effectiveType === 'image' && replyMediaUrl) {
+      sendResult = await adapter.sendImageMessage(recipientId, replyMediaUrl);
+    } else if (effectiveType === 'file' && replyMediaUrl) {
+      sendResult = await adapter.sendFileMessage(
+        recipientId,
+        replyMediaUrl,
+        replyFileName ?? 'file'
+      );
+    } else {
+      sendResult = await adapter.sendTextMessage(recipientId, replyBody.trim());
+    }
 
     const now = new Date().toISOString();
 
@@ -133,8 +165,9 @@ export async function POST(req: NextRequest) {
         sender_type: 'agent',
         sender_agent_id: authUser.userId,
         sender_name: null, // resolved from profile on read if needed
-        message_type: 'text',
-        body: replyBody.trim(),
+        message_type: effectiveType,
+        body: replyBody?.trim() ?? null,
+        media_url: replyMediaUrl ?? null,
         is_public: is_public ?? true,
         external_message_id: sendResult.messageId || null,
         created_at: now,

@@ -8,7 +8,7 @@ import TaskPropose from './TaskPropose';
 import ChatLayout from './ChatLayout';
 import TranslationHelper from './TranslationHelper';
 import WorkerFollowup from './WorkerFollowup';
-import ZendeskChatLayout from './ZendeskChatLayout';
+import MessagingLayout from './MessagingLayout';
 
 type Tab = 'งาน' | 'แชท' | 'ให้คำปรึกษา' | 'ติดตาม' | 'เครื่องมือ';
 
@@ -169,7 +169,7 @@ export default function WorkerDashboard({ user, profile }: { user: any; profile:
           <ChatLayout userId={user.id} clientId={profile.client_id} locale="th" assigneeId={user.id} />
         )}
         {activeTab === 'ให้คำปรึกษา' && (
-          <ZendeskChatLayout user={user} profile={profileState} />
+          <MessagingLayout userRole={profileState?.role || 'worker'} userId={user.id} locale="th" />
         )}
         {activeTab === 'ติดตาม' && (
           <WorkerFollowup userId={user.id} onNotificationsRead={() => { setUnreadCount(0); setHasUrgent(false); }} />

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Link as LinkIcon, ArrowLeft } from 'lucide-react';
-import ZendeskChatLayout from '@/components/ZendeskChatLayout';
+import MessagingLayout from '@/components/MessagingLayout';
 
 export default function ConsultationPage() {
   const [user, setUser] = useState<any>(null);
@@ -65,7 +65,7 @@ export default function ConsultationPage() {
       </header>
 
       <main className="max-w-[1440px] mx-auto px-3 py-4 sm:p-6">
-        <ZendeskChatLayout user={user} profile={profile} locale="ko" />
+        <MessagingLayout userRole={profile?.role || 'client'} userId={user?.id} locale="ko" />
       </main>
     </div>
   );

@@ -226,8 +226,10 @@ export async function POST(req: NextRequest) {
 
     await supabaseAdmin
       .from('zendesk_tickets')
-      .update(ticketUpdate)
-      .eq('ticket_id', ticketId);
+      .upsert(
+        { ticket_id: ticketId, ...ticketUpdate },
+        { onConflict: 'ticket_id', ignoreDuplicates: false }
+      );
 
     // Fire-and-forget: trigger AI suggestion generation
     try {

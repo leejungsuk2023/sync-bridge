@@ -72,11 +72,15 @@ export async function POST(req: NextRequest) {
     return withCors(NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }));
   }
 
-  const ticketId = payload.ticket_id || payload.ticket?.id;
-  const commentId = payload.comment_id || payload.comment?.id;
+  const rawTicketId = payload.ticket_id || payload.ticket?.id;
+  const rawCommentId = payload.comment_id || payload.comment?.id;
+  const ticketId = Number(rawTicketId);
+  const commentId = rawCommentId ? Number(rawCommentId) : null;
+  const ticketStatus = payload.ticket_status || null;
+  const commentIsPublic = payload.comment_is_public;
 
-  if (!ticketId) {
-    console.error('[Webhook] Missing ticket_id in payload');
+  if (!ticketId || isNaN(ticketId)) {
+    console.error('[Webhook] Missing or invalid ticket_id in payload');
     return withCors(NextResponse.json({ error: 'Missing ticket_id' }, { status: 400 }));
   }
 
@@ -98,10 +102,18 @@ export async function POST(req: NextRequest) {
       return withCors(NextResponse.json({ ok: true, message: 'No comments found' }));
     }
 
-    // Find the specific comment or use the latest
+    // Find the specific comment or use the latest (comment IDs from Zendesk API are numbers)
     let targetComment = commentId
       ? comments.find((c: any) => c.id === commentId)
       : comments[comments.length - 1];
+
+    // Fallback: use comment_is_public from trigger payload if available
+    if (targetComment && commentIsPublic !== undefined) {
+      // Only use as fallback — API value (targetComment.public) takes priority
+      if (targetComment.public === undefined || targetComment.public === null) {
+        targetComment = { ...targetComment, public: commentIsPublic === 'true' || commentIsPublic === true };
+      }
+    }
 
     if (!targetComment) {
       targetComment = comments[comments.length - 1];
@@ -120,8 +132,6 @@ export async function POST(req: NextRequest) {
     }
 
     // Determine author type by checking if author is a Zendesk agent or end-user
-    // We use the requester_id from the ticket to determine customer vs agent
-    const ticketData = await zendesk.fetchTicketsPage(1, 1);
     // Fetch ticket detail for requester info
     let requesterId: number | null = null;
     try {
@@ -188,6 +198,10 @@ export async function POST(req: NextRequest) {
       ticketUpdate.last_customer_comment_at = targetComment.created_at;
     } else {
       ticketUpdate.last_agent_comment_at = targetComment.created_at;
+    }
+
+    if (ticketStatus) {
+      ticketUpdate.status = ticketStatus;
     }
 
     // Also append to zendesk_tickets.comments JSONB (Phase 1 coexistence)

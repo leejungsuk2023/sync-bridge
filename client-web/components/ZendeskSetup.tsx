@@ -99,7 +99,7 @@ export default function ZendeskSetup({ user, profile, onConnected }: ZendeskSetu
           Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          email: email.trim(),
+          zendesk_email: email.trim(),
           api_token: apiToken.trim(),
           polite_particle: politeParticle,
         }),

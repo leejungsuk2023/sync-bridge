@@ -72,6 +72,11 @@ export class AgentZendeskClient {
         commentId = commentEvent.id;
       }
     }
+    // Fallback: use negative timestamp to prevent unique constraint violations
+    if (commentId === 0) {
+      commentId = -Date.now();
+      console.warn(`[ZendeskAgent] No comment event in audit for ticket #${ticketId}, using synthetic comment_id: ${commentId}`);
+    }
 
     console.log(`[ZendeskAgent] Added comment to ticket #${ticketId} (public: ${isPublic}, comment_id: ${commentId})`);
     return { comment_id: commentId };

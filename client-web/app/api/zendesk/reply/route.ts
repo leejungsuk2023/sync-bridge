@@ -54,11 +54,16 @@ export async function POST(req: NextRequest) {
     if (!ticket_id) {
       return withCors(NextResponse.json({ error: 'ticket_id is required' }, { status: 400 }));
     }
-    if (!replyBody || typeof replyBody !== 'string' || replyBody.trim().length === 0) {
-      return withCors(NextResponse.json({ error: 'body is required and must be non-empty' }, { status: 400 }));
-    }
-    if (typeof is_public !== 'boolean') {
-      return withCors(NextResponse.json({ error: 'is_public must be a boolean' }, { status: 400 }));
+
+    // body and is_public are only required for replies, not status-only updates
+    const isStatusOnly = status && !replyBody;
+    if (!isStatusOnly) {
+      if (!replyBody || typeof replyBody !== 'string' || replyBody.trim().length === 0) {
+        return withCors(NextResponse.json({ error: 'body is required and must be non-empty' }, { status: 400 }));
+      }
+      if (typeof is_public !== 'boolean') {
+        return withCors(NextResponse.json({ error: 'is_public must be a boolean' }, { status: 400 }));
+      }
     }
 
     const ticketIdNum = parseInt(ticket_id, 10);
@@ -68,6 +73,20 @@ export async function POST(req: NextRequest) {
 
     // Get agent client (personal token or fallback to admin)
     const agentClient = await getAgentClient(authUser.userId);
+
+    if (isStatusOnly) {
+      // Status-only update — no comment, just update ticket status in Zendesk and DB
+      console.log(`[Reply] Status-only update for ticket #${ticketIdNum} to "${status}" (user: ${authUser.userId})`);
+      await agentClient.updateTicket(ticketIdNum, { status });
+
+      await supabaseAdmin
+        .from('zendesk_tickets')
+        .update({ status })
+        .eq('ticket_id', ticketIdNum);
+
+      console.log(`[Reply] Status updated successfully for ticket #${ticketIdNum}`);
+      return withCors(NextResponse.json({ ok: true }));
+    }
 
     // Send reply to Zendesk
     console.log(`[Reply] Sending reply to ticket #${ticketIdNum} (public: ${is_public}, user: ${authUser.userId})`);

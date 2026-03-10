@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
       ticket_id: ticketId,
       comment_id: commentId || null,
       payload,
-      received_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
     });
 
     // Fetch full comment details from Zendesk

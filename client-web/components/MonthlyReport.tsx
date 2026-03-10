@@ -13,23 +13,31 @@ interface MonthlyReportProps {
 }
 
 interface AdCampaign {
-  campaign_name: string;
+  name: string;
   status: string;
-  objective: string;
+  result_type: string;
+  result_type_label: string;
   results: number;
-  cost: number;
+  cost_per_result: number;
+  spend: number;
   impressions: number;
   reach: number;
+  report_start: string;
+  report_end: string;
 }
 
-interface AdParsedData {
+interface AdTotals {
   total_spend: number;
   total_impressions: number;
   total_reach: number;
   total_results: number;
   avg_cost_per_result: number;
-  campaign_count: number;
+}
+
+interface AdParsedData {
+  totals: AdTotals;
   campaigns: AdCampaign[];
+  by_objective?: Record<string, unknown>;
 }
 
 interface ConsultationData {
@@ -39,36 +47,45 @@ interface ConsultationData {
   avg_response_time: string;
 }
 
-interface ContentRow {
-  item: string;
-  promised: number;
-  actual: number;
-  next_month: number;
+interface ContentPlanItem {
+  promised: number | null;
+  actual: number | null;
+  next_month: number | null;
+}
+
+interface ContentPlan {
+  photo: ContentPlanItem;
+  reels: ContentPlanItem;
+  reviewer: ContentPlanItem;
 }
 
 interface ReportData {
   id: string;
   hospital_tag: string;
-  month: string;
+  report_month: string;
   status: 'draft' | 'generating' | 'review' | 'published';
   ad_parsed_data: AdParsedData | null;
-  ad_summary: string;
+  ad_summary: string | null;
   consultation_data: ConsultationData | null;
-  consultation_summary: string;
-  content_uploads: ContentRow[];
-  strategy_this_month: string;
-  strategy_next_month: string;
-  hospital_requests: string;
-  sales_points: string;
-  created_at: string;
-  updated_at: string;
+  consultation_summary: string | null;
+  content_plan: ContentPlan | null;
+  strategy_current: string | null;
+  strategy_next: string | null;
+  hospital_requests: string | null;
+  sales_focus: string | null;
 }
 
-const DEFAULT_CONTENT_UPLOADS: ContentRow[] = [
-  { item: '사진', promised: 12, actual: 0, next_month: 12 },
-  { item: '릴스', promised: 3, actual: 0, next_month: 3 },
-  { item: '체험단', promised: 2, actual: 0, next_month: 2 },
-];
+const CONTENT_PLAN_LABELS: Record<keyof ContentPlan, string> = {
+  photo: '사진',
+  reels: '릴스',
+  reviewer: '체험단',
+};
+
+const DEFAULT_CONTENT_PLAN: ContentPlan = {
+  photo: { promised: 12, actual: null, next_month: null },
+  reels: { promised: 3, actual: null, next_month: null },
+  reviewer: { promised: 2, actual: null, next_month: null },
+};
 
 function getRecentMonths(count: number): { value: string; label: string }[] {
   const months: { value: string; label: string }[] = [];
@@ -156,11 +173,11 @@ export default function MonthlyReport({ userId, clientId, role, hospitalPrefix }
             action: 'update_content',
             hospital_tag: hospitalTag,
             month: selectedMonth,
-            strategy_this_month: updatedReport.strategy_this_month,
-            strategy_next_month: updatedReport.strategy_next_month,
+            strategy_current: updatedReport.strategy_current,
+            strategy_next: updatedReport.strategy_next,
             hospital_requests: updatedReport.hospital_requests,
-            sales_points: updatedReport.sales_points,
-            content_uploads: updatedReport.content_uploads,
+            sales_focus: updatedReport.sales_focus,
+            content_plan: updatedReport.content_plan,
           }),
         });
       } catch (err) {
@@ -176,11 +193,11 @@ export default function MonthlyReport({ userId, clientId, role, hospitalPrefix }
     autoSave(updated);
   };
 
-  const updateContentRow = (index: number, field: 'actual' | 'next_month', value: number) => {
+  const updateContentPlan = (key: keyof ContentPlan, field: 'actual' | 'next_month', value: number) => {
     if (!report) return;
-    const uploads = [...(report.content_uploads || DEFAULT_CONTENT_UPLOADS)];
-    uploads[index] = { ...uploads[index], [field]: value };
-    const updated = { ...report, content_uploads: uploads };
+    const plan = { ...(report.content_plan || DEFAULT_CONTENT_PLAN) };
+    plan[key] = { ...plan[key], [field]: value };
+    const updated = { ...report, content_plan: plan };
     setReport(updated);
     autoSave(updated);
   };
@@ -198,11 +215,11 @@ export default function MonthlyReport({ userId, clientId, role, hospitalPrefix }
           action: 'update_content',
           hospital_tag: hospitalTag,
           month: selectedMonth,
-          strategy_this_month: report.strategy_this_month,
-          strategy_next_month: report.strategy_next_month,
+          strategy_current: report.strategy_current,
+          strategy_next: report.strategy_next,
           hospital_requests: report.hospital_requests,
-          sales_points: report.sales_points,
-          content_uploads: report.content_uploads,
+          sales_focus: report.sales_focus,
+          content_plan: report.content_plan,
           ad_summary: report.ad_summary,
           consultation_summary: report.consultation_summary,
         }),
@@ -316,7 +333,7 @@ export default function MonthlyReport({ userId, clientId, role, hospitalPrefix }
     }
   };
 
-  const contentUploads = report?.content_uploads || DEFAULT_CONTENT_UPLOADS;
+  const contentPlan = report?.content_plan || DEFAULT_CONTENT_PLAN;
   const ad = report?.ad_parsed_data;
   const consultation = report?.consultation_data;
 
@@ -387,12 +404,12 @@ export default function MonthlyReport({ userId, clientId, role, hospitalPrefix }
                   {ad && (
                     <>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                        <MetricCard label="총 지출" value={`${ad.total_spend.toLocaleString()}원`} />
-                        <MetricCard label="총 노출" value={ad.total_impressions.toLocaleString()} />
-                        <MetricCard label="총 도달" value={ad.total_reach.toLocaleString()} />
-                        <MetricCard label="총 결과" value={ad.total_results.toLocaleString()} />
-                        <MetricCard label="평균 결과당 비용" value={`${ad.avg_cost_per_result.toLocaleString()}원`} />
-                        <MetricCard label="캠페인 수" value={ad.campaign_count.toString()} />
+                        <MetricCard label="총 지출" value={`${ad.totals?.total_spend?.toLocaleString() ?? '-'}원`} />
+                        <MetricCard label="총 노출" value={ad.totals?.total_impressions?.toLocaleString() ?? '-'} />
+                        <MetricCard label="총 도달" value={ad.totals?.total_reach?.toLocaleString() ?? '-'} />
+                        <MetricCard label="총 결과" value={ad.totals?.total_results?.toLocaleString() ?? '-'} />
+                        <MetricCard label="평균 결과당 비용" value={`${ad.totals?.avg_cost_per_result?.toLocaleString() ?? '-'}원`} />
+                        <MetricCard label="캠페인 수" value={(ad.campaigns?.length ?? 0).toString()} />
                       </div>
 
                       {ad.campaigns && ad.campaigns.length > 0 && (
@@ -412,13 +429,13 @@ export default function MonthlyReport({ userId, clientId, role, hospitalPrefix }
                             <tbody>
                               {ad.campaigns.map((c, i) => (
                                 <tr key={i} className="border-b border-slate-100 hover:bg-amber-50/50">
-                                  <td className="p-2 text-slate-800 max-w-[200px] truncate">{c.campaign_name}</td>
+                                  <td className="p-2 text-slate-800 max-w-[200px] truncate">{c.name}</td>
                                   <td className="p-2 text-slate-600">{c.status}</td>
-                                  <td className="p-2 text-slate-600">{c.objective}</td>
-                                  <td className="p-2 text-right text-slate-800">{c.results.toLocaleString()}</td>
-                                  <td className="p-2 text-right text-slate-800">{c.cost.toLocaleString()}</td>
-                                  <td className="p-2 text-right text-slate-800">{c.impressions.toLocaleString()}</td>
-                                  <td className="p-2 text-right text-slate-800">{c.reach.toLocaleString()}</td>
+                                  <td className="p-2 text-slate-600">{c.result_type_label || c.result_type}</td>
+                                  <td className="p-2 text-right text-slate-800">{c.results?.toLocaleString() ?? '-'}</td>
+                                  <td className="p-2 text-right text-slate-800">{c.spend?.toLocaleString() ?? '-'}</td>
+                                  <td className="p-2 text-right text-slate-800">{c.impressions?.toLocaleString() ?? '-'}</td>
+                                  <td className="p-2 text-right text-slate-800">{c.reach?.toLocaleString() ?? '-'}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -482,22 +499,25 @@ export default function MonthlyReport({ userId, clientId, role, hospitalPrefix }
                         </tr>
                       </thead>
                       <tbody>
-                        {contentUploads.map((row, i) => {
-                          const rate = row.promised > 0 ? Math.round((row.actual / row.promised) * 100) : 0;
+                        {(Object.keys(contentPlan) as Array<keyof ContentPlan>).map((key) => {
+                          const row = contentPlan[key];
+                          const promised = row.promised ?? 0;
+                          const actual = row.actual ?? 0;
+                          const rate = promised > 0 ? Math.round((actual / promised) * 100) : 0;
                           return (
-                            <tr key={i} className="border-b border-slate-100">
-                              <td className="p-2 text-slate-800 font-medium">{row.item}</td>
-                              <td className="p-2 text-center text-slate-600">{row.promised}</td>
+                            <tr key={key} className="border-b border-slate-100">
+                              <td className="p-2 text-slate-800 font-medium">{CONTENT_PLAN_LABELS[key]}</td>
+                              <td className="p-2 text-center text-slate-600">{promised}</td>
                               <td className="p-2 text-center">
                                 {isAdmin ? (
                                   <input
                                     type="number"
-                                    value={row.actual}
-                                    onChange={(e) => updateContentRow(i, 'actual', parseInt(e.target.value) || 0)}
+                                    value={actual}
+                                    onChange={(e) => updateContentPlan(key, 'actual', parseInt(e.target.value) || 0)}
                                     className="w-16 text-center px-1 py-0.5 border border-slate-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-amber-300"
                                   />
                                 ) : (
-                                  <span className="text-slate-800">{row.actual}</span>
+                                  <span className="text-slate-800">{actual}</span>
                                 )}
                               </td>
                               <td className="p-2 text-center">
@@ -517,12 +537,12 @@ export default function MonthlyReport({ userId, clientId, role, hospitalPrefix }
                                 {isAdmin ? (
                                   <input
                                     type="number"
-                                    value={row.next_month}
-                                    onChange={(e) => updateContentRow(i, 'next_month', parseInt(e.target.value) || 0)}
+                                    value={row.next_month ?? 0}
+                                    onChange={(e) => updateContentPlan(key, 'next_month', parseInt(e.target.value) || 0)}
                                     className="w-16 text-center px-1 py-0.5 border border-slate-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-amber-300"
                                   />
                                 ) : (
-                                  <span className="text-slate-800">{row.next_month}</span>
+                                  <span className="text-slate-800">{row.next_month ?? 0}</span>
                                 )}
                               </td>
                             </tr>
@@ -540,14 +560,14 @@ export default function MonthlyReport({ userId, clientId, role, hospitalPrefix }
 
                 <StrategySection
                   label="이번달 전략"
-                  value={report?.strategy_this_month || ''}
-                  onChange={(v) => updateField('strategy_this_month', v)}
+                  value={report?.strategy_current || ''}
+                  onChange={(v) => updateField('strategy_current', v)}
                   editable={isAdmin}
                 />
                 <StrategySection
                   label="다음달 전략"
-                  value={report?.strategy_next_month || ''}
-                  onChange={(v) => updateField('strategy_next_month', v)}
+                  value={report?.strategy_next || ''}
+                  onChange={(v) => updateField('strategy_next', v)}
                   editable={isAdmin}
                 />
                 <StrategySection
@@ -558,8 +578,8 @@ export default function MonthlyReport({ userId, clientId, role, hospitalPrefix }
                 />
                 <StrategySection
                   label="세일즈 포인트"
-                  value={report?.sales_points || ''}
-                  onChange={(v) => updateField('sales_points', v)}
+                  value={report?.sales_focus || ''}
+                  onChange={(v) => updateField('sales_focus', v)}
                   editable={isAdmin}
                 />
               </div>

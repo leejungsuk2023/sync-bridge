@@ -62,7 +62,7 @@ export async function getFacebookAdapterByPageId(
     .from('messaging_channels')
     .select('id, config, hospital_prefix')
     .eq('channel_type', 'facebook')
-    .filter('config->>page_id', 'eq', pageId)
+    .contains('config', { page_id: pageId })
     .single();
 
   if (error) {

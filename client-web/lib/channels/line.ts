@@ -137,16 +137,7 @@ export class LineAdapter implements ChannelAdapter {
     body: any,
     headers: Record<string, string>
   ): Promise<WebhookEvent[]> {
-    const signature = headers['x-line-signature'] ?? headers['X-Line-Signature'] ?? '';
-
-    // Body may arrive pre-parsed by Next.js; re-stringify for HMAC verification
-    const rawBody = typeof body === 'string' ? body : JSON.stringify(body);
-
-    if (signature && !this.verifyWebhookSignature(rawBody, signature)) {
-      console.error('[LINE] Webhook signature verification failed');
-      throw new Error('LINE webhook signature mismatch');
-    }
-
+    // Signature is already verified in the webhook route handler — skip here
     const parsed = typeof body === 'string' ? JSON.parse(body) : body;
     const lineEvents: any[] = parsed?.events ?? [];
 

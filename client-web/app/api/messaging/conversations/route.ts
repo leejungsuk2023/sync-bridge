@@ -120,10 +120,29 @@ export async function GET(req: NextRequest) {
       filtered = filtered.slice(offset, offset + perPage);
     }
 
-    console.log(`[Messaging] Returned ${filtered.length} conversations (filter: ${filter}, channel: ${channel}, hospital: ${hospital || 'all'}, page: ${page})`);
+    // Flatten nested Supabase joins into the shape the frontend expects
+    const flattened = filtered.map((c: any) => ({
+      id: c.id,
+      channel_type: c.channel_type,
+      channel_id: c.channel_id,
+      customer_id: c.customer_id,
+      status: c.status,
+      is_read: c.is_read,
+      last_message_at: c.last_message_at,
+      last_customer_message_at: c.last_customer_message_at,
+      last_agent_message_at: c.last_agent_message_at,
+      assigned_agent_id: c.assigned_agent_id,
+      hospital_prefix: c.hospital_prefix,
+      created_at: c.created_at,
+      customer_name: c.customers?.display_name ?? 'Customer',
+      customer_avatar: c.customers?.avatar_url ?? undefined,
+      channel_name: c.messaging_channels?.channel_name ?? undefined,
+    }));
+
+    console.log(`[Messaging] Returned ${flattened.length} conversations (filter: ${filter}, channel: ${channel}, hospital: ${hospital || 'all'}, page: ${page})`);
 
     return withCors(NextResponse.json({
-      conversations: filtered,
+      conversations: flattened,
       total,
       page,
     }));

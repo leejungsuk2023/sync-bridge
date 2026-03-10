@@ -41,10 +41,13 @@ interface AdParsedData {
 }
 
 interface ConsultationData {
-  total_consultations: number;
-  completed: number;
-  conversion_rate: number;
-  avg_response_time: string;
+  totalInquiries: number;
+  meaningfulInquiries: number;
+  conversions: number;
+  conversionRate: number;
+  topProcedures: [string, number][];
+  growth: { totalInquiries: number; conversions: number };
+  summaries: string[];
 }
 
 interface ContentPlanItem {
@@ -472,10 +475,10 @@ export default function MonthlyReport({ userId, clientId, role, hospitalPrefix }
 
                   {consultation && (
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      <MetricCard label="총 상담" value={consultation.total_consultations.toString()} />
-                      <MetricCard label="완료" value={consultation.completed.toString()} />
-                      <MetricCard label="전환율" value={`${consultation.conversion_rate}%`} />
-                      <MetricCard label="평균 응답시간" value={consultation.avg_response_time} />
+                      <MetricCard label="총 상담" value={(consultation.totalInquiries ?? 0).toString()} />
+                      <MetricCard label="의미있는 상담" value={(consultation.meaningfulInquiries ?? 0).toString()} />
+                      <MetricCard label="예약 전환" value={(consultation.conversions ?? 0).toString()} />
+                      <MetricCard label="전환율" value={`${consultation.conversionRate ?? 0}%`} />
                     </div>
                   )}
 

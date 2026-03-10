@@ -99,11 +99,13 @@ export async function POST(req: NextRequest) {
     return withCors(NextResponse.json({ ok: true }));
   }
 
-  // Process entries asynchronously but return 200 quickly
-  // Fire-and-forget the processing so Facebook gets a fast 200 response
-  processEntries(body, req).catch((err) => {
+  // Process entries before returning — Vercel serverless kills the function
+  // after response is sent, so fire-and-forget does NOT work.
+  try {
+    await processEntries(body, req);
+  } catch (err) {
     console.error('[FB Webhook] Unhandled error in processEntries:', err);
-  });
+  }
 
   return withCors(NextResponse.json({ ok: true }));
 }
@@ -382,7 +384,7 @@ async function logWebhookEvent(
 ) {
   await supabaseAdmin.from('webhook_log').insert({
     channel_type: 'facebook',
-    page_id: pageId,
+    external_id: pageId,
     event_type: eventType,
     payload: event,
     created_at: new Date().toISOString(),

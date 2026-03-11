@@ -5,10 +5,13 @@ import { supabase } from '@/lib/supabase';
 import WorkerStatusToggle from './WorkerStatusToggle';
 import TaskList from './TaskList';
 import TaskPropose from './TaskPropose';
-import ChatLayout from './ChatLayout';
-import TranslationHelper from './TranslationHelper';
-import WorkerFollowup from './WorkerFollowup';
-import MessagingLayout from './MessagingLayout';
+import dynamic from 'next/dynamic';
+
+// Lazy load tab components (only one tab visible at a time):
+const ChatLayout = dynamic(() => import('./ChatLayout'), { ssr: false });
+const TranslationHelper = dynamic(() => import('./TranslationHelper'), { ssr: false });
+const WorkerFollowup = dynamic(() => import('./WorkerFollowup'), { ssr: false });
+const MessagingLayout = dynamic(() => import('./MessagingLayout'), { ssr: false });
 
 type Tab = 'งาน' | 'แชท' | 'ให้คำปรึกษา' | 'ติดตาม' | 'เครื่องมือ';
 

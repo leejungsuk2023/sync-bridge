@@ -1,20 +1,22 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { supabase } from '@/lib/supabase';
 import { Link as LinkIcon, ChevronDown } from 'lucide-react';
 import WorkerStatus from './WorkerStatus';
 import TaskAssign from './TaskAssign';
 import TaskList from './TaskList';
-import TimeReport from './TimeReport';
-import TaskCalendar from './TaskCalendar';
-import ChatLayout from './ChatLayout';
-import TaskPresetManager from './TaskPresetManager';
-import UserManager from './UserManager';
-import WorkerDashboard from './WorkerDashboard';
-import HospitalDashboard from './HospitalDashboard';
-import GlossaryManager from './GlossaryManager';
-import MonthlyReport from './MonthlyReport';
+
+const TimeReport = dynamic(() => import('./TimeReport'), { ssr: false });
+const TaskCalendar = dynamic(() => import('./TaskCalendar'), { ssr: false });
+const ChatLayout = dynamic(() => import('./ChatLayout'), { ssr: false });
+const TaskPresetManager = dynamic(() => import('./TaskPresetManager'), { ssr: false });
+const UserManager = dynamic(() => import('./UserManager'), { ssr: false });
+const WorkerDashboard = dynamic(() => import('./WorkerDashboard'), { ssr: false });
+const HospitalDashboard = dynamic(() => import('./HospitalDashboard'), { ssr: false });
+const GlossaryManager = dynamic(() => import('./GlossaryManager'), { ssr: false });
+const MonthlyReport = dynamic(() => import('./MonthlyReport'), { ssr: false });
 
 export default function Dashboard({ user }: { user: any }) {
   const [profile, setProfile] = useState<any>(null);
@@ -32,10 +34,12 @@ export default function Dashboard({ user }: { user: any }) {
       setProfile(profileData);
 
       if (profileData?.role === 'bbg_admin') {
-        const { data: workersData } = await supabase.from('profiles').select('*, clients(name)').eq('role', 'worker');
-        setWorkers(workersData || []);
-        const { data: clientsData } = await supabase.from('clients').select('*');
-        setClients(clientsData || []);
+        const [workersRes, clientsRes] = await Promise.all([
+          supabase.from('profiles').select('*, clients(name)').eq('role', 'worker'),
+          supabase.from('clients').select('*'),
+        ]);
+        setWorkers(workersRes.data || []);
+        setClients(clientsRes.data || []);
       } else if (profileData?.client_id) {
         const { data: workersData } = await supabase.from('profiles').select('*, clients(name)').eq('role', 'worker').eq('client_id', profileData.client_id);
         setWorkers(workersData || []);

@@ -25,7 +25,7 @@ export default function ConsultationPage() {
         .eq('id', user.id)
         .single();
 
-      if (!profileData || !['bbg_admin', 'client'].includes(profileData.role)) {
+      if (!profileData || !['bbg_admin', 'client', 'worker'].includes(profileData.role)) {
         window.location.href = '/app';
         return;
       }
@@ -35,10 +35,13 @@ export default function ConsultationPage() {
     load();
   }, []);
 
+  const isWorker = profile?.role === 'worker';
+  const locale = isWorker ? 'th' : 'ko';
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50">
-        <p className="text-slate-500">로딩 중...</p>
+        <p className="text-slate-500">{isWorker ? 'กำลังโหลด...' : '로딩 중...'}</p>
       </div>
     );
   }
@@ -50,12 +53,12 @@ export default function ConsultationPage() {
           <div className="flex items-center gap-3">
             <a href="/app" className="flex items-center gap-2 text-slate-500 hover:text-slate-700 transition-colors">
               <ArrowLeft className="w-4 h-4" />
-              <span className="text-sm">돌아가기</span>
+              <span className="text-sm">{isWorker ? 'กลับ' : '돌아가기'}</span>
             </a>
             <div className="h-5 w-px bg-slate-200" />
             <div className="flex items-center gap-2">
               <LinkIcon className="w-5 h-5 text-emerald-600" />
-              <h1 className="text-lg font-semibold text-slate-900">고객 상담</h1>
+              <h1 className="text-lg font-semibold text-slate-900">{isWorker ? 'ให้คำปรึกษา' : '고객 상담'}</h1>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -65,7 +68,7 @@ export default function ConsultationPage() {
       </header>
 
       <main className="max-w-[1440px] mx-auto px-3 py-4 sm:p-6">
-        <MessagingLayout userRole={profile?.role || 'client'} userId={user?.id} locale="ko" />
+        <MessagingLayout userRole={profile?.role || 'client'} userId={user?.id} locale={locale} />
       </main>
     </div>
   );

@@ -272,7 +272,12 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
 
   const filteredMentions = members
     .filter(m => m.id !== userId)
-    .filter(m => m.display_name.toLowerCase().includes(mentionFilter));
+    .filter(m => m.display_name.toLowerCase().includes(mentionFilter))
+    .sort((a, b) => {
+      // Staff/admin first, then workers
+      const roleOrder: Record<string, number> = { bbg_admin: 0, staff: 1, client: 2, worker: 3 };
+      return (roleOrder[a.role] ?? 9) - (roleOrder[b.role] ?? 9);
+    });
 
   const selectMention = (member: Member) => {
     const el = inputRef.current;
@@ -678,7 +683,7 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
         <div className="relative flex-1">
           {showMentions && filteredMentions.length > 0 && (
             <div className="absolute bottom-full mb-1 left-0 right-0 bg-white border border-indigo-200 rounded-lg shadow-lg max-h-40 overflow-y-auto z-20">
-              {filteredMentions.slice(0, 6).map((m) => (
+              {filteredMentions.slice(0, 15).map((m) => (
                 <button key={m.id} type="button"
                   onMouseDown={(e) => { e.preventDefault(); selectMention(m); }}
                   className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 flex items-center gap-2 transition-colors">

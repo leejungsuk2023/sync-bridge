@@ -509,9 +509,7 @@ export function AdminDirectiveTable() {
         headers: { Authorization: `Bearer ${session?.access_token}` },
       });
       const data = await res.json();
-      // Filter: only staff→staff or staff→worker tasks (source: 'staff')
-      const staffTasks = (data.tasks || []).filter((t: any) => t.source === 'staff');
-      setTasks(staffTasks);
+      setTasks(data.tasks || []);
       setLoading(false);
     };
     fetchAll();

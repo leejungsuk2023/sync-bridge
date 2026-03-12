@@ -81,16 +81,10 @@ CREATE POLICY "tasks_update_assignee" ON public.tasks
     OR created_by = auth.uid()
   );
 
--- --- profiles SELECT: staff도 다른 staff/worker 프로필 조회 가능 ---
-DROP POLICY IF EXISTS "profiles_select_bbg" ON public.profiles;
-CREATE POLICY "profiles_select_bbg" ON public.profiles
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.profiles p
-      WHERE p.id = auth.uid()
-        AND p.role IN ('bbg_admin', 'staff')
-    )
-  );
+-- --- profiles SELECT: 인증된 사용자는 프로필 조회 가능 ---
+-- NOTE: 이전 profiles_select_bbg 정책은 profiles 테이블 자기참조로 무한 재귀 발생.
+-- profiles_select_authenticated 정책이 이미 존재하므로 추가 정책 불필요.
+-- DROP POLICY IF EXISTS "profiles_select_bbg" ON public.profiles; (이미 삭제됨)
 
 -- ============================================================
 -- 4. 기존 직원 데이터 마이그레이션

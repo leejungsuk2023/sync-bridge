@@ -28,7 +28,7 @@
 | 기능 | 상태 | 설명 |
 |------|------|------|
 | 인증 | ✅ | Supabase Auth (이메일/비밀번호), 역할 기반 접근 제어 |
-| 역할 기반 라우팅 | ✅ | worker 로그인 → WorkerDashboard, client/bbg_admin → Dashboard 자동 분기 |
+| 역할 기반 라우팅 | ✅ | worker 로그인 → WorkerDashboard, hospital → HospitalDashboard, staff → StaffDashboard, client/bbg_admin → Dashboard 자동 분기 |
 | 직원 상태 모니터링 | ✅ | 실시간 온라인/자리비움/오프라인, 좌측 액센트 보더, 평균 평점. 모바일에서 접기/펼치기 토글(기본 접힘), 요약 카운트 표시 |
 | 전체 톡방 | ✅ | 클라이언트↔직원 그룹 채팅, 접기/펼치기, 발신자 이름, 실시간 수신 |
 | 업무 할당 | ✅ | 업무 제목(content) + 상세 가이드(description) 분리 입력, 각각 한→태 자동 번역, 프리셋 자동 채우기, 마감일 설정(datetime-local), 할당자 표시. 모바일에서 세로 배치 |
@@ -48,7 +48,22 @@
 | AI 어시스트 API | ✅ | 환자 메시지 → 한국어 번역 + 의도 파악 + 추천 답변 3개 |
 | 섹션 색상 구분 | ✅ | 각 섹션별 그라데이션 배경 + 좌측 컬러 보더로 시각적 구분 |
 
-### 3.1b Client Web — 워커 웹 대시보드 (Phase 1 완료)
+### 3.1b Client Web — Staff 계층 대시보드
+
+| 기능 | 상태 | 설명 |
+|------|------|------|
+| staff role | ✅ | BBG 한국 직원 전용 role. 업무 지시 + 업무 수행 양방향 가능. DB 제약조건(`profiles_role_check`)에 추가 |
+| hierarchy_level | ✅ | profiles 테이블 컬럼. 10=대표(bbg_admin), 20=임원, 30=팀장, 40=일반, 100=워커. 낮을수록 상위자 |
+| team | ✅ | profiles 테이블 컬럼. 팀 단위 가시성 관리용 (예: 'operations', 'business_admin') |
+| request_type | ✅ | tasks 테이블 컬럼. 'directive' (상하 지시) 또는 'cooperation' (동급 협조). 서버에서 hierarchy_level 비교 후 자동 결정 |
+| tasks.client_id nullable | ✅ | staff 간 내부 업무 지시 시 client_id = NULL 허용. 태국 직원 지시 시에는 여전히 필수 |
+| StaffDashboard | ✅ | `StaffDashboard.tsx` — 4탭: 내가 지시한 업무 / 나에게 온 업무 / 채팅 / 상담. `/api/assignable-users`로 지시 대상 조회. 한국 직원 지시 시 번역 스킵 |
+| 격자형 홈 | ✅ | Dashboard.tsx — 아코디언 제거, 기능별 카드 그리드로 리팩토링. 14개 NavCard (직원현황/채팅/업무관리/직원별현황/근무리포트/지시현황/월간보고서/상담/Sales/모니터링/병원KB/프리셋/용어집/계정관리). client role은 일부 카드만 표시 |
+| assignable-users API | ✅ | `GET /api/assignable-users` — hierarchy_level 기반 하위자 목록 조회. hierarchy_level 미설정 시(client) 기존 client_id 기반 worker 목록 반환 |
+| change-password API | ✅ | `POST /api/auth/change-password` — 현재 비밀번호 검증 후 새 비밀번호로 변경 (Dashboard 비밀번호 변경 모달) |
+| 10개 admin 라우트 페이지 | ✅ | `/admin/workers`, `/admin/chat`, `/admin/tasks`, `/admin/calendar`, `/admin/time-report`, `/admin/directives`, `/admin/reports`, `/admin/presets`, `/admin/glossary`, `/admin/users` |
+
+### 3.1c Client Web — 워커 웹 대시보드 (Phase 1 완료)
 
 | 기능 | 상태 | 설명 |
 |------|------|------|
@@ -58,7 +73,7 @@
 | 번역 도우미 | ✅ | `TranslationHelper.tsx` — 태국어↔한국어 즉석 번역 패널, `/api/translate` 활용 |
 | 내 업무 / 팀 전체 분리 | ✅ | TaskList에서 본인 할당 업무와 팀 전체 업무를 탭으로 구분 |
 
-### 3.1c Client Web — Sales 성과 분석 (`/sales`)
+### 3.1d Client Web — Sales 성과 분석 (`/sales`)
 
 | 기능 | 상태 | 설명 |
 |------|------|------|
@@ -77,7 +92,7 @@
 | 수동 배치 실행 | ✅ | 수동 동기화/분석 버튼 (API 직접 호출) |
 | 3탭 구성 | ✅ | Sales 성과 / 병원별 분석 / 팔로업 고객 탭 |
 
-### 3.1d Client Web — 병원 파트너 대시보드
+### 3.1e Client Web — 병원 파트너 대시보드
 
 | 기능 | 상태 | 설명 |
 |------|------|------|
@@ -90,7 +105,7 @@
 **16개 병원 파트너 계정 (prefix@hospital.com / 비밀번호: 1234):**
 thebb, delphic, will, mikclinicthai, jyclinicthai, du, koreandiet, ourpthai, everbreastthai, clyveps_th, mycell, nbclinici, dr.song, lacela, artline, kleam
 
-### 3.1e Client Web — Zendesk 채팅 상담 UI
+### 3.1f Client Web — Zendesk 채팅 상담 UI
 
 | 기능 | 상태 | 설명 |
 |------|------|------|
@@ -108,7 +123,22 @@ thebb, delphic, will, mikclinicthai, jyclinicthai, du, koreandiet, ourpthai, eve
 | 병원별 필터링 | ✅ | 티켓의 tags 프리픽스로 병원 식별, 상담원이 담당 병원 티켓만 볼 수 있도록 필터 |
 | Fallback Polling | ✅ | `/api/zendesk/poll` — Webhook 누락 보정, 일 4회 Vercel Cron 실행 |
 
-### 3.1f Client Web — 팔로업 고객 추적
+### 3.1g Client Web — 다이렉트 메시징 (LINE/Facebook)
+
+| 기능 | 상태 | 설명 |
+|------|------|------|
+| LINE/Facebook 채널 통합 | ✅ | `MessagingLayout.tsx` — LINE 전역 채널 + Facebook 22개 병원별 페이지 채널 통합 오케스트레이터 |
+| 대화 목록 | ✅ | `ConversationList.tsx` — 채널별 대화 목록, 미읽음 표시, 최신 메시지 프리뷰 |
+| 메시지 패널 | ✅ | `MessagePanel.tsx` — 채팅 버블 UI, 인라인 이미지, 답변 전송 |
+| 리드 정보 패널 | ✅ | `LeadInfoPanel.tsx` — 고객 정보 (이름, 연락처, 관심 시술 등) 표시 및 편집 |
+| AI 답변 추천 | ✅ | `/api/channels/suggest-reply` — Gemini 기반 답변 추천 (채널 유형별) |
+| Sales 리드 추적 | ✅ | `sales_leads` 테이블 — 고객 상담 → 예약 전환 추적 (customer_name, procedures, booking_status 등) |
+| 월간 보고서 | ✅ | `MonthlyReport.tsx` — 병원별 월간 보고서 생성 (광고 CSV 업로드 + AI 분석 + 컨텐츠 계획). 상태: draft→generating→review→published |
+| 채널 설정 API | ✅ | `/api/messaging/config` — 채널 목록 조회 |
+| 보고서 생성 API | ✅ | `/api/messaging/generate` — AI 기반 보고서 초안 생성 |
+| CSV 업로드 API | ✅ | `/api/messaging/upload-csv` — 광고 성과 CSV 업로드 → 파싱 및 저장 |
+
+### 3.1h Client Web — 팔로업 고객 추적
 
 | 기능 | 상태 | 설명 |
 |------|------|------|
@@ -145,9 +175,9 @@ thebb, delphic, will, mikclinicthai, jyclinicthai, du, koreandiet, ourpthai, eve
 | 테이블 | 용도 |
 |--------|------|
 | `clients` | 고객사(병원) 정보 |
-| `profiles` | 사용자 프로필 (role, client_id, display_name, **hospital_prefix**, **zendesk_connected**, **polite_particle**) — role: bbg_admin / client / worker / **hospital** |
+| `profiles` | 사용자 프로필 (role, client_id, display_name, **hospital_prefix**, **zendesk_connected**, **polite_particle**, **hierarchy_level**, **team**) — role: bbg_admin / client / worker / **hospital** / **staff** |
 | `time_logs` | 근태 기록 (worker_id, status, created_at) |
-| `tasks` | 업무 (content, content_th, description, description_th, assignee_id, due_date, rating, source, status, created_by) |
+| `tasks` | 업무 (content, content_th, description, description_th, assignee_id, due_date, rating, source, status, created_by, **request_type**, client_id nullable) |
 | `messages` | 업무별 채팅 (content_ko, content_th, is_whisper, sender_lang, file_url, file_name, file_type, mentions) |
 | `quick_replies` | 자동답변 템플릿 (title/body × ko/th, client_id) |
 | `task_presets` | 업무 프리셋 (title/content × ko/th, client_id) |
@@ -161,6 +191,10 @@ thebb, delphic, will, mikclinicthai, jyclinicthai, du, koreandiet, ourpthai, eve
 | `followup_notifications` | 워커 인앱 알림 (user_id, action_id, ticket_id, title, body, channel, read_at) |
 | `chat_read_status` | 채팅 읽음 상태 추적 (user_id, task_id, last_read_at) |
 | `glossary` | 의료/비즈니스 용어 한↔태 번역 용어집 (korean, thai, category) |
+| `messaging_channels` | LINE/Facebook 채널 설정 (channel_type, channel_name, config jsonb, hospital_prefix) |
+| `monthly_reports` | 병원별 월간 보고서 (hospital_tag, report_month, status: draft/generating/review/published, ad_csv_url, ad_parsed_data, content_plan, strategy) |
+| `sales_leads` | Sales 리드 추적 (ticket_id, customer_name, procedures, booking_status, customer_phone, customer_line, customer_instagram) |
+| `hospital_kb` | 병원 지식베이스 (hospital_prefix, title, content, category, created_at) |
 
 **RLS 정책:**
 - bbg_admin: 전체 CRUD
@@ -204,9 +238,10 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 
 | role | 접근 범위 |
 |------|-----------|
-| `bbg_admin` | 모든 기능 + God Mode + 프리셋 관리 + 계정 관리 + Whisper 전송 + Sales 분석 전체 + Zendesk 전체 API |
+| `bbg_admin` | 모든 기능 + God Mode + 프리셋 관리 + 계정 관리 + Whisper 전송 + Sales 분석 전체 + Zendesk 전체 API. hierarchy_level=10 (대표) |
+| `staff` | BBG 한국 직원 전용 대시보드(StaffDashboard). 업무 지시/수행 양방향. hierarchy_level 기반 하위자에게 지시. `/api/assignable-users` API 사용. tasks INSERT/UPDATE/DELETE 가능 (자기 생성 업무만 DELETE) |
 | `client` | 자사 직원/업무/자동답변, 프리셋 사용(조회만), 업무 완료/취소/되돌리기, 전체 톡방 참여, Whisper 볼 수 없음, Zendesk 채팅 상담 (tickets-live, conversations, reply, ticket-update, suggest-reply, suggest-feedback) |
-| `worker` | 워커 웹 대시보드, 본인 업무/채팅, 업무 제안, 전체 톡방 참여, 상태 토글, 번역 도우미, 템플릿 읽기, time_logs 기록, 팔로업 고객 조회/상태 업데이트 (`ติดตาม` 탭), Zendesk 채팅 상담 (`ให้คำปรึกษา` 탭) |
+| `worker` | 워커 웹 대시보드, 본인 업무/채팅, 업무 제안, 전체 톡방 참여, 상태 토글, 번역 도우미, 템플릿 읽기, time_logs 기록, 팔로업 고객 조회/상태 업데이트 (`ติดตาม` 탭), Zendesk 채팅 상담 (`ให้คำปรึกษา` 탭). hierarchy_level=100 |
 | `hospital` | 병원 파트너 대시보드 전용 — 자사 hospital_prefix 기반 데이터만 조회, AI 인사이트 요청, hospital-stats 조회 |
 
 ---
@@ -216,9 +251,11 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | 경로 | 메서드 | 역할 |
 |------|--------|------|
 | `/api/tasks` | GET | 업무 목록 조회, 전체 톡방 조회/생성 (`?general_chat=true`) |
-| `/api/tasks` | POST | 업무 생성 (client, bbg_admin) — content, content_th, description, description_th, assignee_id, due_date, source |
+| `/api/tasks` | POST | 업무 생성 (client, bbg_admin, staff) — content, content_th, description, description_th, assignee_id, due_date, source, request_type |
 | `/api/tasks` | PATCH | 업무 수정 — status, rating, due_date, content, content_th, description, description_th, assignee_id |
-| `/api/tasks` | DELETE | 업무 삭제 + 연결 메시지 삭제 |
+| `/api/tasks` | DELETE | 업무 삭제 + 연결 메시지 삭제 (staff는 자기 생성 업무만) |
+| `/api/assignable-users` | GET | 지시 가능 대상 목록 조회 — hierarchy_level 기반 하위자 (staff/bbg_admin). hierarchy_level 미설정 시 client_id 기반 worker 목록 반환 |
+| `/api/auth/change-password` | POST | 현재 비밀번호 검증 후 새 비밀번호 변경 |
 | `/api/translate` | POST | 한↔태 양방향 번역 (Gemini API) |
 | `/api/ai-assist` | POST | AI 상담 어시스턴트 (의도 파악 + 추천 답변) |
 | `/api/admin/users` | POST/DELETE | 계정 생성/삭제 (bbg_admin, service_role) |
@@ -247,6 +284,18 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | `/api/zendesk/webhook` | POST | Zendesk Webhook 수신 — HMAC-SHA256 서명 검증, DB INSERT 후 Realtime Push |
 | `/api/zendesk/poll` | GET | Webhook 누락 보정 Fallback Polling Cron — 최대 50 티켓, 2분 이상 Webhook 없는 티켓 체크 (CRON_SECRET, 일 4회) |
 | `/api/zendesk/migrate-conversations` | POST | 기존 zendesk_tickets.comments JSONB → zendesk_conversations 테이블 마이그레이션 (일회성, bbg_admin) |
+| `/api/channels/line` | GET/POST/PUT | LINE 채널 메시지 조회/전송/설정 |
+| `/api/channels/facebook` | GET/POST/PUT | Facebook 채널 메시지 조회/전송/설정 |
+| `/api/channels/conversations` | GET | 채널별 대화 목록 조회 |
+| `/api/channels/messages` | GET | 대화별 메시지 조회 |
+| `/api/channels/reply` | POST | 채널 메시지 답변 전송 |
+| `/api/channels/suggest-reply` | POST | AI 답변 추천 (Gemini, 채널 유형별) |
+| `/api/messaging/config` | GET | 사용 가능 채널 목록 조회 |
+| `/api/messaging/generate` | POST | AI 기반 월간 보고서 초안 생성 (Gemini) |
+| `/api/messaging/upload-csv` | POST | 광고 성과 CSV 파일 업로드 및 파싱 |
+| `/api/monthly-report` | GET/POST/PATCH | 월간 보고서 CRUD |
+| `/api/sales-leads` | GET/POST/PATCH | Sales 리드 조회/생성/업데이트 |
+| `/api/hospital-kb` | GET/POST/PATCH/DELETE | 병원 지식베이스 CRUD (bbg_admin) |
 
 ---
 
@@ -273,10 +322,14 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | 완료 | 사용자 가이드 | 고객사 가이드(한국어), 직원 가이드(태국어), Extension 매뉴얼 |
 | 완료 | 워커 웹 대시보드 (Phase 1) | WorkerDashboard, WorkerStatusToggle, TaskPropose, TranslationHelper 구현 완료 |
 | 완료 | 모바일 반응형 (Phase 2) | Dashboard 헤더, WorkerStatus 접기/펼치기 토글, TaskAssign 세로 배치, TaskList 줄바꿈 적용 |
+| 완료 | Staff 계층 시스템 | staff role, hierarchy_level, StaffDashboard, assignable-users API, tasks.request_type |
+| 완료 | LINE/Facebook 다이렉트 메시징 | MessagingLayout, ConversationList, MessagePanel, LeadInfoPanel, 채널 API |
+| 완료 | 월간 보고서 | MonthlyReport.tsx — 병원별 보고서 AI 생성, CSV 업로드, 상태 워크플로 |
+| 완료 | Sales 리드 추적 | sales_leads 테이블 + API — 고객 상담→예약 전환 추적 |
+| 완료 | 병원 지식베이스 (Hospital KB) | HospitalKBManager.tsx, hospital_kb.sql, /admin/hospital-kb 페이지 |
 | 높음 | 회원가입/온보딩 플로우 | 자체 가입 → 관리자 승인 또는 초대 링크 |
 | 높음 | 업무 가이드 PDF | 프리셋별 상세 작업 가이드를 PDF로 제공, 워커에게 전달 |
-| 중간 | 주간/월간 리포트 | 일간 외 장기 근태/업무 통계 |
-| 중간 | 알림 시스템 | 이메일/LINE 통합 알림 |
+| 중간 | 알림 시스템 | 이메일 통합 알림 |
 | 낮음 | 모바일 대응 | 반응형 대시보드 최적화 |
 | 낮음 | 다국어 확장 | 베트남어 등 추가 언어 지원 |
 

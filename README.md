@@ -28,12 +28,36 @@ g sync/
 │   │   ├── layout.tsx
 │   │   ├── admin/monitoring/
 │   │   │   └── page.tsx            # God Mode 통합 관제 대시보드 (bbg_admin 전용)
+│   │   ├── admin/workers/page.tsx  # 직원 현황 페이지
+│   │   ├── admin/chat/page.tsx     # 채팅 페이지
+│   │   ├── admin/tasks/page.tsx    # 업무 관리 페이지 (할당 + 목록)
+│   │   ├── admin/calendar/page.tsx # 직원별 업무 현황 페이지
+│   │   ├── admin/time-report/page.tsx # 근무 리포트 페이지
+│   │   ├── admin/directives/page.tsx  # 지시/협조 현황 페이지 (staff/bbg_admin)
+│   │   ├── admin/reports/page.tsx  # 월간 보고서 페이지
+│   │   ├── admin/presets/page.tsx  # 업무 프리셋 관리 페이지
+│   │   ├── admin/glossary/page.tsx # 용어집 관리 페이지
+│   │   ├── admin/users/page.tsx    # 계정 관리 페이지
+│   │   ├── admin/hospital-kb/page.tsx # 병원 KB 관리 페이지
 │   │   ├── sales/
 │   │   │   └── page.tsx            # Sales 성과 분석 독립 페이지 (bbg_admin 전용)
 │   │   ├── api/tasks/route.ts      # 업무 CRUD + 채팅방 API (service_role)
 │   │   ├── api/translate/route.ts  # 한↔태 번역 API (Gemini)
 │   │   ├── api/ai-assist/route.ts  # AI 상담 어시스턴트 API
+│   │   ├── api/assignable-users/route.ts # 지시 가능 대상 조회 API (staff/bbg_admin)
+│   │   ├── api/auth/change-password/route.ts # 비밀번호 변경 API
 │   │   ├── api/admin/users/route.ts # 계정 생성/삭제 API (service_role)
+│   │   ├── api/channels/line/route.ts  # LINE 채널 API
+│   │   ├── api/channels/facebook/route.ts  # Facebook 채널 API
+│   │   ├── api/channels/conversations/route.ts # 채널별 대화 조회 API
+│   │   ├── api/channels/messages/route.ts  # 채널 메시지 조회 API
+│   │   ├── api/channels/reply/route.ts     # 채널 답변 전송 API
+│   │   ├── api/channels/suggest-reply/route.ts # AI 답변 추천 (채널용)
+│   │   ├── api/messaging/config/route.ts   # 메시징 채널 설정 API
+│   │   ├── api/messaging/generate/route.ts # 월간 보고서 AI 생성 API
+│   │   ├── api/messaging/upload-csv/route.ts # 보고서 CSV 업로드 API
+│   │   ├── api/monthly-report/route.ts     # 월간 보고서 CRUD API
+│   │   ├── api/sales-leads/route.ts        # Sales 리드 추적 API
 │   │   ├── api/zendesk/sync/route.ts   # Zendesk 티켓 수동 동기화 API
 │   │   ├── api/zendesk/stats/route.ts  # Zendesk 통계 조회 API (bbg_admin + hospital)
 │   │   ├── api/zendesk/analyze/route.ts # Zendesk 티켓 AI 분석 API (bbg_admin + hospital)
@@ -57,9 +81,10 @@ g sync/
 │   │   └── api/zendesk/migrate-conversations/route.ts # 기존 zendesk_tickets.comments → zendesk_conversations 마이그레이션 (일회성)
 │   ├── components/
 │   │   ├── LoginPage.tsx           # 로그인 페이지
-│   │   ├── Dashboard.tsx           # 메인 대시보드 (hospital role → HospitalDashboard 분기), 모바일 반응형 헤더
+│   │   ├── Dashboard.tsx           # 격자형 홈 대시보드 (카드 그리드). hospital role → HospitalDashboard, staff → StaffDashboard 분기. 비밀번호 변경 모달 내장
+│   │   ├── StaffDashboard.tsx      # BBG 한국 직원 전용 대시보드 (4탭: 내가 지시한 업무/나에게 온 업무/채팅/상담)
 │   │   ├── WorkerStatus.tsx        # 실시간 직원 상태 카드 (파란색), 모바일 접기/펼치기 토글
-│   │   ├── TaskAssign.tsx          # 업무 할당 폼 (초록색), 모바일 세로 배치
+│   │   ├── TaskAssign.tsx          # 업무 할당 폼 (초록색), 모바일 세로 배치. staff 대상 지시 시 번역 스킵
 │   │   ├── TaskList.tsx            # 업무 목록 + 별점 평가 (노란색), 모바일 줄바꿈
 │   │   ├── TaskChat.tsx            # 업무별 채팅 — locale prop으로 한↔태 동적 결정
 │   │   ├── ImageAnnotator.tsx      # 이미지 어노테이션 모달 — 프리핸드 드로잉(빨간 선), 우클릭 텍스트 포스트잇, 합성 후 채팅 전송
@@ -72,6 +97,7 @@ g sync/
 │   │   ├── UserManager.tsx         # 계정 관리 CRUD (회색, bbg_admin)
 │   │   ├── QuickReplyManager.tsx   # 자동답변 CRUD
 │   │   ├── HospitalDashboard.tsx   # 병원 파트너 전용 대시보드 (hospital role)
+│   │   ├── HospitalKBManager.tsx   # 병원 지식베이스(KB) 관리 UI
 │   │   ├── WorkerDashboard.tsx     # 워커 대시보드 (5탭: งาน/แชท/ให้คำปรึกษา/ติดตาม/เครื่องมือ)
 │   │   ├── WorkerFollowup.tsx      # 팔로업 고객 관리 탭 (워커 대시보드 ติดตาม)
 │   │   ├── SalesPerformance.tsx    # Zendesk Sales 성과 분석 (/sales, 3탭: Sales성과/병원별분석/팔로업고객)
@@ -80,7 +106,12 @@ g sync/
 │   │   ├── ZendeskChatPanel.tsx    # 중앙 채팅 패널 — 대화 히스토리, 인라인 이미지, Public/Internal 토글
 │   │   ├── AISuggestPanel.tsx      # 우측 AI 추천 답변 패널 — Gemini 기반 2-3개 추천, Quick Reply 칩
 │   │   ├── ZendeskSetup.tsx        # 상담원 Zendesk 개인 토큰 등록/관리 설정 UI
-│   │   └── QuickReplyChips.tsx     # Quick Reply 칩 컴포넌트
+│   │   ├── QuickReplyChips.tsx     # Quick Reply 칩 컴포넌트
+│   │   ├── MessagingLayout.tsx     # LINE/Facebook 다이렉트 메시징 오케스트레이터 (워커/스태프 상담 탭)
+│   │   ├── ConversationList.tsx    # 다이렉트 메시징 대화 목록 패널
+│   │   ├── MessagePanel.tsx        # 다이렉트 메시징 채팅 패널
+│   │   ├── LeadInfoPanel.tsx       # 고객 리드 정보 패널 (다이렉트 메시징)
+│   │   └── MonthlyReport.tsx       # 월간 보고서 생성 UI (병원별 데이터 입력 + AI 생성)
 │   ├── lib/
 │   │   ├── supabase.ts
 │   │   ├── chat-rooms.ts           # 채팅방 상수, 센티넬 값, 타입 정의
@@ -113,6 +144,14 @@ g sync/
     ├── glossary.sql            # 의료/비즈니스 용어 한↔태 번역 용어집 테이블
     ├── zendesk_chat_integration.sql # Zendesk 채팅 통합 (zendesk_agent_tokens, zendesk_conversations, ai_reply_suggestions, zendesk_webhook_log + zendesk_tickets/profiles 컬럼 추가)
     ├── zendesk_conversations_ko.sql # zendesk_conversations.body_ko 컬럼 추가 (한국어 번역 캐시)
+    ├── staff_hierarchy.sql     # profiles hierarchy_level/team 컬럼 추가, role에 'staff' 추가, tasks.client_id nullable + request_type 컬럼, RLS 업데이트
+    ├── hospital_kb.sql         # 병원 지식베이스(KB) 테이블
+    ├── direct_messaging.sql    # LINE/Facebook 다이렉트 메시징 통합 (messaging_channels, conversations, messages, leads 테이블)
+    ├── facebook_channels_config.sql # Facebook 22개 페이지 채널 설정 데이터
+    ├── messaging_rls_fix.sql   # messaging 관련 테이블 RLS 정책 수정
+    ├── monthly_reports.sql     # 병원별 월간 보고서 테이블
+    ├── sales_leads.sql         # Sales 리드 추적 테이블 (sales_leads)
+    ├── zendesk_conversations_rls.sql # zendesk_conversations RLS (authenticated users 읽기 허용)
     ├── v1.4_improvements.sql   # 기타 개선사항
     ├── setup_test_client.sql   # 테스트 데이터 셋업
     └── README.md
@@ -164,7 +203,15 @@ g sync/
    20. `supabase/glossary.sql` — 의료/비즈니스 용어 한↔태 번역 용어집 테이블
    21. `supabase/zendesk_chat_integration.sql` — Zendesk 채팅 통합 (zendesk_agent_tokens, zendesk_conversations, ai_reply_suggestions, zendesk_webhook_log + zendesk_tickets/profiles 컬럼)
    22. `supabase/zendesk_conversations_ko.sql` — zendesk_conversations.body_ko 컬럼 (한국어 번역 캐시)
-   23. `supabase/v1.4_improvements.sql` — 기타 개선사항
+   23. `supabase/staff_hierarchy.sql` — profiles hierarchy_level/team 컬럼, role에 'staff' 추가, tasks.client_id nullable + request_type 컬럼, RLS 업데이트
+   24. `supabase/hospital_kb.sql` — 병원 지식베이스(KB) 테이블
+   25. `supabase/direct_messaging.sql` — LINE/Facebook 다이렉트 메시징 통합 테이블
+   26. `supabase/facebook_channels_config.sql` — Facebook 채널 설정 데이터 (22개 페이지)
+   27. `supabase/messaging_rls_fix.sql` — messaging 테이블 RLS 정책 수정
+   28. `supabase/monthly_reports.sql` — 월간 보고서 테이블
+   29. `supabase/sales_leads.sql` — Sales 리드 추적 테이블
+   30. `supabase/zendesk_conversations_rls.sql` — zendesk_conversations RLS (Realtime 지원용)
+   31. `supabase/v1.4_improvements.sql` — 기타 개선사항
 3. **Authentication** → Providers → **Email** 활성화
 
 ### 2. Client Web 실행
@@ -230,9 +277,21 @@ npm run dev
 
 | 경로 | 용도 |
 |------|------|
-| `/app` | 메인 대시보드 (업무관리, 채팅, 계정 관리). hospital role → 병원 파트너 대시보드로 자동 분기 |
+| `/app` | 메인 홈 (격자형 카드 그리드). hospital role → HospitalDashboard, staff role → StaffDashboard 자동 분기 |
+| `/admin/workers` | 직원 현황 (실시간 상태) |
+| `/admin/chat` | 채팅 (업무 채팅방) |
+| `/admin/tasks` | 업무 관리 (할당 + 목록) |
+| `/admin/calendar` | 직원별 업무 현황 |
+| `/admin/time-report` | 근무 리포트 |
+| `/admin/directives` | 지시/협조 현황 (staff/bbg_admin) |
+| `/admin/reports` | 월간 보고서 |
+| `/admin/presets` | 업무 프리셋 관리 |
+| `/admin/glossary` | 용어집 관리 |
+| `/admin/users` | 계정 관리 (bbg_admin 전용) |
+| `/admin/hospital-kb` | 병원 지식베이스(KB) 관리 |
 | `/sales` | Sales 성과 분석 — Zendesk 티켓 AI 분석, 병원별 분석, 팔로업 고객 관리 (bbg_admin 전용) |
 | `/admin/monitoring` | God Mode 통합 관제 (bbg_admin 전용) |
+| `/consultation` | Zendesk 채팅 상담 (worker + client 접근 가능) |
 
 ### God Mode 통합 관제 (`/admin/monitoring`)
 
@@ -309,9 +368,10 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 
 | role | 권한 |
 |------|------|
-| `bbg_admin` | 전체 관리: 직원/고객사/업무/자동답변/프리셋/계정 관리, **God Mode 관제**, Whisper 전송, Sales 분석 전체 조회 |
+| `bbg_admin` | 전체 관리: 직원/고객사/업무/자동답변/프리셋/계정 관리, **God Mode 관제**, Whisper 전송, Sales 분석 전체 조회. hierarchy_level=10 (대표) |
+| `staff` | BBG 한국 직원. 업무 지시(생성/수정/삭제) + 업무 수행 양방향 가능. hierarchy_level(20/30/40)로 계층 구분. `/api/assignable-users`로 하위자 조회. StaffDashboard 전용 UI |
 | `client` | 자사 직원/업무/자동답변만 조회, 업무 할당(프리셋 사용), 전체 톡방 참여, Whisper 메시지 볼 수 없음 |
-| `worker` | 본인 업무 조회/완료/제안, 채팅, 전체 톡방 참여, 템플릿 읽기, time_logs 기록, 팔로업 고객 조회/상태 업데이트 |
+| `worker` | 본인 업무 조회/완료/제안, 채팅, 전체 톡방 참여, 템플릿 읽기, time_logs 기록, 팔로업 고객 조회/상태 업데이트. hierarchy_level=100 |
 | `hospital` | 병원 파트너 전용 대시보드 — 자사 병원 데이터만 조회 (`hospital_prefix` 기반 필터), AI 인사이트 요청 가능 |
 
 ---

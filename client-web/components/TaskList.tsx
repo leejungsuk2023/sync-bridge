@@ -5,7 +5,23 @@ import { supabase } from '@/lib/supabase';
 import { Star, MessageCircle, Trash2, RotateCcw, Calendar, X, CheckCircle, ChevronDown } from 'lucide-react';
 import TaskChat from './TaskChat';
 
-export default function TaskList({ clientId, userId, canComplete = false, assigneeId, title, locale = 'ko' }: { clientId?: string; userId: string; canComplete?: boolean; assigneeId?: string; title?: string; locale?: 'ko' | 'th' }) {
+export default function TaskList({
+  clientId,
+  userId,
+  canComplete = false,
+  assigneeId,
+  title,
+  locale = 'ko',
+  view,
+}: {
+  clientId?: string;
+  userId: string;
+  canComplete?: boolean;
+  assigneeId?: string;
+  title?: string;
+  locale?: 'ko' | 'th';
+  view?: 'assigned_by_me' | 'assigned_to_me' | 'all';
+}) {
   // Locale-aware label map
   const L = locale === 'th' ? {
     defaultTitle: 'รายการงาน',
@@ -32,6 +48,8 @@ export default function TaskList({ clientId, userId, canComplete = false, assign
     detailCollapse: 'ย่อรายละเอียด',
     detailExpand: 'ดูรายละเอียด',
     detailGuide: 'คำแนะนำรายละเอียด',
+    markDone: 'เสร็จแล้ว',
+    instructedBy: 'สั่งงานโดย:',
   } : {
     defaultTitle: '업무 목록',
     loading: '불러오는 중...',
@@ -57,6 +75,8 @@ export default function TaskList({ clientId, userId, canComplete = false, assign
     detailCollapse: '상세 접기',
     detailExpand: '상세 보기',
     detailGuide: '상세 가이드',
+    markDone: '완료',
+    instructedBy: '← 지시자:',
   };
   const [collapsed, setCollapsed] = useState(true);
   const [tasks, setTasks] = useState<any[]>([]);
@@ -70,6 +90,7 @@ export default function TaskList({ clientId, userId, canComplete = false, assign
       const searchParams = new URLSearchParams();
       if (clientId) searchParams.set('client_id', clientId);
       if (assigneeId) searchParams.set('assignee_id', assigneeId);
+      if (view) searchParams.set('view', view);
       const params = searchParams.toString() ? `?${searchParams.toString()}` : '';
       const res = await fetch(`/api/tasks${params}`, {
         headers: { Authorization: `Bearer ${session?.access_token}` },
@@ -90,7 +111,7 @@ export default function TaskList({ clientId, userId, canComplete = false, assign
       .subscribe();
 
     return () => { channel.unsubscribe(); };
-  }, [clientId, assigneeId]);
+  }, [clientId, assigneeId, view]);
 
   const [ratingTaskId, setRatingTaskId] = useState<string | null>(null);
   const [ratingValue, setRatingValue] = useState<number | null>(null);
@@ -227,6 +248,26 @@ export default function TaskList({ clientId, userId, canComplete = false, assign
     );
   };
 
+  // Request type badge
+  const RequestTypeBadge = ({ requestType }: { requestType?: string }) => {
+    if (!requestType) return null;
+    if (requestType === 'cooperation') {
+      return (
+        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 border border-emerald-200">
+          [협조요청]
+        </span>
+      );
+    }
+    if (requestType === 'directive') {
+      return (
+        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200">
+          [업무지시]
+        </span>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="space-y-4">
       <div className="bg-gradient-to-r from-amber-50/70 to-white rounded-xl shadow-sm border border-amber-100 border-l-4 border-l-amber-400 p-4 sm:p-6">
@@ -262,7 +303,10 @@ export default function TaskList({ clientId, userId, canComplete = false, assign
                 {/* Content + Status + Chat */}
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-slate-900">{task.content}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <RequestTypeBadge requestType={task.request_type} />
+                      <p className="text-sm font-semibold text-slate-900">{task.content}</p>
+                    </div>
                     {task.description && (
                       <button
                         type="button"
@@ -292,6 +336,17 @@ export default function TaskList({ clientId, userId, canComplete = false, assign
                       <MessageCircle className="w-3 h-3" />
                       {L.chat}
                     </button>
+                    {/* "나에게 온 업무" 뷰: 완료 버튼 */}
+                    {view === 'assigned_to_me' && task.status === 'pending' && (
+                      <button
+                        type="button"
+                        onClick={() => completeTask(task.id)}
+                        className="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors"
+                      >
+                        <CheckCircle className="w-3 h-3" />
+                        {L.markDone}
+                      </button>
+                    )}
                     {task.status === 'pending' && canComplete && (
                       <button
                         type="button"
@@ -371,7 +426,26 @@ export default function TaskList({ clientId, userId, canComplete = false, assign
                       <span>·</span>
                     </>
                   )}
-                  <span>{L.assignee} {task.profiles?.display_name || task.profiles?.email || '-'}</span>
+                  {/* "나에게 온 업무" 뷰: 지시자 → 수행자 형태 */}
+                  {view === 'assigned_to_me' && task.assigner ? (
+                    <>
+                      <span className="text-slate-400">{L.instructedBy}</span>
+                      <span className="font-medium text-slate-700">{task.assigner.display_name || task.assigner.email}</span>
+                      <span>→</span>
+                      <span>{L.assignee} {task.profiles?.display_name || task.profiles?.email || '-'}</span>
+                    </>
+                  ) : (
+                    <>
+                      {task.assigner && (
+                        <>
+                          <span className="text-slate-400">←</span>
+                          <span>{task.assigner.display_name || task.assigner.email}</span>
+                          <span>·</span>
+                        </>
+                      )}
+                      <span>{L.assignee} {task.profiles?.display_name || task.profiles?.email || '-'}</span>
+                    </>
+                  )}
                   <span>·</span>
                   <span>{new Date(task.created_at).toLocaleString('ko-KR')}</span>
                   {(() => {

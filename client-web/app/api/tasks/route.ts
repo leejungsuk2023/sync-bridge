@@ -40,7 +40,7 @@ async function verifyUser(req: NextRequest) {
 
   const { data: profile } = await getSupabaseAdmin()
     .from('profiles')
-    .select('id, role, client_id')
+    .select('id, role, client_id, hierarchy_level')
     .eq('id', user.id)
     .single();
 
@@ -60,6 +60,7 @@ export async function GET(req: NextRequest) {
   const assigneeId = searchParams.get('assignee_id');
   const month = searchParams.get('month'); // format: 2026-03
   const generalChat = searchParams.get('general_chat');
+  const view = searchParams.get('view'); // 'assigned_by_me' | 'assigned_to_me' | 'all'
 
   // Chat room: single room lookup/create
   const chatRoom = searchParams.get('chat_room');
@@ -240,13 +241,26 @@ export async function GET(req: NextRequest) {
 
   if (taskId) {
     query = query.eq('id', taskId);
+  } else if (profile.role === 'staff') {
+    // Staff: filter by view param (assigned_by_me | assigned_to_me | all)
+    if (view === 'assigned_by_me') {
+      query = query.eq('created_by', profile.id);
+    } else if (view === 'assigned_to_me') {
+      query = query.eq('assignee_id', profile.id);
+    } else {
+      // 'all' or default: tasks created by me OR assigned to me
+      query = query.or(`created_by.eq.${profile.id},assignee_id.eq.${profile.id}`);
+    }
+    if (clientId) {
+      query = query.eq('client_id', clientId);
+    }
   } else if (clientId) {
     query = query.eq('client_id', clientId);
   } else if (profile.role !== 'bbg_admin' && profile.client_id) {
     query = query.eq('client_id', profile.client_id);
   }
 
-  if (assigneeId) {
+  if (assigneeId && profile.role !== 'staff') {
     query = query.eq('assignee_id', assigneeId);
   }
 
@@ -300,7 +314,8 @@ export async function POST(req: NextRequest) {
   const { client_id, assignee_id, content, content_th, description, description_th, status, due_date, source } = body;
 
   // Worker can only create proposals (source: 'worker_proposed')
-  if (!['client', 'bbg_admin'].includes(profile.role) && source !== 'worker_proposed') {
+  // Staff, client, bbg_admin can create directives/cooperation
+  if (!['client', 'bbg_admin', 'staff'].includes(profile.role) && source !== 'worker_proposed') {
     return withCors(NextResponse.json({ error: '업무 할당 권한이 없습니다.' }, { status: 403 }));
   }
 
@@ -308,8 +323,33 @@ export async function POST(req: NextRequest) {
     return withCors(NextResponse.json({ error: '담당자와 업무 내용은 필수입니다.' }, { status: 400 }));
   }
 
+  // hierarchy_level 검증 (staff인 경우)
+  let request_type: string | undefined;
+  if (profile.role === 'staff' && profile.hierarchy_level !== null && profile.hierarchy_level !== undefined) {
+    const { data: assigneeProfile } = await getSupabaseAdmin()
+      .from('profiles')
+      .select('hierarchy_level')
+      .eq('id', assignee_id)
+      .single();
+
+    if (assigneeProfile?.hierarchy_level !== null && assigneeProfile?.hierarchy_level !== undefined) {
+      const myLevel: number = profile.hierarchy_level;
+      const assigneeLevel: number = assigneeProfile.hierarchy_level;
+
+      if (myLevel > assigneeLevel) {
+        // 내 레벨 > 수행자 레벨 → 수행자가 상위자 → 금지
+        return withCors(NextResponse.json({ error: '상위자에게 업무를 지시할 수 없습니다.' }, { status: 403 }));
+      } else if (myLevel === assigneeLevel) {
+        request_type = 'cooperation';
+      } else {
+        // myLevel < assigneeLevel → 수행자가 하위자
+        request_type = 'directive';
+      }
+    }
+  }
+
   const insertData: any = {
-    client_id: client_id || profile.client_id,
+    client_id: client_id || profile.client_id || null,
     assignee_id,
     content,
     content_th: content_th || '',
@@ -320,6 +360,8 @@ export async function POST(req: NextRequest) {
   if (description_th) insertData.description_th = description_th;
   if (due_date) insertData.due_date = due_date;
   if (source) insertData.source = source;
+  else if (profile.role === 'staff') insertData.source = 'staff';
+  if (request_type) insertData.request_type = request_type;
 
   const { data, error } = await getSupabaseAdmin()
     .from('tasks')
@@ -341,7 +383,7 @@ export async function DELETE(req: NextRequest) {
     return withCors(NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 }));
   }
 
-  if (!['client', 'bbg_admin'].includes(profile.role)) {
+  if (!['client', 'bbg_admin', 'staff'].includes(profile.role)) {
     return withCors(NextResponse.json({ error: '삭제 권한이 없습니다.' }, { status: 403 }));
   }
 
@@ -355,7 +397,7 @@ export async function DELETE(req: NextRequest) {
   // Verify task belongs to the user's client scope
   const { data: task } = await getSupabaseAdmin()
     .from('tasks')
-    .select('client_id')
+    .select('client_id, created_by')
     .eq('id', taskId)
     .single();
 
@@ -363,7 +405,14 @@ export async function DELETE(req: NextRequest) {
     return withCors(NextResponse.json({ error: '업무를 찾을 수 없습니다.' }, { status: 404 }));
   }
 
-  if (profile.role !== 'bbg_admin' && task.client_id !== profile.client_id) {
+  if (profile.role === 'bbg_admin') {
+    // admin: no scope restriction
+  } else if (profile.role === 'staff') {
+    // staff: can only delete tasks they created
+    if (task.created_by !== profile.id) {
+      return withCors(NextResponse.json({ error: '본인이 생성한 업무만 삭제할 수 있습니다.' }, { status: 403 }));
+    }
+  } else if (task.client_id !== profile.client_id) {
     return withCors(NextResponse.json({ error: '해당 업무에 대한 삭제 권한이 없습니다.' }, { status: 403 }));
   }
 
@@ -409,7 +458,7 @@ export async function PATCH(req: NextRequest) {
   // Verify task belongs to the user's client scope
   const { data: task } = await getSupabaseAdmin()
     .from('tasks')
-    .select('client_id, assignee_id')
+    .select('client_id, assignee_id, created_by')
     .eq('id', id)
     .single();
 
@@ -423,6 +472,11 @@ export async function PATCH(req: NextRequest) {
     const hasDisallowed = Object.keys(updates).some(k => !workerAllowed.includes(k));
     if (hasDisallowed || task.assignee_id !== profile.id) {
       return withCors(NextResponse.json({ error: '수정 권한이 없습니다.' }, { status: 403 }));
+    }
+  } else if (profile.role === 'staff') {
+    // Staff can modify tasks they created or are assigned to them
+    if (task.created_by !== profile.id && task.assignee_id !== profile.id) {
+      return withCors(NextResponse.json({ error: '해당 업무에 대한 수정 권한이 없습니다.' }, { status: 403 }));
     }
   } else if (profile.role !== 'bbg_admin' && task.client_id !== profile.client_id) {
     return withCors(NextResponse.json({ error: '해당 업무에 대한 수정 권한이 없습니다.' }, { status: 403 }));

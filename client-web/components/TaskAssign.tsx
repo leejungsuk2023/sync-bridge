@@ -4,7 +4,24 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Loader2, ChevronDown } from 'lucide-react';
 
-export default function TaskAssign({ workers, clientId }: { workers: any[]; clientId?: string }) {
+interface AssignableUser {
+  id: string;
+  display_name: string | null;
+  email: string;
+  role: string;
+  title?: string | null;
+  relationship?: 'peer' | 'subordinate' | 'other';
+}
+
+export default function TaskAssign({
+  workers,
+  clientId,
+  useAssignableAPI = false,
+}: {
+  workers: any[];
+  clientId?: string;
+  useAssignableAPI?: boolean;
+}) {
   const [collapsed, setCollapsed] = useState(true);
   const [assigneeId, setAssigneeId] = useState('');
   const [content, setContent] = useState('');
@@ -14,6 +31,10 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
   const [preview, setPreview] = useState('');
   const [previewDesc, setPreviewDesc] = useState('');
   const [dueDate, setDueDate] = useState('');
+
+  // Assignable users fetched from API (useAssignableAPI=true)
+  const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
+  const [assignableLoading, setAssignableLoading] = useState(false);
 
   // 프리셋
   const [presets, setPresets] = useState<any[]>([]);
@@ -34,6 +55,28 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
     fetchPresets();
   }, [clientId]);
 
+  useEffect(() => {
+    if (!useAssignableAPI) return;
+    const fetchAssignable = async () => {
+      setAssignableLoading(true);
+      try {
+        const session = (await supabase.auth.getSession()).data.session;
+        const res = await fetch('/api/assignable-users', {
+          headers: { Authorization: `Bearer ${session?.access_token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setAssignableUsers(data.users || []);
+        }
+      } catch (err) {
+        console.error('[TaskAssign] fetchAssignable failed:', err);
+      } finally {
+        setAssignableLoading(false);
+      }
+    };
+    fetchAssignable();
+  }, [useAssignableAPI]);
+
   const handlePresetChange = (presetId: string) => {
     setSelectedPresetId(presetId);
     if (!presetId) {
@@ -48,6 +91,11 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
       setError('');
     }
   };
+
+  // Determine the role of the selected assignee (only meaningful when useAssignableAPI=true)
+  const selectedAssigneeRole = useAssignableAPI
+    ? assignableUsers.find(u => u.id === assigneeId)?.role ?? null
+    : null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,40 +117,45 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
     setPreview('');
     setPreviewDesc('');
 
-    let contentTh = '';
-    if (presetContentTh && selectedPresetId) {
-      const preset = presets.find(p => p.id === selectedPresetId);
-      if (preset && content.trim() === preset.content_ko) {
-        contentTh = presetContentTh;
-        setPreview(contentTh);
-      }
-    }
+    // Skip Thai translation for staff role
+    const skipTranslation = useAssignableAPI && selectedAssigneeRole === 'staff';
 
-    if (!contentTh) {
-      try {
-        const res = await fetch('/api/translate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: content.trim(), targetLang: 'th' }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          setError('번역 실패: ' + (data.error || '알 수 없는 오류'));
+    let contentTh = '';
+    if (!skipTranslation) {
+      if (presetContentTh && selectedPresetId) {
+        const preset = presets.find(p => p.id === selectedPresetId);
+        if (preset && content.trim() === preset.content_ko) {
+          contentTh = presetContentTh;
+          setPreview(contentTh);
+        }
+      }
+
+      if (!contentTh) {
+        try {
+          const res = await fetch('/api/translate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: content.trim(), targetLang: 'th' }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            setError('번역 실패: ' + (data.error || '알 수 없는 오류'));
+            setLoading(false);
+            return;
+          }
+          contentTh = data.translated || '';
+          setPreview(contentTh);
+        } catch (err: any) {
+          setError('번역 요청 실패: ' + err.message);
           setLoading(false);
           return;
         }
-        contentTh = data.translated || '';
-        setPreview(contentTh);
-      } catch (err: any) {
-        setError('번역 요청 실패: ' + err.message);
-        setLoading(false);
-        return;
       }
     }
 
-    // Translate description if provided
+    // Translate description if provided and not skipping
     let descriptionTh = '';
-    if (description.trim()) {
+    if (!skipTranslation && description.trim()) {
       try {
         const res = await fetch('/api/translate', {
           method: 'POST',
@@ -169,6 +222,12 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
     alert('업무가 할당되었습니다.');
   };
 
+  // Split assignable users into staff and workers
+  const staffUsers = assignableUsers.filter(u => u.role === 'staff');
+  const workerUsers = assignableUsers.filter(u => u.role === 'worker');
+
+  const isSubmitDisabled = loading || (useAssignableAPI ? assignableUsers.length === 0 : workers.length === 0);
+
   return (
     <div className="bg-gradient-to-r from-emerald-50/70 to-white rounded-xl shadow-sm border border-emerald-100 border-l-4 border-l-emerald-400 p-4 sm:p-6">
       <button
@@ -184,19 +243,49 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">담당자</label>
-            <select
-              value={assigneeId}
-              onChange={(e) => setAssigneeId(e.target.value)}
-              className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-shadow bg-white"
-              required
-            >
-              <option value="">선택하세요</option>
-              {workers.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.display_name || w.email}
-                </option>
-              ))}
-            </select>
+            {useAssignableAPI ? (
+              <select
+                value={assigneeId}
+                onChange={(e) => setAssigneeId(e.target.value)}
+                className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-shadow bg-white"
+                required
+                disabled={assignableLoading}
+              >
+                <option value="">{assignableLoading ? '불러오는 중...' : '선택하세요'}</option>
+                {staffUsers.length > 0 && (
+                  <optgroup label="한국 직원">
+                    {staffUsers.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.display_name || u.email}{u.title ? ` (${u.title})` : ''}{u.relationship === 'peer' ? ' (협조)' : ''}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {workerUsers.length > 0 && (
+                  <optgroup label="태국 직원">
+                    {workerUsers.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.display_name || u.email}{u.relationship === 'peer' ? ' (협조)' : ''}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            ) : (
+              <select
+                value={assigneeId}
+                onChange={(e) => setAssigneeId(e.target.value)}
+                className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-shadow bg-white"
+                required
+              >
+                <option value="">선택하세요</option>
+                {workers.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.display_name || w.email}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           {presets.length > 0 && (
@@ -233,7 +322,9 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
         {/* 2행: 업무 제목 + 할당 버튼 */}
         <div className="flex flex-col sm:flex-row gap-3 sm:items-end mb-3">
           <div className="flex-1">
-            <label className="block text-xs font-medium text-slate-600 mb-1">업무 제목 (한국어 → 태국어 자동번역)</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">
+              업무 제목{selectedAssigneeRole !== 'staff' ? ' (한국어 → 태국어 자동번역)' : ''}
+            </label>
             <input
               type="text"
               value={content}
@@ -253,7 +344,7 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
           </div>
           <button
             type="submit"
-            disabled={loading || workers.length === 0}
+            disabled={isSubmitDisabled}
             className="w-full sm:w-auto shrink-0 h-10 px-6 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
           >
             {loading ? (
@@ -270,7 +361,7 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
         {/* 3행: 상세 가이드 (선택) */}
         <div className="mb-3">
           <label className="block text-xs font-medium text-slate-600 mb-1">
-            상세 가이드 <span className="text-slate-400">(선택사항, 태국어 자동번역)</span>
+            상세 가이드 <span className="text-slate-400">(선택사항{selectedAssigneeRole !== 'staff' ? ', 태국어 자동번역' : ''})</span>
           </label>
           <textarea
             value={description}
@@ -294,7 +385,10 @@ export default function TaskAssign({ workers, clientId }: { workers: any[]; clie
             {error}
           </div>
         )}
-        {workers.length === 0 && (
+        {!useAssignableAPI && workers.length === 0 && (
+          <p className="mt-3 text-sm text-amber-600">할당 가능한 직원이 없습니다.</p>
+        )}
+        {useAssignableAPI && !assignableLoading && assignableUsers.length === 0 && (
           <p className="mt-3 text-sm text-amber-600">할당 가능한 직원이 없습니다.</p>
         )}
       </form>}

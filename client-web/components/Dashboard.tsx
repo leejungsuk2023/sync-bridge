@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { supabase } from '@/lib/supabase';
-import { Link as LinkIcon, ChevronDown } from 'lucide-react';
+import { Link as LinkIcon, ChevronDown, Lock } from 'lucide-react';
 import WorkerStatus from './WorkerStatus';
 import TaskAssign from './TaskAssign';
 import TaskList from './TaskList';
@@ -15,8 +15,34 @@ const TaskPresetManager = dynamic(() => import('./TaskPresetManager'), { ssr: fa
 const UserManager = dynamic(() => import('./UserManager'), { ssr: false });
 const WorkerDashboard = dynamic(() => import('./WorkerDashboard'), { ssr: false });
 const HospitalDashboard = dynamic(() => import('./HospitalDashboard'), { ssr: false });
+const StaffDashboard = dynamic(() => import('./StaffDashboard'), { ssr: false });
+const AdminDirectiveTable = dynamic(
+  () => import('./StaffDashboard').then((mod) => ({ default: mod.AdminDirectiveTable })),
+  { ssr: false },
+);
 const GlossaryManager = dynamic(() => import('./GlossaryManager'), { ssr: false });
 const MonthlyReport = dynamic(() => import('./MonthlyReport'), { ssr: false });
+
+function AdminDirectiveSection() {
+  const [collapsed, setCollapsed] = useState(true);
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-indigo-400 p-4 sm:p-6">
+      <button
+        type="button"
+        onClick={() => setCollapsed(!collapsed)}
+        className="w-full flex items-center justify-between cursor-pointer"
+      >
+        <h2 className="text-lg font-semibold text-slate-900">지시 현황</h2>
+        <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${collapsed ? '' : 'rotate-180'}`} />
+      </button>
+      {!collapsed && (
+        <div className="mt-6">
+          <AdminDirectiveTable />
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Dashboard({ user }: { user: any }) {
   const [profile, setProfile] = useState<any>(null);
@@ -24,6 +50,59 @@ export default function Dashboard({ user }: { user: any }) {
   const [clients, setClients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [chatCollapsed, setChatCollapsed] = useState(true);
+
+  // Password change modal state
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [pwCurrent, setPwCurrent] = useState('');
+  const [pwNew, setPwNew] = useState('');
+  const [pwConfirm, setPwConfirm] = useState('');
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwError, setPwError] = useState('');
+  const [pwSuccess, setPwSuccess] = useState(false);
+
+  const openPasswordModal = () => {
+    setPwCurrent('');
+    setPwNew('');
+    setPwConfirm('');
+    setPwError('');
+    setPwSuccess(false);
+    setShowPasswordModal(true);
+  };
+
+  const handlePasswordChange = async () => {
+    setPwError('');
+    if (!pwCurrent || !pwNew || !pwConfirm) {
+      setPwError('모든 필드를 입력해주세요.');
+      return;
+    }
+    if (pwNew !== pwConfirm) {
+      setPwError('새 비밀번호가 일치하지 않습니다.');
+      return;
+    }
+    if (pwNew.length < 6) {
+      setPwError('새 비밀번호는 최소 6자 이상이어야 합니다.');
+      return;
+    }
+    setPwLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { setPwError('세션이 만료되었습니다. 다시 로그인해주세요.'); return; }
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ currentPassword: pwCurrent, newPassword: pwNew }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setPwError(data.error || '비밀번호 변경에 실패했습니다.'); return; }
+      setPwSuccess(true);
+      console.log('[ChangePassword] Password changed successfully');
+    } catch (err) {
+      console.error('[ChangePassword] Error:', err);
+      setPwError('오류가 발생했습니다. 다시 시도해주세요.');
+    } finally {
+      setPwLoading(false);
+    }
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -73,6 +152,10 @@ export default function Dashboard({ user }: { user: any }) {
     return <HospitalDashboard user={user} profile={profile} />;
   }
 
+  if (profile?.role === 'staff') {
+    return <StaffDashboard user={user} profile={profile} />;
+  }
+
   const getRoleBadge = (role: string) => {
     switch (role) {
       case 'bbg_admin':
@@ -120,12 +203,90 @@ export default function Dashboard({ user }: { user: any }) {
                 병원KB
               </a>
             )}
+            <button
+              onClick={openPasswordModal}
+              className="text-sm text-slate-500 hover:text-slate-700 transition-colors flex items-center gap-1"
+              title="비밀번호 변경"
+            >
+              <Lock className="w-4 h-4" />
+              <span className="hidden sm:inline">비밀번호</span>
+            </button>
             <button onClick={handleLogout} className="text-sm text-slate-500 hover:text-slate-700 transition-colors">
               로그아웃
             </button>
           </div>
         </div>
       </header>
+
+      {/* Password Change Modal */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">비밀번호 변경</h2>
+            {pwSuccess ? (
+              <div className="space-y-4">
+                <p className="text-sm text-emerald-600 font-medium">비밀번호가 성공적으로 변경되었습니다.</p>
+                <button
+                  onClick={() => setShowPasswordModal(false)}
+                  className="w-full py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition-colors"
+                >
+                  닫기
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">현재 비밀번호</label>
+                  <input
+                    type="password"
+                    value={pwCurrent}
+                    onChange={(e) => setPwCurrent(e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                    placeholder="현재 비밀번호 입력"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">새 비밀번호</label>
+                  <input
+                    type="password"
+                    value={pwNew}
+                    onChange={(e) => setPwNew(e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                    placeholder="새 비밀번호 (최소 6자)"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">새 비밀번호 확인</label>
+                  <input
+                    type="password"
+                    value={pwConfirm}
+                    onChange={(e) => setPwConfirm(e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                    placeholder="새 비밀번호 재입력"
+                    onKeyDown={(e) => e.key === 'Enter' && handlePasswordChange()}
+                  />
+                </div>
+                {pwError && <p className="text-xs text-red-500">{pwError}</p>}
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={() => setShowPasswordModal(false)}
+                    className="flex-1 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+                  >
+                    취소
+                  </button>
+                  <button
+                    onClick={handlePasswordChange}
+                    disabled={pwLoading}
+                    className="flex-1 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                  >
+                    {pwLoading ? '변경 중...' : '변경'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Main */}
       <main className="max-w-[1440px] mx-auto px-3 py-4 sm:p-6 space-y-4 sm:space-y-6">
@@ -157,6 +318,9 @@ export default function Dashboard({ user }: { user: any }) {
         )}
         {profile?.role === 'bbg_admin' && (
           <UserManager clients={clients} />
+        )}
+        {profile?.role === 'bbg_admin' && (
+          <AdminDirectiveSection />
         )}
         {(profile?.role === 'bbg_admin' || profile?.role === 'client' || profile?.role === 'hospital') && (
           <MonthlyReport

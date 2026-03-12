@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Lock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import WorkerStatusToggle from './WorkerStatusToggle';
 import TaskList from './TaskList';
@@ -70,6 +71,59 @@ export default function WorkerDashboard({ user, profile }: { user: any; profile:
 
   const [profileState, setProfileState] = useState(profile);
 
+  // Password change modal state
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [pwCurrent, setPwCurrent] = useState('');
+  const [pwNew, setPwNew] = useState('');
+  const [pwConfirm, setPwConfirm] = useState('');
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwError, setPwError] = useState('');
+  const [pwSuccess, setPwSuccess] = useState(false);
+
+  const openPasswordModal = () => {
+    setPwCurrent('');
+    setPwNew('');
+    setPwConfirm('');
+    setPwError('');
+    setPwSuccess(false);
+    setShowPasswordModal(true);
+  };
+
+  const handlePasswordChange = async () => {
+    setPwError('');
+    if (!pwCurrent || !pwNew || !pwConfirm) {
+      setPwError('กรุณากรอกข้อมูลให้ครบทุกช่อง');
+      return;
+    }
+    if (pwNew !== pwConfirm) {
+      setPwError('รหัสผ่านใหม่ไม่ตรงกัน');
+      return;
+    }
+    if (pwNew.length < 6) {
+      setPwError('รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร');
+      return;
+    }
+    setPwLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { setPwError('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่'); return; }
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ currentPassword: pwCurrent, newPassword: pwNew }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setPwError(data.error || 'เปลี่ยนรหัสผ่านไม่สำเร็จ'); return; }
+      setPwSuccess(true);
+      console.log('[ChangePassword] Password changed successfully');
+    } catch (err) {
+      console.error('[ChangePassword] Error:', err);
+      setPwError('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง');
+    } finally {
+      setPwLoading(false);
+    }
+  };
+
   const refreshProfile = async () => {
     const { data } = await supabase
       .from('profiles')
@@ -95,6 +149,13 @@ export default function WorkerDashboard({ user, profile }: { user: any; profile:
               พนักงาน
             </span>
             <button
+              onClick={openPasswordModal}
+              className="text-xs sm:text-sm text-slate-500 hover:text-slate-700 transition-colors flex items-center gap-1 whitespace-nowrap"
+              title="เปลี่ยนรหัสผ่าน"
+            >
+              <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            </button>
+            <button
               onClick={handleLogout}
               className="text-xs sm:text-sm text-slate-500 hover:text-slate-700 transition-colors whitespace-nowrap"
             >
@@ -103,6 +164,76 @@ export default function WorkerDashboard({ user, profile }: { user: any; profile:
           </div>
         </div>
       </header>
+
+      {/* Password Change Modal */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">เปลี่ยนรหัสผ่าน</h2>
+            {pwSuccess ? (
+              <div className="space-y-4">
+                <p className="text-sm text-emerald-600 font-medium">เปลี่ยนรหัสผ่านสำเร็จแล้ว</p>
+                <button
+                  onClick={() => setShowPasswordModal(false)}
+                  className="w-full py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition-colors"
+                >
+                  ปิด
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">รหัสผ่านปัจจุบัน</label>
+                  <input
+                    type="password"
+                    value={pwCurrent}
+                    onChange={(e) => setPwCurrent(e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                    placeholder="กรอกรหัสผ่านปัจจุบัน"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">รหัสผ่านใหม่</label>
+                  <input
+                    type="password"
+                    value={pwNew}
+                    onChange={(e) => setPwNew(e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                    placeholder="รหัสผ่านใหม่ (อย่างน้อย 6 ตัวอักษร)"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">ยืนยันรหัสผ่านใหม่</label>
+                  <input
+                    type="password"
+                    value={pwConfirm}
+                    onChange={(e) => setPwConfirm(e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                    placeholder="กรอกรหัสผ่านใหม่อีกครั้ง"
+                    onKeyDown={(e) => e.key === 'Enter' && handlePasswordChange()}
+                  />
+                </div>
+                {pwError && <p className="text-xs text-red-500">{pwError}</p>}
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={() => setShowPasswordModal(false)}
+                    className="flex-1 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    onClick={handlePasswordChange}
+                    disabled={pwLoading}
+                    className="flex-1 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                  >
+                    {pwLoading ? 'กำลังเปลี่ยน...' : 'เปลี่ยน'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Status + Rating */}
       <div className="px-4 sm:px-6 pt-4 pb-2 space-y-2">

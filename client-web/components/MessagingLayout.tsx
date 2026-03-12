@@ -276,11 +276,9 @@ export default function MessagingLayout({
 
         {/* Right Panel — AI Suggest, desktop only */}
         <div className="hidden lg:block w-72 shrink-0 border-l border-slate-200 overflow-y-auto bg-slate-50">
-          {/* AISuggestPanel currently expects a numeric Zendesk ticketId.
-              It will be adapted to accept a UUID conversationId in a future update.
-              Pass null for now so it renders in its empty/idle state. */}
           <AISuggestPanel
             ticketId={null}
+            conversationId={selectedConversationId || null}
             onUseReply={(text) => setInjectedReply(text)}
             user={{ id: userId }}
             locale={locale}

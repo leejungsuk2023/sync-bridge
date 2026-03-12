@@ -2,6 +2,7 @@
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
+import { fetchHospitalKBContext, extractHospitalPrefix, HospitalKBContext } from '@/lib/hospital-utils';
 
 export interface SuggestionContext {
   conversations: any[];
@@ -9,6 +10,12 @@ export interface SuggestionContext {
   quickReplies: any[];
   glossary: any[];
   politeParticle: string;
+  // Hospital KB
+  hospitalInfo: HospitalKBContext['hospitalInfo'];
+  procedures: HospitalKBContext['procedures'];
+  activePromotions: HospitalKBContext['activePromotions'];
+  doctors: HospitalKBContext['doctors'];
+  successfulCases: HospitalKBContext['successfulCases'];
 }
 
 export interface Suggestion {
@@ -68,17 +75,62 @@ export async function buildSuggestionContext(
     }
   }
 
+  // 6. Fetch ticket tags to extract hospital prefix → load Hospital KB
+  const { data: ticket } = await supabaseAdmin
+    .from('zendesk_tickets')
+    .select('tags')
+    .eq('ticket_id', ticketId)
+    .single();
+
+  const hospitalPrefix = extractHospitalPrefix(ticket?.tags || []);
+
+  let hospitalKB: HospitalKBContext = {
+    hospitalInfo: null,
+    doctors: [],
+    procedures: [],
+    activePromotions: [],
+    successfulCases: [],
+  };
+
+  if (hospitalPrefix) {
+    hospitalKB = await fetchHospitalKBContext(supabaseAdmin, hospitalPrefix);
+  }
+
   return {
     conversations: (conversations || []).reverse(), // chronological order
     analysis: analysis || null,
     quickReplies: quickReplies || [],
     glossary: glossary || [],
     politeParticle,
+    hospitalInfo: hospitalKB.hospitalInfo,
+    procedures: hospitalKB.procedures,
+    activePromotions: hospitalKB.activePromotions,
+    doctors: hospitalKB.doctors,
+    successfulCases: hospitalKB.successfulCases,
   };
 }
 
+// KRW to THB approximate conversion rate
+const KRW_TO_THB = 0.025;
+
+function formatPrice(priceKrw: number): string {
+  const thb = Math.round(priceKrw * KRW_TO_THB);
+  return `${priceKrw.toLocaleString()} KRW (~${thb.toLocaleString()} THB)`;
+}
+
 function buildPrompt(context: SuggestionContext): string {
-  const { conversations, analysis, quickReplies, glossary, politeParticle } = context;
+  const {
+    conversations,
+    analysis,
+    quickReplies,
+    glossary,
+    politeParticle,
+    hospitalInfo,
+    procedures,
+    activePromotions,
+    doctors,
+    successfulCases,
+  } = context;
 
   const conversationText = conversations
     .map((c: any) => {
@@ -103,6 +155,79 @@ Summary: ${analysis.summary || 'N/A'}`
     ? glossary.map((g: any) => `${g.korean} → ${g.thai}`).join('\n')
     : 'No glossary entries.';
 
+  // Hospital KB sections
+  let hospitalSection = '';
+
+  if (hospitalInfo) {
+    const nameLine = [hospitalInfo.display_name_th, hospitalInfo.display_name_ko]
+      .filter(Boolean).join(' / ');
+    hospitalSection += `\n## Hospital Information
+Name: ${nameLine || hospitalInfo.hospital_prefix}`;
+    if (hospitalInfo.address_th || hospitalInfo.address_ko) {
+      hospitalSection += `\nAddress: ${hospitalInfo.address_th || ''}${hospitalInfo.address_ko ? ` / ${hospitalInfo.address_ko}` : ''}`;
+    }
+    if (hospitalInfo.phone) hospitalSection += `\nPhone: ${hospitalInfo.phone}`;
+    if (hospitalInfo.website) hospitalSection += `\nWebsite: ${hospitalInfo.website}`;
+
+    if (doctors.length > 0) {
+      hospitalSection += `\n\n## Doctors`;
+      for (const doc of doctors) {
+        const titlePart = doc.title_th ? ` (${doc.title_th})` : '';
+        const specialties = (doc.specialties || []).join(', ');
+        hospitalSection += `\n- ${doc.name_th || ''}${titlePart}${specialties ? ` — ${specialties}` : ''}`;
+      }
+    }
+
+    if (procedures.length > 0) {
+      hospitalSection += `\n\n## Available Procedures & Prices (KRW / ~THB)`;
+      for (const proc of procedures) {
+        const star = proc.is_popular ? '⭐ ' : '   ';
+        const pricePart = proc.price_min != null
+          ? proc.price_max != null && proc.price_max !== proc.price_min
+            ? `${formatPrice(proc.price_min)}~${formatPrice(proc.price_max)}`
+            : formatPrice(proc.price_min)
+          : 'ราคาตามการปรึกษา';
+        const notePart = proc.price_note ? ` (${proc.price_note})` : '';
+        hospitalSection += `\n${star}${proc.name_th || ''} (${proc.category}) — ${pricePart}${notePart}`;
+      }
+    }
+
+    if (activePromotions.length > 0) {
+      hospitalSection += `\n\n## Current Promotions`;
+      for (const promo of activePromotions) {
+        const until = promo.ends_at ? ` (ถึง ${promo.ends_at})` : ' (ไม่มีกำหนดสิ้นสุด)';
+        hospitalSection += `\n🎉 ${promo.title_th || ''}${until}`;
+        if (promo.description_th) hospitalSection += `\n   ${promo.description_th}`;
+      }
+    }
+
+    // Successful cases: only inject if interested procedure matches and verified cases exist
+    const interestedProcedure = analysis?.interested_procedure || '';
+    const relevantCases = successfulCases.filter(c => {
+      if (!interestedProcedure) return false;
+      const procName = (c.procedure_name_th || '').toLowerCase();
+      const keyword = interestedProcedure.toLowerCase();
+      return procName.includes(keyword) || keyword.includes(procName);
+    });
+
+    if (relevantCases.length > 0) {
+      hospitalSection += `\n\n## Successful Consultation Reference
+아래는 이 병원에서 실제로 수술 예약까지 이어진 상담 사례입니다.
+참고하여 비슷한 패턴으로 응대하세요:`;
+      relevantCases.forEach((c, i) => {
+        hospitalSection += `\n\n[Case ${i + 1}: ${c.procedure_name_th || ''} → ${c.outcome || 'success'}]`;
+        if (c.contextual_summary) hospitalSection += `\nContext: ${c.contextual_summary}`;
+        hospitalSection += `\n--- 전체 대화 ---\n${c.full_conversation.slice(0, 3000)}\n--- 대화 끝 ---`;
+      });
+    }
+
+    hospitalSection += `\n\n## IMPORTANT RULES
+- 가격 질문 시 반드시 위 시술 목록에서 인용
+- 활성 프로모션이 있으면 적극적으로 안내
+- 목록에 없는 시술은 "확인 후 안내드리겠습니다"로 응대
+- 성공 케이스의 응대 패턴(톤, 정보 제공 순서, 클로징 방식)을 참고`;
+  }
+
   return `You are a Thai customer support specialist for BBG (Blue Bridge Global), a medical tourism company connecting Korean hospitals with international patients.
 
 ## Your Role
@@ -122,6 +247,7 @@ ${quickReplyText}
 
 ## Medical Glossary (Korean → Thai)
 ${glossaryText}
+${hospitalSection}
 
 ## Task
 Generate 2-3 suggested replies for the agent to send to the customer.

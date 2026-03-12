@@ -115,6 +115,11 @@ export default function Dashboard({ user }: { user: any }) {
                 Sales
               </a>
             )}
+            {profile?.role === 'bbg_admin' && (
+              <a href="/admin/hospital-kb" className="text-xs sm:text-sm text-indigo-600 hover:text-indigo-800 transition-colors font-medium">
+                병원KB
+              </a>
+            )}
             <button onClick={handleLogout} className="text-sm text-slate-500 hover:text-slate-700 transition-colors">
               로그아웃
             </button>

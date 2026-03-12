@@ -1,10 +1,108 @@
 // LINE Messaging API adapter (raw fetch, no SDK — keeps serverless bundle small)
 
 import crypto from 'crypto';
+import { createClient } from '@supabase/supabase-js';
 import { ChannelAdapter, WebhookEvent } from './types';
 
 const LINE_API_BASE = 'https://api.line.me/v2/bot';
 const LINE_DATA_BASE = 'https://api-data.line.me/v2/bot';
+
+// Extension lookup based on MIME type
+const MIME_TO_EXT: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'video/mp4': 'mp4',
+  'video/mpeg': 'mpeg',
+  'audio/mpeg': 'mp3',
+  'audio/mp4': 'm4a',
+  'audio/ogg': 'ogg',
+  'audio/aac': 'aac',
+  'application/pdf': 'pdf',
+};
+
+/**
+ * Downloads a LINE media message from the LINE Content API and uploads it to
+ * Supabase Storage (bucket: messaging-attachments), returning a public URL.
+ *
+ * This avoids the auth-header problem: <img src> cannot send Bearer tokens,
+ * and LINE content URLs are not publicly accessible without them.
+ *
+ * Falls back to the proxy URL on any error so old messages keep working.
+ */
+async function downloadAndStoreMedia(
+  messageId: string,
+  accessToken: string
+): Promise<string> {
+  const proxyFallback = `/api/channels/line/media?messageId=${messageId}`;
+
+  try {
+    const lineUrl = `${LINE_DATA_BASE}/message/${messageId}/content`;
+    const lineRes = await fetch(lineUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!lineRes.ok) {
+      console.warn(
+        `[LINE] downloadAndStoreMedia: LINE returned ${lineRes.status} for message ${messageId} — falling back to proxy`
+      );
+      return proxyFallback;
+    }
+
+    const contentType = lineRes.headers.get('content-type') ?? 'application/octet-stream';
+    const ext = MIME_TO_EXT[contentType.split(';')[0].trim()] ?? 'bin';
+    const storagePath = `line/${messageId}.${ext}`;
+    const bucket = 'messaging-attachments';
+
+    const arrayBuffer = await lineRes.arrayBuffer();
+    const uint8Array = new Uint8Array(arrayBuffer);
+
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from(bucket)
+      .upload(storagePath, uint8Array, {
+        contentType,
+        upsert: true, // idempotent: same message ID → same path
+      });
+
+    if (uploadError) {
+      console.warn(
+        `[LINE] downloadAndStoreMedia: storage upload failed for ${messageId}:`,
+        uploadError.message,
+        '— falling back to proxy'
+      );
+      return proxyFallback;
+    }
+
+    const { data: publicUrlData } = supabaseAdmin.storage
+      .from(bucket)
+      .getPublicUrl(storagePath);
+
+    const publicUrl = publicUrlData?.publicUrl;
+    if (!publicUrl) {
+      console.warn(
+        `[LINE] downloadAndStoreMedia: could not get public URL for ${storagePath} — falling back to proxy`
+      );
+      return proxyFallback;
+    }
+
+    console.log(`[LINE] Stored media for message ${messageId} → ${publicUrl}`);
+    return publicUrl;
+  } catch (err) {
+    console.error(
+      `[LINE] downloadAndStoreMedia: unexpected error for message ${messageId}:`,
+      err,
+      '— falling back to proxy'
+    );
+    return proxyFallback;
+  }
+}
 
 export class LineAdapter implements ChannelAdapter {
   readonly channelType = 'line' as const;
@@ -141,7 +239,10 @@ export class LineAdapter implements ChannelAdapter {
     const parsed = typeof body === 'string' ? JSON.parse(body) : body;
     const lineEvents: any[] = parsed?.events ?? [];
 
-    return lineEvents.map((ev): WebhookEvent => {
+    // Process events sequentially to avoid hammering LINE's Content API in parallel
+    const results: WebhookEvent[] = [];
+
+    for (const ev of lineEvents) {
       const base = {
         timestamp: ev.timestamp ?? Date.now(),
         channelUserId: ev.source?.userId ?? ev.source?.groupId ?? ev.source?.roomId ?? '',
@@ -149,15 +250,18 @@ export class LineAdapter implements ChannelAdapter {
       };
 
       if (ev.type === 'follow') {
-        return { ...base, type: 'follow' };
+        results.push({ ...base, type: 'follow' });
+        continue;
       }
 
       if (ev.type === 'unfollow') {
-        return { ...base, type: 'unfollow' };
+        results.push({ ...base, type: 'unfollow' });
+        continue;
       }
 
       if (ev.type === 'postback') {
-        return { ...base, type: 'postback' };
+        results.push({ ...base, type: 'postback' });
+        continue;
       }
 
       // message event
@@ -166,14 +270,15 @@ export class LineAdapter implements ChannelAdapter {
 
       switch (lineMsg.type) {
         case 'text':
-          return {
+          results.push({
             ...base,
             type: 'message',
             message: { id: msgId, type: 'text', text: lineMsg.text ?? '' },
-          };
+          });
+          break;
 
         case 'sticker':
-          return {
+          results.push({
             ...base,
             type: 'message',
             message: {
@@ -184,36 +289,42 @@ export class LineAdapter implements ChannelAdapter {
                 stickerId: lineMsg.stickerId,
               },
             },
-          };
+          });
+          break;
 
         case 'image':
         case 'video':
         case 'audio': {
-          // LINE content URLs require auth headers; store a proxied URL so the
-          // browser can load the media without needing Authorization headers.
-          const mediaUrl = `/api/channels/line/media?messageId=${msgId}`;
-          return {
+          // Download the media from LINE and store it in Supabase Storage so
+          // the browser can load it directly via a public URL (no auth header
+          // needed). Falls back to the proxy URL if download/upload fails.
+          const mediaUrl = await downloadAndStoreMedia(msgId, this.accessToken);
+          results.push({
             ...base,
             type: 'message',
             message: { id: msgId, type: lineMsg.type, mediaUrl },
-          };
+          });
+          break;
         }
 
-        case 'file':
-          return {
+        case 'file': {
+          // Same: download and store so LINE can access the file without auth
+          const mediaUrl = await downloadAndStoreMedia(msgId, this.accessToken);
+          results.push({
             ...base,
             type: 'message',
             message: {
               id: msgId,
               type: 'file',
-              // Same proxy pattern for file downloads
-              mediaUrl: `/api/channels/line/media?messageId=${msgId}`,
+              mediaUrl,
               metadata: { fileName: lineMsg.fileName, fileSize: lineMsg.fileSize },
             },
-          };
+          });
+          break;
+        }
 
         case 'location':
-          return {
+          results.push({
             ...base,
             type: 'message',
             message: {
@@ -227,16 +338,20 @@ export class LineAdapter implements ChannelAdapter {
                 longitude: lineMsg.longitude,
               },
             },
-          };
+          });
+          break;
 
         default:
           // Unknown message type — surface as text with raw metadata
-          return {
+          results.push({
             ...base,
             type: 'message',
             message: { id: msgId, type: 'text', text: '', metadata: { raw: lineMsg } },
-          };
+          });
+          break;
       }
-    });
+    }
+
+    return results;
   }
 }

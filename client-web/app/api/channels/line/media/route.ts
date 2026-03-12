@@ -1,11 +1,16 @@
-// LINE media proxy — fetches media content from LINE's API with auth headers
-// and streams it back to the browser so <img src> works without needing
-// an Authorization header on the client side.
+// LINE media proxy — fallback for old messages that still have proxy URLs.
+//
+// New messages store media directly in Supabase Storage (public URL) via
+// downloadAndStoreMedia() in lib/channels/line.ts, so this proxy is only
+// needed for messages received before that change was deployed.
+//
+// Auth requirement removed: <img src> cannot send Authorization headers, so
+// requiring Bearer auth here caused 401s for every image. The route simply
+// validates that messageId is present and proxies the content from LINE.
 //
 // Usage: GET /api/channels/line/media?messageId=<LINE_message_id>
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 
 export const maxDuration = 30;
 
@@ -26,28 +31,7 @@ function withCors(response: NextResponse) {
   return response;
 }
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-async function verifyUser(req: NextRequest): Promise<boolean> {
-  const authHeader = req.headers.get('authorization');
-  if (!authHeader?.startsWith('Bearer ')) return false;
-  const token = authHeader.replace('Bearer ', '');
-  const {
-    data: { user },
-  } = await supabaseAdmin.auth.getUser(token);
-  return !!user;
-}
-
 export async function GET(req: NextRequest) {
-  // Auth check — only logged-in users can proxy LINE media
-  const authed = await verifyUser(req);
-  if (!authed) {
-    return withCors(new NextResponse('Unauthorized', { status: 401 }));
-  }
-
   const { searchParams } = new URL(req.url);
   const messageId = searchParams.get('messageId');
 
@@ -90,7 +74,7 @@ export async function GET(req: NextRequest) {
     headers: {
       'Content-Type': contentType,
       // Cache for 1 hour — LINE content URLs are stable per message ID
-      'Cache-Control': 'private, max-age=3600',
+      'Cache-Control': 'public, max-age=3600',
     },
   });
 

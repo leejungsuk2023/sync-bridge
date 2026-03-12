@@ -36,10 +36,12 @@ export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { t
   const [showMentions, setShowMentions] = useState(false);
   const [mentionFilter, setMentionFilter] = useState('');
   const [annotatingImage, setAnnotatingImage] = useState<{ url: string; name: string } | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const retryingIdsRef = useRef<Set<string>>(new Set());
+  const dragCounterRef = useRef(0);
 
   useEffect(() => {
     const fetchTask = async () => {
@@ -254,6 +256,31 @@ export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { t
     }
   };
 
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (e.dataTransfer.types.includes('Files')) setDragOver(true);
+  };
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) setDragOver(false);
+  };
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    dragCounterRef.current = 0;
+    const file = e.dataTransfer.files?.[0];
+    if (file) await uploadAndSendFile(file);
+  };
+
   const handleAnnotationSend = async (blob: Blob, fileName: string) => {
     const file = new File([blob], fileName, { type: 'image/png' });
     await uploadAndSendFile(file);
@@ -263,7 +290,15 @@ export default function TaskChat({ taskId, userId, onClose, locale = 'ko' }: { t
   const isImageType = (type: string) => type?.startsWith('image/');
 
   return (
-    <div className="bg-white rounded-lg border border-slate-300 overflow-hidden flex flex-col" style={{ height: '480px' }} onPaste={handlePaste}>
+    <div className="bg-white rounded-lg border border-slate-300 overflow-hidden flex flex-col relative" style={{ height: '480px' }} onPaste={handlePaste} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
+      {dragOver && (
+        <div className="absolute inset-0 z-40 bg-indigo-500/20 border-2 border-dashed border-indigo-400 rounded-xl flex items-center justify-center pointer-events-none">
+          <div className="bg-white rounded-xl px-6 py-4 shadow-lg text-center">
+            <p className="text-indigo-600 font-semibold text-sm">{locale === 'th' ? 'วางไฟล์ที่นี่' : '파일을 여기에 놓으세요'}</p>
+            <p className="text-slate-400 text-xs mt-1">{locale === 'th' ? 'รูปภาพ, เอกสาร ฯลฯ' : '이미지, 문서 등'}</p>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="shrink-0 bg-slate-50 border-b border-slate-200 p-4 flex items-start justify-between">
         <div className="min-w-0 flex-1">

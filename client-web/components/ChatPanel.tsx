@@ -81,10 +81,12 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
   const [annotatingImage, setAnnotatingImage] = useState<{ url: string; name: string } | null>(null);
   const [replyTo, setReplyTo] = useState<any>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; message: any } | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const retryingIdsRef = useRef<Set<string>>(new Set());
+  const dragCounterRef = useRef(0);
 
   // Resolve chat task ID for room sentinel
   useEffect(() => {
@@ -409,6 +411,31 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
     }
   };
 
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (e.dataTransfer.types.includes('Files')) setDragOver(true);
+  };
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) setDragOver(false);
+  };
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    dragCounterRef.current = 0;
+    const file = e.dataTransfer.files?.[0];
+    if (file) await uploadAndSendFile(file);
+  };
+
   const handleAnnotationSend = async (blob: Blob, fileName: string) => {
     const file = new File([blob], fileName, { type: 'image/png' });
     await uploadAndSendFile(file);
@@ -470,7 +497,15 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
   const myField = locale === 'th' ? 'content_th' : 'content_ko';
 
   return (
-    <div className="h-full flex flex-col bg-white" onPaste={handlePaste}>
+    <div className="h-full flex flex-col bg-white relative" onPaste={handlePaste} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
+      {dragOver && (
+        <div className="absolute inset-0 z-40 bg-indigo-500/20 border-2 border-dashed border-indigo-400 rounded-xl flex items-center justify-center pointer-events-none">
+          <div className="bg-white rounded-xl px-6 py-4 shadow-lg text-center">
+            <p className="text-indigo-600 font-semibold text-sm">{locale === 'th' ? 'วางไฟล์ที่นี่' : '파일을 여기에 놓으세요'}</p>
+            <p className="text-slate-400 text-xs mt-1">{locale === 'th' ? 'รูปภาพ, เอกสาร ฯลฯ' : '이미지, 문서 등'}</p>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="shrink-0 bg-gradient-to-r from-indigo-50 to-white border-b border-indigo-100 px-4 py-3 flex items-center gap-3">
         {onBack && (

@@ -326,7 +326,7 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
     const mentionedIds = parseMentions(original);
     setInput('');
 
-    const { data: inserted } = await supabase.from('messages').insert({
+    const msgData: any = {
       task_id: chatTaskId,
       sender_id: userId,
       content: original,
@@ -334,8 +334,10 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
       content_th: locale === 'th' ? original : null,
       sender_lang: locale === 'th' ? 'th' : 'ko',
       mentions: mentionedIds,
-      reply_to: replyTo?.id || null,
-    }).select('id').single();
+    };
+    if (replyTo?.id) msgData.reply_to = replyTo.id;
+
+    const { data: inserted } = await supabase.from('messages').insert(msgData).select('id').single();
     setSending(false);
     setReplyTo(null);
 

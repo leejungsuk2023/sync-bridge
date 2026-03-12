@@ -20,11 +20,13 @@ import {
   Layers,
   BookOpen,
   UserCog,
+  ChevronDown,
 } from 'lucide-react';
 
 const WorkerDashboard = dynamic(() => import('./WorkerDashboard'), { ssr: false });
 const HospitalDashboard = dynamic(() => import('./HospitalDashboard'), { ssr: false });
 const StaffDashboard = dynamic(() => import('./StaffDashboard'), { ssr: false });
+const ChatLayout = dynamic(() => import('./ChatLayout'), { ssr: false });
 
 interface NavCard {
   title: string;
@@ -37,7 +39,6 @@ interface NavCard {
 
 const ADMIN_CARDS: NavCard[] = [
   { title: '직원 현황', description: '실시간 직원 상태', url: '/admin/workers', icon: Users, color: 'emerald' },
-  { title: '채팅', description: '업무 채팅', url: '/admin/chat', icon: MessageSquare, color: 'blue' },
   { title: '업무 관리', description: '업무 할당 + 목록', url: '/admin/tasks', icon: ClipboardList, color: 'amber' },
   { title: '직원별 현황', description: '직원별 업무 현황', url: '/admin/calendar', icon: Calendar, color: 'purple' },
   { title: '근무 리포트', description: '오늘 근무 리포트', url: '/admin/time-report', icon: Clock, color: 'orange' },
@@ -53,7 +54,6 @@ const ADMIN_CARDS: NavCard[] = [
 ];
 
 const CLIENT_CARD_URLS = new Set([
-  '/admin/chat',
   '/admin/tasks',
   '/admin/calendar',
   '/admin/time-report',
@@ -107,6 +107,7 @@ export default function Dashboard({ user }: { user: any }) {
   const [workers, setWorkers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [pendingCount, setPendingCount] = useState<number | null>(null);
+  const [chatCollapsed, setChatCollapsed] = useState(false);
 
   // Password change modal state
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -346,8 +347,29 @@ export default function Dashboard({ user }: { user: any }) {
         </div>
       )}
 
-      {/* Main — grid card home */}
-      <main className="max-w-[1440px] mx-auto px-3 py-6 sm:p-8">
+      {/* Main */}
+      <main className="max-w-[1440px] mx-auto px-3 py-4 sm:p-6 space-y-4 sm:space-y-6">
+        {/* Chat — always visible at top */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setChatCollapsed(!chatCollapsed)}
+            className="w-full flex items-center justify-between px-5 py-3 hover:bg-slate-50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-blue-600" />
+              <h2 className="text-sm font-semibold text-slate-900">채팅</h2>
+            </div>
+            <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${chatCollapsed ? '' : 'rotate-180'}`} />
+          </button>
+          {!chatCollapsed && (
+            <div className="border-t border-slate-100 p-4">
+              <ChatLayout userId={user.id} clientId={profile?.client_id} />
+            </div>
+          )}
+        </div>
+
+        {/* Grid cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
           {visibleCards.map((card) => (
             <NavCardItem key={card.url} card={card} />

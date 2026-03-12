@@ -24,7 +24,7 @@ export default function UserManager({ clients }: { clients: any[] }) {
     email: '',
     password: '',
     displayName: '',
-    role: 'worker' as 'client' | 'worker',
+    role: 'worker' as 'client' | 'worker' | 'staff',
     clientId: '',
   });
 
@@ -118,7 +118,9 @@ export default function UserManager({ clients }: { clients: any[] }) {
       case 'client':
         return <span className="px-2.5 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">병원</span>;
       case 'worker':
-        return <span className="px-2.5 py-1 bg-emerald-100 text-emerald-700 text-xs font-medium rounded-full">직원</span>;
+        return <span className="px-2.5 py-1 bg-emerald-100 text-emerald-700 text-xs font-medium rounded-full">태국직원</span>;
+      case 'staff':
+        return <span className="px-2.5 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded-full">한국직원</span>;
       default:
         return <span className="px-2.5 py-1 bg-slate-100 text-slate-500 text-xs font-medium rounded-full">{role}</span>;
     }
@@ -135,7 +137,7 @@ export default function UserManager({ clients }: { clients: any[] }) {
       >
         <div>
           <h2 className="text-lg font-semibold text-slate-900 text-left">계정 관리</h2>
-          <p className="text-xs text-slate-500 mt-1 text-left">병원(client) 또는 직원(worker) 계정을 생성하고 관리합니다.</p>
+          <p className="text-xs text-slate-500 mt-1 text-left">한국직원(staff), 태국직원(worker), 병원(client) 계정을 생성하고 관리합니다.</p>
         </div>
         <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform shrink-0 ${collapsed ? '' : 'rotate-180'}`} />
       </button>
@@ -179,26 +181,29 @@ export default function UserManager({ clients }: { clients: any[] }) {
             <label className="block text-sm font-medium text-slate-700">역할</label>
             <select
               value={form.role}
-              onChange={e => setForm(f => ({ ...f, role: e.target.value as 'client' | 'worker' }))}
+              onChange={e => setForm(f => ({ ...f, role: e.target.value as 'client' | 'worker' | 'staff' }))}
               className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-shadow bg-white"
             >
-              <option value="worker">직원 (Worker)</option>
+              <option value="worker">태국 직원 (Worker)</option>
+              <option value="staff">한국 직원 (Staff)</option>
               <option value="client">병원 (Client)</option>
             </select>
           </div>
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-slate-700">소속 병원</label>
-            <select
-              value={form.clientId}
-              onChange={e => setForm(f => ({ ...f, clientId: e.target.value }))}
-              className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-shadow bg-white"
-            >
-              <option value="">선택하세요</option>
-              {clients.map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </div>
+          {form.role !== 'staff' && (
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-slate-700">소속 병원</label>
+              <select
+                value={form.clientId}
+                onChange={e => setForm(f => ({ ...f, clientId: e.target.value }))}
+                className="w-full h-10 px-3 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-shadow bg-white"
+              >
+                <option value="">선택하세요</option>
+                {clients.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {error && (

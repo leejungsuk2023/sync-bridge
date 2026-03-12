@@ -53,8 +53,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: '이메일, 비밀번호, 역할은 필수입니다.' }, { status: 400 });
   }
 
-  if (!['client', 'worker'].includes(role)) {
-    return NextResponse.json({ error: '역할은 client 또는 worker만 가능합니다.' }, { status: 400 });
+  if (!['client', 'worker', 'staff'].includes(role)) {
+    return NextResponse.json({ error: '역할은 client, worker, staff만 가능합니다.' }, { status: 400 });
   }
 
   if (password.length < 6) {
@@ -75,13 +75,18 @@ export async function POST(req: NextRequest) {
   const userId = authData.user.id;
 
   // 2. profiles 생성
-  const { error: profileError } = await getSupabaseAdmin().from('profiles').insert({
+  const profileData: any = {
     id: userId,
     email,
     display_name: displayName || email.split('@')[0],
     role,
-    client_id: clientId || null,
-  });
+    client_id: role === 'staff' ? null : (clientId || null),
+  };
+  if (role === 'staff') {
+    profileData.hierarchy_level = 40; // default: member level
+  }
+
+  const { error: profileError } = await getSupabaseAdmin().from('profiles').insert(profileData);
 
   if (profileError) {
     // 롤백: auth user 삭제

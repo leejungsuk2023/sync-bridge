@@ -20,7 +20,7 @@ export default function TasksPage() {
       if (!authUser) { router.push('/app'); return; }
 
       const { data: profileData } = await supabase.from('profiles').select('*').eq('id', authUser.id).single();
-      if (!profileData || (profileData.role !== 'bbg_admin' && profileData.role !== 'client')) {
+      if (!profileData || (profileData.role !== 'bbg_admin' && profileData.role !== 'client' && profileData.role !== 'staff')) {
         router.push('/app');
         return;
       }
@@ -31,6 +31,8 @@ export default function TasksPage() {
       if (profileData.role === 'bbg_admin') {
         const { data: workersData } = await supabase.from('profiles').select('*, clients(name)').eq('role', 'worker');
         setWorkers(workersData || []);
+      } else if (profileData.role === 'staff') {
+        // staff uses useAssignableAPI to fetch assignable users from the API
       } else if (profileData.client_id) {
         const { data: workersData } = await supabase.from('profiles').select('*, clients(name)').eq('role', 'worker').eq('client_id', profileData.client_id);
         setWorkers(workersData || []);
@@ -65,8 +67,17 @@ export default function TasksPage() {
       </header>
 
       <main className="max-w-[1440px] mx-auto px-3 py-4 sm:p-6 space-y-4 sm:space-y-6">
-        <TaskAssign workers={workers} clientId={profile?.client_id} />
-        <TaskList clientId={profile?.client_id} userId={user.id} canComplete />
+        {(profile?.role === 'bbg_admin' || profile?.role === 'staff') ? (
+          <TaskAssign workers={workers} clientId={profile?.client_id} useAssignableAPI />
+        ) : (
+          <TaskAssign workers={workers} clientId={profile?.client_id} />
+        )}
+        <TaskList
+          clientId={profile?.client_id}
+          userId={user.id}
+          canComplete
+          {...(profile?.role === 'staff' ? { view: 'assigned_by_me' } : {})}
+        />
       </main>
     </div>
   );

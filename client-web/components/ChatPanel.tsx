@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Send, Users, Paperclip, FileText, Download, X, ArrowLeft, Pencil } from 'lucide-react';
+import { Send, Users, Paperclip, FileText, Download, X, ArrowLeft, Pencil, CornerUpLeft } from 'lucide-react';
 import ImageAnnotator from './ImageAnnotator';
 
 interface Member {
@@ -34,11 +34,17 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
     manager: 'ผู้จัดการ',
     offline: 'ออฟไลน์',
     onlineCount: (n: number) => `${n} คนออนไลน์`,
-    worker: 'พนักงาน',
+    worker: 'พนักงานไทย',
+    staff: 'พนักงาน',
+    bbg_admin: 'ผู้จัดการ',
+    client: 'โรงพยาบาล',
     attachFile: 'แนบไฟล์',
     fileSizeError: 'ขนาดไฟล์ต้องไม่เกิน 10MB',
     uploadError: 'อัปโหลดไฟล์ไม่สำเร็จ: ',
     me: '(ฉัน)',
+    reply: 'ตอบกลับ',
+    replyingTo: 'ตอบกลับถึง',
+    cancel: 'ยกเลิก',
   } : {
     noMessages: '메시지가 없습니다. 첫 메시지를 보내보세요.',
     inputPlaceholder: '메시지 입력... (@로 멘션)',
@@ -48,11 +54,17 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
     manager: '관리자',
     offline: '오프라인',
     onlineCount: (n: number) => `${n}명 접속중`,
-    worker: '직원',
+    worker: '태국직원',
+    staff: '직원',
+    bbg_admin: '관리자',
+    client: '병원',
     attachFile: '파일 첨부',
     fileSizeError: '파일 크기는 10MB 이하만 가능합니다.',
     uploadError: '파일 업로드 실패: ',
     me: '(나)',
+    reply: '답장',
+    replyingTo: '답장',
+    cancel: '취소',
   };
 
   const [chatTaskId, setChatTaskId] = useState<string | null>(taskIdProp || null);
@@ -67,6 +79,8 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
   const [showMentions, setShowMentions] = useState(false);
   const [mentionFilter, setMentionFilter] = useState('');
   const [annotatingImage, setAnnotatingImage] = useState<{ url: string; name: string } | null>(null);
+  const [replyTo, setReplyTo] = useState<any>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; message: any } | null>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -101,12 +115,21 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
 
   // Load members + online status
   const fetchMembers = useCallback(async () => {
-    if (!clientId) return;
-    const { data: allProfiles } = await supabase
-      .from('profiles')
-      .select('id, display_name, email, role')
-      .eq('client_id', clientId);
-    if (!allProfiles) return;
+    // Fetch client's workers + ALL staff/bbg_admin users in parallel
+    const [clientProfilesRes, staffProfilesRes] = await Promise.all([
+      clientId
+        ? supabase.from('profiles').select('id, display_name, email, role').eq('client_id', clientId)
+        : { data: [] as any[] },
+      supabase.from('profiles').select('id, display_name, email, role').in('role', ['staff', 'bbg_admin']),
+    ]);
+
+    // Merge and deduplicate by id
+    const allMap = new Map<string, any>();
+    (clientProfilesRes.data || []).forEach((p: any) => allMap.set(p.id, p));
+    (staffProfilesRes.data || []).forEach((p: any) => allMap.set(p.id, p));
+    const allProfiles = Array.from(allMap.values());
+
+    if (allProfiles.length === 0) return;
 
     const workerIds = allProfiles.filter(p => p.role === 'worker').map(p => p.id);
     const statusMap: Record<string, string> = {};
@@ -304,8 +327,10 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
       content_th: locale === 'th' ? original : null,
       sender_lang: locale === 'th' ? 'th' : 'ko',
       mentions: mentionedIds,
+      reply_to: replyTo?.id || null,
     }).select('id').single();
     setSending(false);
+    setReplyTo(null);
 
     if (inserted?.id) {
       const targetLang = locale === 'th' ? 'ko' : 'th';
@@ -385,6 +410,17 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
     setAnnotatingImage(null);
   };
 
+  const handleContextMenu = (e: React.MouseEvent, message: any) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, message });
+  };
+
+  useEffect(() => {
+    const close = () => setContextMenu(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, []);
+
   const isImageType = (type: string) => type?.startsWith('image/');
 
   const getStatusDot = (status: string) => {
@@ -402,6 +438,16 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
       case 'away': return L.away;
       case 'client': return L.manager;
       default: return L.offline;
+    }
+  };
+
+  const getRoleLabel = (role: string) => {
+    switch (role) {
+      case 'worker': return L.worker;
+      case 'staff': return L.staff;
+      case 'bbg_admin': return L.bbg_admin;
+      case 'client': return L.client;
+      default: return role;
     }
   };
 
@@ -513,10 +559,32 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
             }
           }
           return (
-            <div key={m.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
+            <div key={m.id} id={`msg-${m.id}`} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}
+              onContextMenu={(e) => handleContextMenu(e, m)}>
               {!isMine && (
                 <span className="text-[11px] font-medium text-indigo-600 mb-0.5 ml-1">{senderName}</span>
               )}
+              {m.reply_to && (() => {
+                const replied = messages.find(msg => msg.id === m.reply_to);
+                if (!replied) return null;
+                const repliedName = profiles[replied.sender_id] || '...';
+                return (
+                  <div
+                    className={`max-w-[70%] mb-1 px-3 py-1.5 rounded-lg text-xs cursor-pointer ${
+                      isMine ? 'bg-indigo-400/30 text-indigo-100' : 'bg-slate-200/70 text-slate-600'
+                    }`}
+                    onClick={() => {
+                      const el = document.getElementById(`msg-${replied.id}`);
+                      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      el?.classList.add('ring-2', 'ring-indigo-400');
+                      setTimeout(() => el?.classList.remove('ring-2', 'ring-indigo-400'), 2000);
+                    }}
+                  >
+                    <span className="font-medium">{repliedName}</span>
+                    <p className="truncate">{replied.content?.slice(0, 60)}</p>
+                  </div>
+                );
+              })()}
               <div className={`max-w-[70%] rounded-lg px-4 py-2.5 ${
                 isMine ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-900'
               }`}>
@@ -564,6 +632,27 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
         })}
       </div>
 
+      {/* Reply preview bar */}
+      {replyTo && (
+        <div className="shrink-0 px-4 py-2 bg-indigo-50 border-t border-indigo-100 flex items-center gap-2">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium text-indigo-600">
+              {L.replyingTo} {profiles[replyTo.sender_id] || '...'}
+            </p>
+            <p className="text-xs text-slate-500 truncate">
+              {replyTo.content?.slice(0, 80)}{replyTo.content?.length > 80 ? '...' : ''}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setReplyTo(null)}
+            className="text-slate-400 hover:text-slate-600"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Input */}
       <div className="shrink-0 border-t border-slate-200 p-3 bg-white flex gap-2">
         <input
@@ -595,7 +684,7 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
                   className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 flex items-center gap-2 transition-colors">
                   <span className={`w-2 h-2 rounded-full ${getStatusDot(m.status)}`} />
                   <span className="font-medium text-slate-700">{m.display_name}</span>
-                  <span className="text-xs text-slate-400">{m.role === 'worker' ? L.worker : L.manager}</span>
+                  <span className="text-xs text-slate-400">{getRoleLabel(m.role)}</span>
                 </button>
               ))}
             </div>
@@ -633,6 +722,28 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
           onSend={handleAnnotationSend}
           onClose={() => setAnnotatingImage(null)}
         />
+      )}
+
+      {/* Context menu */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-white rounded-lg shadow-xl border border-slate-200 py-1 min-w-[120px]"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+        >
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setReplyTo(contextMenu.message);
+              setContextMenu(null);
+              inputRef.current?.focus();
+            }}
+            className="w-full text-left px-4 py-2 text-sm hover:bg-slate-100 flex items-center gap-2"
+          >
+            <CornerUpLeft className="w-4 h-4" />
+            {L.reply}
+          </button>
+        </div>
       )}
     </div>
   );

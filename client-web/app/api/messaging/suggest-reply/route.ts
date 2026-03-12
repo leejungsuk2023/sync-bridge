@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
       .from('conversation_analyses')
       .select('*')
       .eq('conversation_id', conversation_id)
-      .single();
+      .maybeSingle();
 
     // 4. Fetch quick replies for context
     const { data: quickReplies } = await supabaseAdmin
@@ -116,8 +116,8 @@ export async function POST(req: NextRequest) {
       .join('\n');
 
     const customerInfo = customer || analysis
-      ? `Customer: ${customer?.name || analysis?.customer_name || 'Unknown'}
-Phone: ${customer?.phone || analysis?.customer_phone || 'N/A'}
+      ? `Customer: ${(customer as any)?.display_name || 'Unknown'}
+Phone: ${(customer as any)?.phone || 'N/A'}
 Interested procedure: ${analysis?.interested_procedure || 'N/A'}
 Followup reason: ${analysis?.followup_reason || 'N/A'}
 Summary: ${analysis?.summary || 'N/A'}`

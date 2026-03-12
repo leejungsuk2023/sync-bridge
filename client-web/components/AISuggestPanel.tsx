@@ -212,24 +212,24 @@ export default function AISuggestPanel({ ticketId, conversationId, onUseReply, u
           // Messaging flow: fetch from conversation_analyses and channel_conversations -> customers
           const { data: analysis } = await supabase
             .from('conversation_analyses')
-            .select('customer_name, interested_procedure')
+            .select('interested_procedure')
             .eq('conversation_id', conversationId)
             .maybeSingle();
 
           const { data: conversation } = await supabase
             .from('channel_conversations')
-            .select('platform, customers(name)')
+            .select('channel_type, customers(display_name)')
             .eq('id', conversationId)
             .single();
 
-          const customerName = analysis?.customer_name
-            || (conversation?.customers as any)?.name
+          const customerName =
+            (conversation?.customers as any)?.display_name
             || null;
 
           setCustomerInfo({
             customer_name: customerName,
             interested_procedure: analysis?.interested_procedure || null,
-            channel: conversation?.platform || null,
+            channel: (conversation as any)?.channel_type || null,
             ticket_count: 1,
           });
         } else if (ticketId) {

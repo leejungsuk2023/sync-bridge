@@ -61,6 +61,11 @@ const CLIENT_CARD_URLS = new Set([
   '/admin/reports',
 ]);
 
+const STAFF_EXCLUDED_URLS = new Set([
+  '/admin/calendar',
+  '/admin/users',
+]);
+
 const COLOR_MAP: Record<string, { bg: string; hover: string; iconBg: string; iconHoverBg: string; iconText: string; border: string; summaryText: string }> = {
   emerald: { bg: 'bg-white', hover: 'hover:border-emerald-200', iconBg: 'bg-emerald-50', iconHoverBg: 'group-hover:bg-emerald-100', iconText: 'text-emerald-600', border: 'border-slate-200', summaryText: 'text-emerald-600' },
   blue:    { bg: 'bg-white', hover: 'hover:border-blue-200',    iconBg: 'bg-blue-50',    iconHoverBg: 'group-hover:bg-blue-100',    iconText: 'text-blue-600',    border: 'border-slate-200', summaryText: 'text-blue-600' },
@@ -170,7 +175,7 @@ export default function Dashboard({ user }: { user: any }) {
       }
       setProfile(profileData);
 
-      if (profileData?.role === 'bbg_admin') {
+      if (profileData?.role === 'bbg_admin' || profileData?.role === 'staff') {
         const [workersRes, pendingRes] = await Promise.all([
           supabase.from('profiles').select('*, clients(name)').eq('role', 'worker'),
           supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
@@ -213,9 +218,7 @@ export default function Dashboard({ user }: { user: any }) {
     return <HospitalDashboard user={user} profile={profile} />;
   }
 
-  if (profile?.role === 'staff') {
-    return <StaffDashboard user={user} profile={profile} />;
-  }
+  // staff uses same grid dashboard as bbg_admin (filtered cards)
 
   const getRoleBadge = (role: string) => {
     switch (role) {
@@ -225,6 +228,8 @@ export default function Dashboard({ user }: { user: any }) {
         return <span className="px-2.5 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">병원</span>;
       case 'worker':
         return <span className="px-2.5 py-1 bg-emerald-100 text-emerald-700 text-xs font-medium rounded-full">직원</span>;
+      case 'staff':
+        return <span className="px-2.5 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded-full">한국직원</span>;
       case 'hospital':
         return <span className="px-2.5 py-1 bg-teal-100 text-teal-700 text-xs font-medium rounded-full">파트너 병원</span>;
       default:
@@ -248,7 +253,9 @@ export default function Dashboard({ user }: { user: any }) {
   const visibleCards =
     profile?.role === 'bbg_admin'
       ? cards
-      : cards.filter((c) => CLIENT_CARD_URLS.has(c.url));
+      : profile?.role === 'staff'
+        ? cards.filter((c) => !STAFF_EXCLUDED_URLS.has(c.url))
+        : cards.filter((c) => CLIENT_CARD_URLS.has(c.url));
 
   return (
     <div className="min-h-screen bg-slate-50">

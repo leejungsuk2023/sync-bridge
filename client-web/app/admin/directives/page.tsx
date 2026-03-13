@@ -14,6 +14,7 @@ const AdminDirectiveTable = dynamic(
 export default function DirectivesPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<any>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -21,11 +22,12 @@ export default function DirectivesPage() {
       if (!user) { router.push('/app'); return; }
 
       const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-      if (!profileData || profileData.role !== 'bbg_admin') {
+      if (!profileData || (profileData.role !== 'bbg_admin' && profileData.role !== 'staff')) {
         router.push('/app');
         return;
       }
 
+      setProfile(profileData);
       setLoading(false);
     };
     loadData();
@@ -55,7 +57,7 @@ export default function DirectivesPage() {
       </header>
 
       <main className="max-w-[1440px] mx-auto px-3 py-4 sm:p-6">
-        <AdminDirectiveTable />
+        <AdminDirectiveTable staffOnly={profile?.role === 'staff'} />
       </main>
     </div>
   );

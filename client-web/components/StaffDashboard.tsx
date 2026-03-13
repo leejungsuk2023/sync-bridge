@@ -495,25 +495,33 @@ function StaffTaskList({
 // ----------------------------------------------------------------
 // AdminDirectiveTable: bbg_admin 지시현황 테이블 (별도 export)
 // ----------------------------------------------------------------
-export function AdminDirectiveTable() {
+export function AdminDirectiveTable({ staffOnly = false }: { staffOnly?: boolean }) {
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterAssigner, setFilterAssigner] = useState('');
   const [filterAssignee, setFilterAssignee] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [myId, setMyId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchAll = async () => {
       const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) setMyId(session.user.id);
       const res = await fetch('/api/tasks?view=all', {
         headers: { Authorization: `Bearer ${session?.access_token}` },
       });
       const data = await res.json();
-      setTasks(data.tasks || []);
+      let allTasks = data.tasks || [];
+      // Staff only sees tasks they created or are assigned to
+      if (staffOnly && session?.user?.id) {
+        const uid = session.user.id;
+        allTasks = allTasks.filter((t: any) => t.created_by === uid || t.assignee_id === uid);
+      }
+      setTasks(allTasks);
       setLoading(false);
     };
     fetchAll();
-  }, []);
+  }, [staffOnly]);
 
   const assigners = Array.from(new Map(
     tasks

@@ -35,7 +35,7 @@ async function verifyUser(req: NextRequest): Promise<{ role: string; userId: str
     .select('role')
     .eq('id', user.id)
     .single();
-  if (!profile || (profile.role !== 'bbg_admin' && profile.role !== 'worker')) return null;
+  if (!profile || (profile.role !== 'bbg_admin' && profile.role !== 'staff' && profile.role !== 'worker')) return null;
   return { role: profile.role, userId: user.id };
 }
 

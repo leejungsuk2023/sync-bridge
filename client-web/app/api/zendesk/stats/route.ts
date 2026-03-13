@@ -36,7 +36,7 @@ async function verifyUser(req: NextRequest): Promise<{ role: string; hospitalPre
     .eq('id', user.id)
     .single();
   if (!profile) return null;
-  if (profile.role === 'bbg_admin') return { role: profile.role };
+  if (profile.role === 'bbg_admin' || profile.role === 'staff') return { role: profile.role };
   if (profile.role === 'hospital' && profile.hospital_prefix) {
     return { role: profile.role, hospitalPrefix: profile.hospital_prefix };
   }

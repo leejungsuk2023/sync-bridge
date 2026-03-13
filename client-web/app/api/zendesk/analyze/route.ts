@@ -36,7 +36,7 @@ async function verifyAdmin(req: NextRequest) {
     .select('role')
     .eq('id', user.id)
     .single();
-  return profile?.role === 'bbg_admin' || profile?.role === 'hospital';
+  return profile?.role === 'bbg_admin' || profile?.role === 'staff' || profile?.role === 'hospital';
 }
 
 function buildAnalysisPrompt(ticket: any): string {

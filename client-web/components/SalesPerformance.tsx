@@ -310,8 +310,8 @@ export default function SalesPerformance() {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-red-200 p-6 text-center">
         <AlertTriangle className="w-8 h-8 mx-auto mb-2 text-red-400" />
-        <p className="text-red-600 font-medium">세션이 만료되었습니다</p>
-        <p className="text-sm text-slate-500 mt-1">로그아웃 후 다시 로그인해 주세요.</p>
+        <p className="text-red-600 font-medium">접근 권한이 없습니다</p>
+        <p className="text-sm text-slate-500 mt-1">이 페이지에 접근할 권한이 없습니다.</p>
       </div>
     );
   }

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Send, Users, Paperclip, FileText, Download, X, ArrowLeft, Pencil, CornerUpLeft } from 'lucide-react';
+import { Send, Users, Paperclip, FileText, Download, X, ArrowLeft, Pencil, CornerUpLeft, Trash2 } from 'lucide-react';
 import ImageAnnotator from './ImageAnnotator';
 
 interface Member {
@@ -45,6 +45,8 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
     reply: 'ตอบกลับ',
     replyingTo: 'ตอบกลับถึง',
     cancel: 'ยกเลิก',
+    deleteMsg: 'ลบข้อความ',
+    deleteConfirm: 'ลบข้อความนี้หรือไม่?',
   } : {
     noMessages: '메시지가 없습니다. 첫 메시지를 보내보세요.',
     inputPlaceholder: '메시지 입력... (@로 멘션)',
@@ -65,6 +67,8 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
     reply: '답장',
     replyingTo: '답장',
     cancel: '취소',
+    deleteMsg: '삭제',
+    deleteConfirm: '이 메시지를 삭제할까요?',
   };
 
   const [chatTaskId, setChatTaskId] = useState<string | null>(taskIdProp || null);
@@ -449,6 +453,17 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
     setContextMenu({ x: e.clientX, y: e.clientY, message });
   };
 
+  const deleteMessage = async (msgId: string) => {
+    if (!confirm(L.deleteConfirm)) return;
+    const { error } = await supabase.from('messages').delete().eq('id', msgId).eq('sender_id', userId);
+    if (error) {
+      console.error('[ChatPanel] delete error:', error.message);
+    } else {
+      setMessages(prev => prev.filter(m => m.id !== msgId));
+    }
+    setContextMenu(null);
+  };
+
   useEffect(() => {
     const close = () => setContextMenu(null);
     document.addEventListener('click', close);
@@ -785,6 +800,19 @@ export default function ChatPanel({ userId, clientId, roomSentinel, taskId: task
             <CornerUpLeft className="w-4 h-4" />
             {L.reply}
           </button>
+          {contextMenu.message.sender_id === userId && (
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                deleteMessage(contextMenu.message.id);
+              }}
+              className="w-full text-left px-4 py-2 text-sm hover:bg-red-50 text-red-600 flex items-center gap-2"
+            >
+              <Trash2 className="w-4 h-4" />
+              {L.deleteMsg}
+            </button>
+          )}
         </div>
       )}
     </div>

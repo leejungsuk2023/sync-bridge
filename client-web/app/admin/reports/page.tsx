@@ -20,7 +20,7 @@ export default function ReportsPage() {
       if (!authUser) { router.push('/app'); return; }
 
       const { data: profileData } = await supabase.from('profiles').select('*').eq('id', authUser.id).single();
-      if (!profileData || (profileData.role !== 'bbg_admin' && profileData.role !== 'client' && profileData.role !== 'hospital')) {
+      if (!profileData || (profileData.role !== 'bbg_admin' && profileData.role !== 'client' && profileData.role !== 'hospital' && profileData.role !== 'staff')) {
         router.push('/app');
         return;
       }

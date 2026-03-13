@@ -19,7 +19,7 @@ export default function GlossaryPage() {
       if (!authUser) { router.push('/app'); return; }
 
       const { data: profileData } = await supabase.from('profiles').select('*').eq('id', authUser.id).single();
-      if (!profileData || profileData.role !== 'bbg_admin') {
+      if (!profileData || (profileData.role !== 'bbg_admin' && profileData.role !== 'staff')) {
         router.push('/app');
         return;
       }

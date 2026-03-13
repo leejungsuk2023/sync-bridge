@@ -133,7 +133,7 @@ export default function MonitoringPage() {
         .select('*')
         .eq('id', session.user.id)
         .single();
-      if (profileData?.role !== 'bbg_admin') {
+      if (profileData?.role !== 'bbg_admin' && profileData?.role !== 'staff') {
         router.push('/');
         return;
       }

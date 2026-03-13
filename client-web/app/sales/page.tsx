@@ -24,7 +24,7 @@ export default function SalesPage() {
         .select('*')
         .eq('id', session.user.id)
         .single();
-      if (profileData?.role !== 'bbg_admin') {
+      if (profileData?.role !== 'bbg_admin' && profileData?.role !== 'staff') {
         router.push('/app');
         return;
       }

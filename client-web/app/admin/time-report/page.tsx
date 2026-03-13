@@ -20,7 +20,7 @@ export default function TimeReportPage() {
       if (!user) { router.push('/app'); return; }
 
       const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-      if (!profileData || (profileData.role !== 'bbg_admin' && profileData.role !== 'client')) {
+      if (!profileData || (profileData.role !== 'bbg_admin' && profileData.role !== 'client' && profileData.role !== 'staff')) {
         router.push('/app');
         return;
       }

@@ -13,16 +13,16 @@ export default function SalesPage() {
 
   useEffect(() => {
     const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) {
         router.push('/app');
         return;
       }
-      setUser(session.user);
+      setUser(authUser);
       const { data: profileData } = await supabase
         .from('profiles')
         .select('*')
-        .eq('id', session.user.id)
+        .eq('id', authUser.id)
         .single();
       if (profileData?.role !== 'bbg_admin' && profileData?.role !== 'staff') {
         router.push('/app');

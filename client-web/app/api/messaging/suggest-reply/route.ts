@@ -76,6 +76,38 @@ export async function POST(req: NextRequest) {
 
     const customer = conversation?.customers || null;
 
+    // 2b. Fetch hospital procedures, promotions, and info for product/service knowledge
+    let hospitalProcedures: any[] = [];
+    let hospitalPromotions: any[] = [];
+    let hospitalInfo: any = null;
+    const hospitalPrefix = conversation?.hospital_prefix;
+    if (hospitalPrefix) {
+      const { data: fetchedHospitalInfo } = await supabaseAdmin
+        .from('hospital_info')
+        .select('id, operating_hours, display_name_th, website')
+        .eq('hospital_prefix', hospitalPrefix)
+        .maybeSingle();
+      hospitalInfo = fetchedHospitalInfo;
+
+      if (hospitalInfo?.id) {
+        const [{ data: procedures }, { data: promotions }] = await Promise.all([
+          supabaseAdmin
+            .from('hospital_procedures')
+            .select('name_th, description_th, price_min, price_max, price_currency, price_note, category, is_popular')
+            .eq('hospital_id', hospitalInfo.id)
+            .eq('is_active', true)
+            .order('sort_order'),
+          supabaseAdmin
+            .from('hospital_promotions')
+            .select('title_th, description_th, discount_type, discount_value')
+            .eq('hospital_id', hospitalInfo.id)
+            .eq('is_active', true),
+        ]);
+        hospitalProcedures = procedures || [];
+        hospitalPromotions = promotions || [];
+      }
+    }
+
     // 3. Fetch conversation analysis if exists
     const { data: analysis } = await supabaseAdmin
       .from('conversation_analyses')
@@ -139,10 +171,15 @@ export async function POST(req: NextRequest) {
           console.log(`[MessagingSuggestReply] RAG: got query embedding (dim=${queryEmbedding.length})`);
 
           if (queryEmbedding.length > 0) {
-            const { data: cases } = await supabaseAdmin
+            let caseQuery = supabaseAdmin
               .from('case_index')
               .select('id, procedure_category, hospital_name, key_turns, embedding')
               .eq('status', 'indexed');
+            // Filter RAG to Korean Diet if this is a Korean Diet conversation
+            if (hospitalPrefix === 'koreandiet') {
+              caseQuery = caseQuery.eq('hospital_name', 'Korean Diet');
+            }
+            const { data: cases } = await caseQuery;
 
             const indexedCases = cases || [];
             console.log(`[MessagingSuggestReply] RAG: comparing against ${indexedCases.length} indexed cases`);
@@ -198,6 +235,66 @@ export async function POST(req: NextRequest) {
       console.error('[MessagingSuggestReply] RAG: failed, proceeding without RAG context:', ragErr?.message || ragErr);
     }
 
+    // Build KB text from hospital procedures/promotions
+    const kbText = (() => {
+      const parts: string[] = [];
+      if (hospitalProcedures.length > 0) {
+        parts.push('### สินค้า/บริการ');
+        for (const p of hospitalProcedures) {
+          const priceStr = p.price_min && p.price_max
+            ? p.price_min === p.price_max
+              ? `${p.price_min.toLocaleString()} ${p.price_currency || 'KRW'}`
+              : `${p.price_min.toLocaleString()} – ${p.price_max.toLocaleString()} ${p.price_currency || 'KRW'}`
+            : '';
+          const popular = p.is_popular ? ' ⭐' : '';
+          parts.push(`[${p.category || 'General'}]${popular} ${p.name_th}`);
+          if (priceStr) parts.push(`  ราคา: ${priceStr}${p.price_note ? ` (${p.price_note})` : ''}`);
+          if (p.description_th) parts.push(`  รายละเอียด: ${p.description_th.slice(0, 400)}`);
+        }
+      }
+      if (hospitalPromotions.length > 0) {
+        parts.push('\n### โปรโมชั่นปัจจุบัน');
+        for (const promo of hospitalPromotions) {
+          parts.push(`🎉 ${promo.title_th}`);
+          if (promo.description_th) parts.push(`  ${promo.description_th}`);
+          if (promo.discount_value) {
+            const discountLabel = promo.discount_type === 'percent'
+              ? `ลด ${promo.discount_value}%`
+              : `ลด ${promo.discount_value.toLocaleString()} วอน`;
+            parts.push(`  ส่วนลด: ${discountLabel}`);
+          }
+        }
+      }
+      return parts.join('\n');
+    })();
+
+    const paymentText = (() => {
+      const hours = hospitalInfo?.operating_hours as any;
+      if (!hours) return '';
+      const parts: string[] = ['## ข้อมูลการชำระเงิน'];
+      if (hours.payment_korea) {
+        const pk = hours.payment_korea;
+        parts.push(`🇰🇷 จัดส่งสินค้าที่เกาหลี ชำระโดยเงินวอน`);
+        parts.push(`ชื่อบัญชี: ${pk.account_name}`);
+        parts.push(`ธนาคาร: ${pk.bank}`);
+        parts.push(`เลขที่บัญชี: ${pk.account_number}`);
+      }
+      if (hours.payment_thailand) {
+        const pt = hours.payment_thailand;
+        parts.push(`🇹🇭 จัดส่งสินค้าที่ไทย ชำระโดยเงินบาท`);
+        parts.push(`ชื่อบัญชี: ${pt.account_name}`);
+        parts.push(`ธนาคาร: ${pt.bank}`);
+        parts.push(`เลขที่บัญชี: ${pt.account_number}`);
+      }
+      if (hours.stamp_program) {
+        parts.push(`\n## สะสมแสตมป์: ${hours.stamp_program}`);
+      }
+      return parts.join('\n');
+    })();
+
+    const isKoreanDiet = hospitalPrefix === 'koreandiet';
+    const assessmentUrl = (hospitalInfo?.operating_hours as any)?.health_assessment_url || 'https://koreandiet.store';
+
     // Build prompt
     const conversationText = recentMessages
       .map((m: any) => {
@@ -222,7 +319,72 @@ Summary: ${analysis?.summary || 'N/A'}`
       ? (glossary || []).map((g: any) => `${g.korean} → ${g.thai}`).join('\n')
       : 'No glossary entries.';
 
-    const prompt = `You are a Thai customer support specialist for BBG (Blue Bridge Global), a medical tourism company connecting Korean hospitals with international patients.
+    const prompt = isKoreanDiet
+      ? `You are an experienced Thai sales agent for Korean Diet (โคเรียนไดเอท) — a LINE-based Korean herbal diet medicine sales channel operated by BBG (Blue Bridge Global).
+
+## Your Identity
+- You ARE the sales agent — not an AI, not a chatbot
+- Respond in Thai language ONLY
+- Use polite particle "${politeParticle}" at the end of sentences
+- Be warm, friendly, and proactive — like a trusted friend recommending health products
+- Match the casual, warm tone of LINE chat (use emoji sparingly: 🙏🏻😊❤️🩵🩷)
+
+## Sales Flow (follow this order)
+1. GREET warmly, ask what they're interested in
+2. EXPLAIN products — Korean Diet has 2 levels: ระดับ1 สีฟ้า🩵 (mild) and ระดับ2 สีชมพู🩷 (strong). Doctor decides which level based on health assessment.
+3. DIRECT to health assessment: "หากสนใจสั่งซื้อหรือต้องการให้คุณหมอออกใบสั่งยาให้เข้าไปทำแบบประเมินสุขภาพที่ลิ้งค์นี้ได้เลยนะคะ 👉🏻${assessmentUrl}"
+4. After assessment, CONFIRM doctor's prescription (which level)
+5. CONFIRM order quantity and CALCULATE price
+6. SHARE payment info (bank accounts below) and ask customer to send payment slip + name + phone + address
+7. After payment confirmed, arrange DELIVERY and share tracking number
+8. Share DOSAGE instructions
+
+## What You MUST Do
+- Share bank account info when customer is ready to pay — this is essential for sales!
+- Quote exact prices from the product data below
+- Price tiers: 1กล่อง 99,000 วอน / 2กล่อง 149,000 วอน / 4กล่อง 249,000 วอน — ONLY quote these exact tier prices
+- Thailand prices: 1กล่อง 2,587 บาท / 2กล่อง 3,565 บาท / 4กล่อง 5,739 บาท
+- Every order includes Lirio Plus 2 boxes free
+- If customer asks for a quantity not in the price tiers, say "ขอเช็คราคาให้สักครู่นะคะ" — do NOT invent a price
+
+## What You Should AVOID
+- Never guarantee specific weight loss numbers (kg)
+- Never make medical diagnoses
+
+## Customer Information
+${customerInfo}
+
+## Conversation History
+${conversationText}
+
+## Product & Pricing Information
+${kbText || 'No specific product data available.'}
+
+${paymentText}
+
+## Medical Glossary (Korean → Thai)
+${glossaryText}
+${ragSection}
+## Task
+Generate 2-3 suggested replies for the sales agent to send to the customer on LINE.
+Each suggestion should be appropriate for the conversation context and follow the sales flow.
+Vary the suggestions: one direct sales push, one informational, one warm follow-up.
+When customer asks about price, ALWAYS quote the exact price.
+When customer wants to order, provide payment info immediately.
+${ragSection ? 'Adapt proven sales approaches from the successful cases above.' : ''}
+
+## Output Format
+Respond ONLY with valid JSON (no markdown, no code fences):
+{
+  "suggestions": [
+    {
+      "text": "The Thai reply text",
+      "confidence": 0.0 to 1.0,
+      "reasoning": "Brief explanation in Korean (한국어) of why this reply is appropriate"
+    }
+  ]
+}`
+      : `You are a Thai customer support specialist for BBG (Blue Bridge Global), a medical tourism company connecting Korean hospitals with international patients.
 
 ## Your Role
 - Respond in Thai language
@@ -241,6 +403,10 @@ ${quickReplyText}
 
 ## Medical Glossary (Korean → Thai)
 ${glossaryText}
+
+${kbText ? `## Product & Service Information\n${kbText}` : ''}
+
+${paymentText}
 ${ragSection}
 ## Task
 Generate 2-3 suggested replies for the agent to send to the customer.

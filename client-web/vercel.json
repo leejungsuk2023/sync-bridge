@@ -51,18 +51,6 @@
     {
       "path": "/api/zendesk/followup-check",
       "schedule": "30 1 * * *"
-    },
-    {
-      "path": "/api/zendesk/followup-check",
-      "schedule": "30 4 * * *"
-    },
-    {
-      "path": "/api/zendesk/followup-check",
-      "schedule": "30 7 * * *"
-    },
-    {
-      "path": "/api/zendesk/followup-check",
-      "schedule": "30 10 * * *"
     }
   ]
 }

@@ -144,7 +144,6 @@ export async function GET(req: NextRequest) {
       .from('zendesk_analyses')
       .select('ticket_id, hospital_name')
       .eq('reservation_converted', true)
-      .eq('followup_status', 'converted')
       .limit(5);
 
     if (existingTicketIds.length > 0) {
@@ -293,7 +292,6 @@ export async function GET(req: NextRequest) {
         .from('zendesk_analyses')
         .select('ticket_id')
         .eq('reservation_converted', true)
-        .eq('followup_status', 'converted')
         .in('ticket_id', indexedTicketIds);
 
       const convertedSet = new Set((stillConverted || []).map((r: any) => r.ticket_id));

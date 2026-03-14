@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
     // 3. Fetch customer info
     const { data: customer } = await supabaseAdmin
       .from('customers')
-      .select('display_name, phone, tags')
+      .select('display_name, phone, tags, survey_name')
       .eq('id', conversation.customer_id)
       .single();
 
@@ -225,7 +225,7 @@ export async function POST(req: NextRequest) {
       .join('\n');
 
     const customerInfo = customer
-      ? `Customer: ${customer.display_name || 'Unknown'}\nPhone: ${customer.phone || 'N/A'}`
+      ? `Customer: ${customer.display_name || 'Unknown'}\nPhone: ${customer.phone || 'N/A'}${customer.survey_name ? `\nSurvey Name: ${customer.survey_name}` : ''}`
       : 'No customer information available.';
 
     const analysisInfo = analysis
@@ -311,6 +311,7 @@ export async function POST(req: NextRequest) {
 1. GREET warmly, ask what they're interested in
 2. EXPLAIN products — Korean Diet has 2 levels: ระดับ1 สีฟ้า🩵 (mild) and ระดับ2 สีชมพู🩷 (strong). Doctor decides which level based on health assessment.
 3. DIRECT to health assessment: "หากสนใจสั่งซื้อหรือต้องการให้คุณหมอออกใบสั่งยาให้เข้าไปทำแบบประเมินสุขภาพที่ลิ้งค์นี้ได้เลยนะคะ 👉🏻${assessmentUrl}"
+3.5. After customer fills the form, ASK for their full name used in the assessment: "กรอกแบบประเมินเรียบร้อยแล้วใช่ไหมคะ? กรุณาแจ้งชื่อ-นามสกุลที่ใช้กรอกในแบบประเมินด้วยนะคะ เพื่อจะได้ตรวจสอบผลได้ถูกต้องค่ะ 🙏🏻"
 4. After assessment, CONFIRM doctor's prescription (which level)
 5. CONFIRM order quantity and CALCULATE price
 6. SHARE payment info (bank accounts below) and ask customer to send payment slip + name + phone + address
@@ -357,7 +358,8 @@ When customer asks about price, ALWAYS quote the exact price.
 When customer wants to order, provide payment info immediately.
 ${ragSection ? 'Adapt proven sales approaches from the successful cases above.' : ''}
 
-Respond with ONLY the Thai text reply. No JSON, no explanation, just the message text.`;
+Respond in JSON format: {"reply": "your Thai text reply here", "survey_name": "full name if customer just provided their assessment form name, otherwise null"}
+Only extract survey_name when the customer clearly states their full name in response to you asking about the health assessment form. Do not extract names from casual greetings.`;
 
     // 8. Generate reply with Gemini
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
@@ -365,13 +367,42 @@ Respond with ONLY the Thai text reply. No JSON, no explanation, just the message
 
     const startTime = Date.now();
     const result = await model.generateContent(prompt);
-    const replyText = result.response.text().trim();
+    const rawText = result.response.text().trim();
     const responseTimeMs = Date.now() - startTime;
 
-    console.log(`[AutoReply] Generated reply in ${responseTimeMs}ms: "${replyText.substring(0, 100)}..."`);
+    // Parse JSON response — fall back to plain text if parsing fails
+    let replyText = rawText;
+    let extractedSurveyName: string | null = null;
+
+    try {
+      // Strip markdown code fences if present
+      const cleaned = rawText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+      const parsed = JSON.parse(cleaned);
+      if (parsed.reply) {
+        replyText = parsed.reply;
+        extractedSurveyName = parsed.survey_name || null;
+      }
+    } catch {
+      // Gemini returned plain text — use as-is
+      console.log('[AutoReply] Response was plain text, not JSON');
+    }
+
+    console.log(`[AutoReply] Generated reply in ${responseTimeMs}ms: "${replyText.substring(0, 100)}..."${extractedSurveyName ? ` | survey_name: ${extractedSurveyName}` : ''}`);
 
     if (!replyText) {
       return withCors(NextResponse.json({ skipped: true, reason: 'empty_reply' }));
+    }
+
+    // Save survey_name to customers table if detected and not already set
+    if (extractedSurveyName && conversation.customer_id) {
+      const existingSurveyName = customer?.survey_name;
+      if (!existingSurveyName) {
+        await supabaseAdmin
+          .from('customers')
+          .update({ survey_name: extractedSurveyName })
+          .eq('id', conversation.customer_id);
+        console.log(`[AutoReply] Saved survey_name "${extractedSurveyName}" for customer ${conversation.customer_id}`);
+      }
     }
 
     // 9. Send the reply via LINE (or other channel)

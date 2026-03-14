@@ -73,20 +73,52 @@ function sanitizeForFilter(value: string): string {
   return value.replace(/[%_'"\\]/g, '');
 }
 
-// Fuzzy match patient to LINE conversation
+// Fuzzy match patient to LINE conversation using survey_name
 async function findConversation(
   lineId: string,
   name: string,
   phone: string,
 ): Promise<{ conversationId: string; customerId: string; channelId: string; lineUserId: string } | null> {
-  // Step 1: Exact LINE display name match
+  // Step 1: Exact survey_name match (most reliable — collected from chatbot)
+  if (name) {
+    const safeName = sanitizeForFilter(name);
+    if (safeName) {
+      const { data: exact } = await supabaseAdmin
+        .from('customers')
+        .select('id, line_user_id, display_name, survey_name')
+        .eq('survey_name', safeName)
+        .limit(5);
+
+      if (exact && exact.length > 0) {
+        const match = await findLatestConversation(exact);
+        if (match) return match;
+      }
+
+      // Step 1b: Partial survey_name match (first name only)
+      const firstName = safeName.split(/\s+/)[0];
+      if (firstName && firstName.length >= 2) {
+        const { data: partial } = await supabaseAdmin
+          .from('customers')
+          .select('id, line_user_id, display_name, survey_name')
+          .not('survey_name', 'is', null)
+          .ilike('survey_name', `%${firstName}%`)
+          .limit(10);
+
+        if (partial && partial.length > 0) {
+          const match = await findLatestConversation(partial);
+          if (match) return match;
+        }
+      }
+    }
+  }
+
+  // Step 2: LINE display name match (fallback)
   if (lineId && lineId !== '-' && lineId !== '.') {
     const safeLineId = sanitizeForFilter(lineId);
-
     if (safeLineId) {
       const { data: exact } = await supabaseAdmin
         .from('customers')
-        .select('id, line_user_id, display_name')
+        .select('id, line_user_id, display_name, survey_name')
         .eq('display_name', safeLineId)
         .limit(5);
 
@@ -95,10 +127,10 @@ async function findConversation(
         if (match) return match;
       }
 
-      // Step 2: Partial LINE ID match (ILIKE)
+      // Partial LINE display name match
       const { data: partial } = await supabaseAdmin
         .from('customers')
-        .select('id, line_user_id, display_name')
+        .select('id, line_user_id, display_name, survey_name')
         .ilike('display_name', `%${safeLineId}%`)
         .limit(10);
 
@@ -109,16 +141,15 @@ async function findConversation(
     }
   }
 
-  // Step 3: Name match
+  // Step 3: Name match against display_name (last resort)
   if (name) {
-    // Try first word of name (often first name)
     const firstName = name.split(/\s+/)[0];
     if (firstName && firstName.length >= 2) {
       const safeFirstName = sanitizeForFilter(firstName);
       if (safeFirstName) {
         const { data: nameMatch } = await supabaseAdmin
           .from('customers')
-          .select('id, line_user_id, display_name')
+          .select('id, line_user_id, display_name, survey_name')
           .ilike('display_name', `%${safeFirstName}%`)
           .limit(10);
 
@@ -130,30 +161,12 @@ async function findConversation(
     }
   }
 
-  // Step 4: Phone match
-  if (phone && phone.length >= 8) {
-    // Remove leading zeros/country code, match last 8+ digits
-    const phoneClean = phone.replace(/\D/g, '').slice(-9);
-    if (phoneClean) {
-      const { data: phoneMatch } = await supabaseAdmin
-        .from('customers')
-        .select('id, line_user_id, display_name')
-        .ilike('phone', `%${phoneClean}%`)
-        .limit(5);
-
-      if (phoneMatch && phoneMatch.length > 0) {
-        const match = await findLatestConversation(phoneMatch);
-        if (match) return match;
-      }
-    }
-  }
-
   return null;
 }
 
 // From a list of customer candidates, find the one with the most recent LINE conversation
 async function findLatestConversation(
-  customers: Array<{ id: string; line_user_id: string; display_name: string }>,
+  customers: Array<{ id: string; line_user_id: string; display_name: string; survey_name?: string }>,
 ): Promise<{ conversationId: string; customerId: string; channelId: string; lineUserId: string } | null> {
   const customerIds = customers.map(c => c.id);
 

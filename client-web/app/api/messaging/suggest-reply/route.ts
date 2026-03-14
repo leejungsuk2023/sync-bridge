@@ -80,7 +80,16 @@ export async function POST(req: NextRequest) {
     let hospitalProcedures: any[] = [];
     let hospitalPromotions: any[] = [];
     let hospitalInfo: any = null;
-    const hospitalPrefix = conversation?.hospital_prefix;
+    // Fall back to channel's hospital_prefix if conversation doesn't have one
+    let hospitalPrefix = conversation?.hospital_prefix;
+    if (!hospitalPrefix && conversation?.channel_id) {
+      const { data: ch } = await supabaseAdmin
+        .from('messaging_channels')
+        .select('hospital_prefix')
+        .eq('id', conversation.channel_id)
+        .maybeSingle();
+      hospitalPrefix = ch?.hospital_prefix || null;
+    }
     if (hospitalPrefix) {
       const { data: fetchedHospitalInfo } = await supabaseAdmin
         .from('hospital_info')

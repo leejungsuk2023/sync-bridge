@@ -18,6 +18,8 @@ import {
   MessageCircle,
   Image as ImageIcon,
   File,
+  Sparkles,
+  ChevronRight,
 } from 'lucide-react';
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -45,6 +47,21 @@ interface ConversationInfo {
   channel?: string;      // 'line' | 'facebook' | etc.
   status?: string;
   hospital_name?: string;
+}
+
+interface RagKeyTurn {
+  role: 'customer' | 'agent';
+  message: string;
+  turn?: number;
+}
+
+interface RagResult {
+  id: string;
+  search_summary: string;
+  hospital_name?: string;
+  procedure_category?: string;
+  key_turns: RagKeyTurn[];
+  similarity: number;
 }
 
 interface MessagePanelProps {
@@ -445,6 +462,12 @@ export default function MessagePanel({
   // Track whether user has scrolled up (suppress auto-scroll)
   const [userScrolledUp, setUserScrolledUp] = useState(false);
 
+  // ─── RAG state ────────────────────────────────────────────────
+  const [ragLoading, setRagLoading] = useState(false);
+  const [ragResults, setRagResults] = useState<RagResult[] | null>(null);
+  const [ragError, setRagError] = useState<string | null>(null);
+  const [expandedRagIndex, setExpandedRagIndex] = useState<number | null>(null);
+
   const messagesRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -572,6 +595,59 @@ export default function MessagePanel({
     const el = e.target;
     el.style.height = 'auto';
     el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+  };
+
+  // ─── RAG search ───────────────────────────────────────────────
+
+  const handleRagSearch = async () => {
+    setRagLoading(true);
+    setRagError(null);
+    setRagResults(null);
+    setExpandedRagIndex(null);
+
+    try {
+      const session = await getSession();
+      if (!session) return;
+
+      // Build query from recent 5 messages (customer messages preferred)
+      const recentMessages = messages
+        .filter((m) => m.body)
+        .slice(-5)
+        .map((m) => m.body!)
+        .join('\n');
+
+      if (!recentMessages.trim()) {
+        setRagResults([]);
+        return;
+      }
+
+      const res = await fetch('/api/rag/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          query: recentMessages,
+          hospital_name: conversation?.hospital_name || null,
+          limit: 3,
+        }),
+      });
+
+      if (!res.ok) {
+        console.error('[MessagePanel] RAG search failed:', res.status);
+        setRagError('RAG 검색 중 오류가 발생했습니다');
+        return;
+      }
+
+      const data = await res.json();
+      setRagResults(data.results || []);
+    } catch (err) {
+      console.error('[MessagePanel] RAG search error:', err);
+      setRagError('RAG 검색 중 오류가 발생했습니다');
+    } finally {
+      setRagLoading(false);
+    }
   };
 
   // ─── Send message ─────────────────────────────────────────────
@@ -818,6 +894,28 @@ export default function MessagePanel({
             </div>
           </div>
 
+          {/* RAG recommend button — staff/bbg_admin only */}
+          {(userRole === 'staff' || userRole === 'bbg_admin') && (
+            <button
+              type="button"
+              onClick={handleRagSearch}
+              disabled={ragLoading}
+              title="성공 사례 기반 RAG 추천"
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full transition-colors border ${
+                ragResults !== null
+                  ? 'bg-amber-100 text-amber-800 border-amber-300'
+                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-200'
+              } disabled:opacity-60`}
+            >
+              {ragLoading ? (
+                <span className="w-3 h-3 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Sparkles className="w-3.5 h-3.5" />
+              )}
+              RAG 추천
+            </button>
+          )}
+
           {/* Status dropdown */}
           <div className="relative" ref={statusMenuRef}>
             <button
@@ -998,6 +1096,132 @@ export default function MessagePanel({
             {t.internal}
           </button>
         </div>
+
+        {/* RAG results panel */}
+        {ragResults !== null && (
+          <div className="px-3 pb-2 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                <span className="text-xs font-semibold text-amber-800">
+                  성공 사례 기반 추천
+                </span>
+                {ragError && (
+                  <span className="text-xs text-red-500 ml-1">{ragError}</span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => { setRagResults(null); setRagError(null); }}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+                title="닫기"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {ragResults.length === 0 && !ragError && (
+              <p className="text-xs text-slate-500 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                유사한 성공 사례가 없습니다
+              </p>
+            )}
+
+            {ragResults.map((result, idx) => (
+              <div
+                key={result.id}
+                className="bg-amber-50 border border-amber-200 rounded-lg overflow-hidden"
+              >
+                {/* Card header */}
+                <div className="px-3 py-2 flex items-start gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                      <span className="text-[10px] font-semibold bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                        จากเคสสำเร็จ
+                      </span>
+                      {result.hospital_name && (
+                        <span className="text-[10px] text-slate-500 truncate">
+                          {result.hospital_name}
+                        </span>
+                      )}
+                      {result.procedure_category && (
+                        <span className="text-[10px] text-indigo-600 font-medium truncate">
+                          {result.procedure_category}
+                        </span>
+                      )}
+                      <span className="text-[10px] text-slate-400 ml-auto whitespace-nowrap">
+                        유사도 {Math.round(result.similarity * 100)}%
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-700 leading-relaxed line-clamp-2">
+                      {result.search_summary.split('\n')[0]}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Key turns expand/collapse */}
+                <div className="border-t border-amber-200">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedRagIndex(expandedRagIndex === idx ? null : idx)}
+                    className="w-full px-3 py-1.5 flex items-center gap-1 text-[10px] font-medium text-amber-700 hover:bg-amber-100 transition-colors"
+                  >
+                    <ChevronRight
+                      className={`w-3 h-3 transition-transform ${expandedRagIndex === idx ? 'rotate-90' : ''}`}
+                    />
+                    핵심 대화 {result.key_turns.length}턴
+                    <span className="ml-auto text-amber-600 text-[10px]">
+                      클릭하여 참고 삽입
+                    </span>
+                  </button>
+
+                  {expandedRagIndex === idx && (
+                    <div className="px-3 pb-2 space-y-1.5">
+                      {result.key_turns.map((turn, tIdx) => (
+                        <div
+                          key={tIdx}
+                          className={`flex gap-1.5 ${turn.role === 'agent' ? 'justify-end' : 'justify-start'}`}
+                        >
+                          <div
+                            className={`max-w-[85%] px-2.5 py-1.5 rounded-lg text-[11px] leading-relaxed cursor-pointer hover:opacity-80 transition-opacity ${
+                              turn.role === 'agent'
+                                ? 'bg-indigo-100 text-indigo-900'
+                                : 'bg-white border border-slate-200 text-slate-800'
+                            }`}
+                            title="클릭하면 입력창에 삽입"
+                            onClick={() => {
+                              if (turn.role === 'agent') {
+                                setInput(turn.message);
+                                textareaRef.current?.focus();
+                              }
+                            }}
+                          >
+                            {turn.message}
+                          </div>
+                        </div>
+                      ))}
+                      {/* Insert last agent turn shortcut */}
+                      {(() => {
+                        const lastAgentTurn = [...result.key_turns].reverse().find((t) => t.role === 'agent');
+                        return lastAgentTurn ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setInput(lastAgentTurn.message);
+                              textareaRef.current?.focus();
+                            }}
+                            className="w-full mt-1 py-1 text-[10px] font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors"
+                          >
+                            마지막 상담원 응답 → 입력창에 삽입
+                          </button>
+                        ) : null;
+                      })()}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Pending attachment preview */}
         {pendingAttachment && (

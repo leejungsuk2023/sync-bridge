@@ -54,7 +54,7 @@
     },
     {
       "path": "/api/messaging/prescription-notify",
-      "schedule": "0 5 * * *"
+      "schedule": "*/5 * * * *"
     }
   ]
 }

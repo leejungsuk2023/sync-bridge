@@ -339,10 +339,14 @@ export async function PATCH(req: NextRequest) {
         ).toString('base64');
 
         // Fetch recent Zendesk comments
+        console.log('[followup-customers] action_trigger: fetching Zendesk comments for ticket', ticket_id);
+        const zdController = new AbortController();
+        const zdTimeout = setTimeout(() => zdController.abort(), 15000);
         const zdRes = await fetch(
           `https://${process.env.ZENDESK_SUBDOMAIN}.zendesk.com/api/v2/tickets/${ticket_id}/comments?sort_order=desc&per_page=10`,
-          { headers: { Authorization: `Basic ${ZENDESK_AUTH}` } }
+          { headers: { Authorization: `Basic ${ZENDESK_AUTH}` }, signal: zdController.signal }
         );
+        clearTimeout(zdTimeout);
 
         let recentComments = '';
         if (zdRes.ok) {
@@ -398,6 +402,8 @@ Return JSON:
   "summary_th": "Thai summary (2-3 sentences, for worker confirmation)"
 }`;
 
+        const geminiController = new AbortController();
+        const geminiTimeout = setTimeout(() => geminiController.abort(), 15000);
         const geminiRes = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
           {
@@ -407,8 +413,10 @@ Return JSON:
               contents: [{ parts: [{ text: summaryPrompt }] }],
               generationConfig: { temperature: 0.2, maxOutputTokens: 1024, responseMimeType: 'application/json' },
             }),
+            signal: geminiController.signal,
           }
         );
+        clearTimeout(geminiTimeout);
 
         if (!geminiRes.ok) {
           console.error(`[followup-customers] Gemini API error: ${geminiRes.status} for ticket ${ticket_id}`);
@@ -420,7 +428,10 @@ Return JSON:
         if (!summaryText) {
           throw new Error('Empty Gemini response');
         }
+        console.log('[followup-customers] action_trigger: Gemini summary generated for ticket', ticket_id);
 
+        // Strip markdown code fences if present
+        summaryText = summaryText.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
         // Clean control characters that break JSON.parse
         summaryText = summaryText.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '');
         const summary = JSON.parse(summaryText);

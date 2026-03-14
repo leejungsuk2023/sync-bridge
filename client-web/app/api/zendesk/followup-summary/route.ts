@@ -48,6 +48,7 @@ async function handleSummary(req: NextRequest) {
 
   const results: { ticket_id: number; status: string }[] = [];
   const errors: string[] = [];
+  let autoMissing = 0;
 
   try {
     // Get ALL active followup tickets (not just due ones)
@@ -68,6 +69,51 @@ async function handleSummary(req: NextRequest) {
     const ZENDESK_AUTH = process.env.ZENDESK_EMAIL && process.env.ZENDESK_API_TOKEN
       ? Buffer.from(`${process.env.ZENDESK_EMAIL}/token:${process.env.ZENDESK_API_TOKEN}`).toString('base64')
       : null;
+
+    // === AUTO-MISSING: Mark tickets with no activity for 4+ days as lost ===
+    try {
+      const fourDaysAgo = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: staleTickets, error: staleError } = await supabaseAdmin
+        .from('zendesk_analyses')
+        .select('ticket_id, customer_name, followup_status, followup_updated_at')
+        .in('followup_status', ['contacted', 'scheduled', 'pending'])
+        .lte('followup_updated_at', fourDaysAgo);
+
+      if (!staleError && staleTickets && staleTickets.length > 0) {
+        console.log(`[followup-summary] Auto-missing: found ${staleTickets.length} stale tickets (4+ days inactive)`);
+
+        for (const ticket of staleTickets) {
+          // Update status to lost
+          await supabaseAdmin
+            .from('zendesk_analyses')
+            .update({
+              followup_status: 'lost',
+              lost_reason: 'no_response',
+              next_check_at: null,
+              followup_updated_at: new Date().toISOString(),
+            })
+            .eq('ticket_id', ticket.ticket_id);
+
+          // Insert action record
+          await supabaseAdmin
+            .from('followup_actions')
+            .insert({
+              ticket_id: ticket.ticket_id,
+              action_type: 'system_note',
+              content: `4일간 활동 없음 — 자동으로 미싱(lost) 처리됨 (이전 상태: ${ticket.followup_status})`,
+              content_th: `ไม่มีกิจกรรม 4 วัน — ระบบเปลี่ยนสถานะเป็น ไม่สำเร็จ อัตโนมัติ (สถานะเดิม: ${ticket.followup_status})`,
+              status_before: ticket.followup_status,
+              status_after: 'lost',
+            });
+
+          console.log(`[followup-summary] Auto-missing: ticket ${ticket.ticket_id} (${ticket.customer_name}) marked as lost`);
+        }
+
+        autoMissing = staleTickets.length;
+      }
+    } catch (missingErr: any) {
+      console.error('[followup-summary] Auto-missing error:', missingErr.message);
+    }
 
     for (const ticket of activeTickets) {
       try {
@@ -262,6 +308,7 @@ Return JSON:
 
   return withCors(NextResponse.json({
     processed: results.length,
+    auto_missing: autoMissing,
     results,
     errors: errors.length > 0 ? errors : undefined,
   }));

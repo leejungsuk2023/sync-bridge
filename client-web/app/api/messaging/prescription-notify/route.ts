@@ -264,8 +264,7 @@ export async function GET(req: NextRequest) {
       if (status.includes('구매완료') || status.includes('자동안내완료')) continue;
 
       // Only process rows where status is 상담중 or empty — these haven't been handled yet
-      // Also process "메시지 보냈음" rows where LINE ID wasn't found before (retry)
-      const shouldProcess = !status || status.includes('상담중') || status.includes('메시지 보냈음');
+      const shouldProcess = !status || status.includes('상담중');
       if (!shouldProcess) continue;
 
       candidates.push({
@@ -313,13 +312,13 @@ export async function GET(req: NextRequest) {
             `[PrescriptionNotify] No match for: ${candidate.name} (lineId=${candidate.lineId}, phone=${candidate.phone}) — row ${candidate.rowIndex + 1}`,
           );
 
-          // Update sheet status to indicate match failure
+          // Update sheet status — use '매칭불가' so it won't be retried
           await sheets.spreadsheets.values.update({
             spreadsheetId: SHEET_ID,
             range: `Sheet1!O${candidate.rowIndex + 1}`,
             valueInputOption: 'RAW',
             requestBody: {
-              values: [['메시지 보냈음 (라인 id 못찾기) ส่งข้อความแล้ว (ไม่พบไลน์ไอดี)']],
+              values: [['매칭불가 (라인 id 못찾기) จับคู่ไม่ได้ (ไม่พบไลน์ไอดี)']],
             },
           });
           continue;

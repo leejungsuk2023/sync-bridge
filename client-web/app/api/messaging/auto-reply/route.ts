@@ -91,12 +91,14 @@ export async function POST(req: NextRequest) {
     // 5b. Fetch hospital procedures and promotions for product/service knowledge
     let hospitalProcedures: any[] = [];
     let hospitalPromotions: any[] = [];
+    let hospitalInfo: any = null;
     if (conversation.hospital_prefix) {
-      const { data: hospitalInfo } = await supabaseAdmin
+      const { data: fetchedHospitalInfo } = await supabaseAdmin
         .from('hospital_info')
-        .select('id')
+        .select('id, operating_hours, display_name_th, website')
         .eq('hospital_prefix', conversation.hospital_prefix)
         .maybeSingle();
+      hospitalInfo = fetchedHospitalInfo;
 
       if (hospitalInfo?.id) {
         const [{ data: procedures }, { data: promotions }] = await Promise.all([
@@ -153,7 +155,8 @@ export async function POST(req: NextRequest) {
           const { data: cases } = await supabaseAdmin
             .from('case_index')
             .select('ticket_id, search_summary, embedding, key_turns, hospital_name, procedure_category')
-            .eq('status', 'indexed');
+            .eq('status', 'indexed')
+            .eq('hospital_name', 'Korean Diet');
 
           if (cases && cases.length > 0) {
             // Cosine similarity
@@ -243,34 +246,67 @@ export async function POST(req: NextRequest) {
       return parts.join('\n');
     })();
 
+    const paymentText = (() => {
+      const hours = hospitalInfo?.operating_hours as any;
+      if (!hours) return '';
+      const parts: string[] = ['## ข้อมูลการชำระเงิน'];
+      if (hours.payment_korea) {
+        const pk = hours.payment_korea;
+        parts.push(`🇰🇷 จัดส่งสินค้าที่เกาหลี ชำระโดยเงินวอน`);
+        parts.push(`ชื่อบัญชี: ${pk.account_name}`);
+        parts.push(`ธนาคาร: ${pk.bank}`);
+        parts.push(`เลขที่บัญชี: ${pk.account_number}`);
+      }
+      if (hours.payment_thailand) {
+        const pt = hours.payment_thailand;
+        parts.push(`🇹🇭 จัดส่งสินค้าที่ไทย ชำระโดยเงินบาท`);
+        parts.push(`ชื่อบัญชี: ${pt.account_name}`);
+        parts.push(`ธนาคาร: ${pt.bank}`);
+        parts.push(`เลขที่บัญชี: ${pt.account_number}`);
+      }
+      if (hours.stamp_program) {
+        parts.push(`\n## สะสมแสตมป์: ${hours.stamp_program}`);
+      }
+      return parts.join('\n');
+    })();
+
     const agentStyleRef = agentMessages.length > 0
       ? `\n## 기존 상담원 답변 스타일 참고\n${agentMessages.map((m: string) => `Agent: ${m.slice(0, 200)}`).join('\n')}`
       : '';
 
-    const prompt = `You are an experienced Thai customer support agent for Korean Diet (a LINE-based health/beauty product sales channel operated by BBG - Blue Bridge Global).
+    const assessmentUrl = (hospitalInfo?.operating_hours as any)?.health_assessment_url || 'https://koreandiet.store';
+
+    const prompt = `You are an experienced Thai sales agent for Korean Diet (โคเรียนไดเอท) — a LINE-based Korean herbal diet medicine sales channel operated by BBG (Blue Bridge Global).
 
 ## Your Identity
-- You ARE the sales agent — not an AI assistant, not a chatbot
+- You ARE the sales agent — not an AI, not a chatbot, not a customer service bot
 - Respond in Thai language ONLY
 - Use polite particle "ค่ะ" at the end of sentences
-- Be warm, friendly, and proactive — like a trusted friend who sells health products
-- Match the casual, warm tone of LINE chat (use emoji sparingly: 🙏🏻😊❤️)
+- Be warm, friendly, and proactive — like a trusted friend recommending health products
+- Match the casual, warm tone of LINE chat (use emoji sparingly: 🙏🏻😊❤️🩵🩷)
 
-## What You CAN Do (answer directly):
-- Greet customers warmly
-- Explain products, ingredients, dosage, and usage instructions
-- Quote prices and offer package deals
-- Suggest products based on customer needs
-- Answer FAQ about shipping, payment, side effects
-- Encourage purchases with gentle sales techniques
-- Thank customers and confirm orders
-- Follow up on previous purchases
+## Sales Flow (follow this order)
+1. GREET warmly, ask what they're interested in
+2. EXPLAIN products — Korean Diet has 2 levels: ระดับ1 สีฟ้า🩵 (mild) and ระดับ2 สีชมพู🩷 (strong). Doctor decides which level based on health assessment.
+3. DIRECT to health assessment: "หากสนใจสั่งซื้อหรือต้องการให้คุณหมอออกใบสั่งยาให้เข้าไปทำแบบประเมินสุขภาพที่ลิ้งค์นี้ได้เลยนะคะ 👉🏻${assessmentUrl}"
+4. After assessment, CONFIRM doctor's prescription (which level)
+5. CONFIRM order quantity and CALCULATE price
+6. SHARE payment info (bank accounts below) and ask customer to send payment slip + name + phone + address
+7. After payment confirmed, arrange DELIVERY and share tracking number
+8. Share DOSAGE instructions
 
-## What You Should AVOID:
-- Never share bank account numbers or payment details (say "ส่งเลขบัญชีให้ทางนี้เลยนะคะ" and let a human follow up)
-- Never make specific medical diagnoses
-- Never guarantee medical results
-- If you truly don't know something specific, say "ขอเช็คข้อมูลให้สักครู่นะคะ" (let me check) — NOT "let me transfer you to an agent"
+## What You MUST Do
+- Share bank account info when customer is ready to pay — this is essential for sales!
+- Quote exact prices from the product data below
+- Guide customers to fill the health assessment form
+- Confirm orders with exact price calculations
+- Be proactive about closing the sale
+- Answer dosage, ingredient, and usage questions directly from product data below
+
+## What You Should AVOID
+- Never guarantee specific weight loss numbers (kg) — results vary per person
+- Never make medical diagnoses — defer drug interaction questions to their doctor
+- If you truly don't know something specific about the product, say "ขอเช็คข้อมูลให้สักครู่นะคะ"
 
 ## Customer Information
 ${customerInfo}
@@ -280,16 +316,20 @@ ${analysisInfo}
 ${conversationText}
 ${agentStyleRef}
 
-## Product & Service Knowledge
-${kbText || 'No specific product data available — answer based on general health/beauty product knowledge.'}
+## Product & Pricing Information
+${kbText || 'No specific product data available.'}
+
+${paymentText}
 
 ## Medical Glossary (Korean → Thai)
 ${glossaryText}
 ${ragSection}
 ## Task
-Generate ONE natural reply as if you are the actual sales agent chatting on LINE.
-Keep it concise (1-3 sentences). Be helpful and answer the question directly.
-${ragSection ? 'Adapt proven approaches from the successful cases above.' : ''}
+Generate ONE natural reply as the sales agent on LINE.
+Keep it concise (1-4 sentences). Be helpful, answer directly, and actively guide toward purchase.
+When customer asks about price, ALWAYS quote the exact price.
+When customer wants to order, provide payment info immediately.
+${ragSection ? 'Adapt proven sales approaches from the successful cases above.' : ''}
 
 Respond with ONLY the Thai text reply. No JSON, no explanation, just the message text.`;
 

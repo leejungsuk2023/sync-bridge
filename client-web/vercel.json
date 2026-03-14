@@ -43,6 +43,10 @@
     {
       "path": "/api/rag/index",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/rag/index-koreandiet",
+      "schedule": "0 3 * * *"
     }
   ]
 }

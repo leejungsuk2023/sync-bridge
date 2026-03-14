@@ -47,12 +47,24 @@ export async function POST(req: NextRequest) {
       return withCors(NextResponse.json({ skipped: true, reason: 'conversation_not_found' }));
     }
 
-    if (!conversation.chatbot_enabled) {
-      console.log(`[AutoReply] Chatbot disabled for conversation ${conversation_id}`);
+    // 1b. Check channel-level chatbot toggle — channel ON overrides individual conversation setting
+    const { data: channel } = await supabaseAdmin
+      .from('messaging_channels')
+      .select('chatbot_enabled')
+      .eq('id', conversation.channel_id)
+      .maybeSingle();
+
+    const channelChatbotEnabled = channel?.chatbot_enabled || false;
+    const conversationChatbotEnabled = conversation.chatbot_enabled || false;
+
+    // Channel toggle overrides: if channel is ON, always proceed
+    // If channel is OFF, check individual conversation toggle
+    if (!channelChatbotEnabled && !conversationChatbotEnabled) {
+      console.log(`[AutoReply] Chatbot disabled for conversation ${conversation_id} (channel: ${channelChatbotEnabled}, conversation: ${conversationChatbotEnabled})`);
       return withCors(NextResponse.json({ skipped: true, reason: 'chatbot_disabled' }));
     }
 
-    console.log(`[AutoReply] Chatbot enabled, generating reply for conversation ${conversation_id}`);
+    console.log(`[AutoReply] Chatbot enabled, generating reply for conversation ${conversation_id} (channel: ${channelChatbotEnabled}, conversation: ${conversationChatbotEnabled})`);
 
     // 2. Fetch recent messages (last 10)
     const { data: messages } = await supabaseAdmin

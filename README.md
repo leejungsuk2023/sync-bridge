@@ -56,7 +56,7 @@ g sync/
 │   │   ├── api/messaging/config/route.ts   # 메시징 채널 설정 API
 │   │   ├── api/messaging/generate/route.ts # 월간 보고서 AI 생성 API
 │   │   ├── api/messaging/upload-csv/route.ts # 보고서 CSV 업로드 API
-│   │   ├── api/messaging/prescription-notify/route.ts # Google Sheet 진단 결과 → LINE 처방 자동 안내 Cron (30분마다)
+│   │   ├── api/messaging/prescription-notify/route.ts # Google Sheet 진단 결과 → LINE 처방 자동 안내 Cron (5분마다)
 │   │   ├── api/monthly-report/route.ts     # 월간 보고서 CRUD API
 │   │   ├── api/sales-leads/route.ts        # Sales 리드 추적 API
 │   │   ├── api/zendesk/sync/route.ts   # Zendesk 티켓 수동 동기화 API
@@ -120,7 +120,7 @@ g sync/
 │   │   ├── zendesk-agent.ts        # AgentZendeskClient — 상담원별 토큰 인증 + Fallback to Admin
 │   │   ├── ai-suggest.ts           # AI 답변 추천 로직 (Gemini, 컨텍스트 조합)
 │   │   └── crypto.ts               # AES-256-GCM 암호화/복호화 (상담원 토큰 보관용)
-│   └── vercel.json                 # Vercel Cron 스케줄 (zendesk/cron 일 2회, followup-summary 일 4회, poll 일 4회, prescription-notify 30분마다)
+│   └── vercel.json                 # Vercel Cron 스케줄 (zendesk/cron 일 2회, followup-summary 일 4회, poll 일 4회, prescription-notify 5분마다)
 │
 └── supabase/
     ├── schema.sql              # clients, profiles, time_logs, tasks + RLS
@@ -277,7 +277,7 @@ npm run dev
 | 병원 파트너 대시보드 | hospital role 로그인 시 전용 대시보드 — 자사 병원 데이터만 조회, AI 인사이트(병원전략/Sales개선/본사관리) 확인 |
 | Zendesk 채팅 상담 UI | 워커 대시보드 `ให้คำปรึกษา` 탭 — 3패널 레이아웃(티켓 목록/채팅/AI 추천). 프론트엔드 폴링으로 실시간 동기화. 인라인 이미지, Thai→Korean 번역 캐시, 티켓 상태 변경, 상담원별 개인 토큰 인증 |
 | AI 답변 추천 | Zendesk 채팅 우측 패널 — Gemini 기반 태국어 답변 2-3개 추천. Quick Reply 칩, 고객 정보 요약. 추천 피드백 수집 (selected_index, was_edited) |
-| Korean Diet 처방 알림 | `/api/messaging/prescription-notify` — Google Sheet 진단 결과 읽기 → LINE 자동 안내 발송 (30분마다 Cron). 환자 survey_name/display_name/이름으로 3단계 퍼지 매칭. 진단 단계(1/2단계) + 가격 + 계좌 안내 포함 태국어 메시지 발송 |
+| Korean Diet 처방 알림 | `/api/messaging/prescription-notify` — Google Sheet 진단 결과 읽기 → LINE 자동 안내 발송 (5분마다 Cron, Vercel Pro). 환자 survey_name/display_name/이름으로 3단계 퍼지 매칭. 진단 단계(1/2단계) + 가격 + 계좌 안내 포함 태국어 메시지 발송 |
 | 건강설문 성명 수집 | Korean Diet 챗봇 판매 플로우 3.5단계 — 고객이 설문 완료 후 챗봇이 성명 확인 요청 → `customers.survey_name` 저장 (처방 알림 매칭 정확도 향상) |
 
 ### 관리자/파트너 페이지 구조

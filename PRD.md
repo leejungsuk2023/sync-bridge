@@ -88,7 +88,7 @@
 | AI 인사이트 | ✅ | 병원별 3종 인사이트: 병원전략, Sales팀 개선방향, 본사관리방향 (Gemini, 한국어, /api/zendesk/insights) |
 | 미분석 사유 표시 | ✅ | 분석 제외 사유 표시 (댓글 수 부족, 비활성 상태 등) |
 | 더보기 페이지네이션 | ✅ | 티켓 목록 더보기 방식 페이지네이션 (`limit` 파라미터) |
-| 자동 배치 실행 | ✅ | Vercel Cron — 매일 09:00 KST, 16:00 KST 자동 sync + analyze; 12:00 KST 팔로업 자동 체크 |
+| 자동 배치 실행 | ✅ | Vercel Cron — 매일 09:00 KST, 16:00 KST 자동 sync + analyze (zendesk/cron); 01:30 UTC 팔로업 자동 체크 (followup-check, gemini-2.5-flash); 일 4회 팔로업 요약 (followup-summary, 00/03/06/09 UTC). RAG 인덱싱: 02:00 UTC 전체, 03:00 UTC Korean Diet 전용 |
 | 수동 배치 실행 | ✅ | 수동 동기화/분석 버튼 (API 직접 호출) |
 | 3탭 구성 | ✅ | Sales 성과 / 병원별 분석 / 팔로업 고객 탭 |
 
@@ -127,16 +127,18 @@ thebb, delphic, will, mikclinicthai, jyclinicthai, du, koreandiet, ourpthai, eve
 
 | 기능 | 상태 | 설명 |
 |------|------|------|
-| LINE/Facebook 채널 통합 | ✅ | `MessagingLayout.tsx` — LINE 전역 채널 + Facebook 22개 병원별 페이지 채널 통합 오케스트레이터 |
+| LINE/Facebook 채널 통합 | ✅ | `MessagingLayout.tsx` — LINE 전역 채널 + Facebook 22개 병원별 페이지 채널 통합 오케스트레이터. 상단 채널별 챗봇 토글 바 포함 |
 | 대화 목록 | ✅ | `ConversationList.tsx` — 채널별 대화 목록, 미읽음 표시, 최신 메시지 프리뷰 |
-| 메시지 패널 | ✅ | `MessagePanel.tsx` — 채팅 버블 UI, 인라인 이미지, 답변 전송 |
+| 메시지 패널 | ✅ | `MessagePanel.tsx` — 채팅 버블 UI, 인라인 이미지, 답변 전송. 대화별 챗봇 개별 토글 포함 |
 | 리드 정보 패널 | ✅ | `LeadInfoPanel.tsx` — 고객 정보 (이름, 연락처, 관심 시술 등) 표시 및 편집 |
-| AI 답변 추천 | ✅ | `/api/channels/suggest-reply` — Gemini 기반 답변 추천 (채널 유형별) |
+| AI 답변 추천 | ✅ | `/api/channels/suggest-reply`, `/api/messaging/suggest-reply` — Gemini 기반 답변 추천. Korean Diet 대화는 sales agent 프롬프트 적용. hospital_procedures/promotions/info 컨텍스트 포함 |
 | Sales 리드 추적 | ✅ | `sales_leads` 테이블 — 고객 상담 → 예약 전환 추적 (customer_name, procedures, booking_status 등) |
 | 월간 보고서 | ✅ | `MonthlyReport.tsx` — 병원별 월간 보고서 생성 (광고 CSV 업로드 + AI 분석 + 컨텐츠 계획). 상태: draft→generating→review→published |
 | 채널 설정 API | ✅ | `/api/messaging/config` — 채널 목록 조회 |
 | 보고서 생성 API | ✅ | `/api/messaging/generate` — AI 기반 보고서 초안 생성 |
 | CSV 업로드 API | ✅ | `/api/messaging/upload-csv` — 광고 성과 CSV 업로드 → 파싱 및 저장 |
+| Korean Diet AI 챗봇 | ✅ | `/api/messaging/auto-reply` — LINE 메시지 수신 후 Gemini 기반 자동 답변 생성. hospital_procedures/promotions/info RAG 컨텍스트 (.eq('hospital_name', 'Korean Diet')). 가격: 1box 99K/2box 149K/4box 249K KRW + THB 환산. Anti-hallucination 프롬프트 내장 |
+| 채널별 챗봇 토글 | ✅ | `/api/channels/chatbot-toggle` (GET/PUT, bbg_admin/staff 전용) — 채널 전체 ON/OFF. MessagingLayout 상단 토글 바 UI. 채널 ON이면 대화별 설정 무시 |
 
 ### 3.1h Client Web — 팔로업 고객 추적
 
@@ -147,7 +149,8 @@ thebb, delphic, will, mikclinicthai, jyclinicthai, du, koreandiet, ourpthai, eve
 | 상태별 BI 요약 카드 | ✅ | SalesPerformance 팔로업 탭 — 대기/연락완료/예약됨/성공/Lost 건수 카드 |
 | 상세 모달 | ✅ | 티켓 클릭 → 상세 모달 — 채팅 버블 타임라인(워커 액션/AI 지시/시스템노트), Push 지시 전송, Drop(Lost 처리) |
 | Push (지시 전송) | ✅ | 어드민/클라이언트가 워커에게 재접근 지시 전송 → `followup_actions` + `followup_notifications` 생성 |
-| AI 자동 체크 | ✅ | Vercel Cron (03:00 UTC, 12:00 KST) — `followup-check` — contacted/scheduled 상태 티켓 최대 10건, Zendesk 댓글 분석 + Gemini로 태국어 다음 행동 지시 자동 생성 |
+| AI 자동 체크 | ✅ | Vercel Cron (01:30 UTC) — `followup-check` — contacted/scheduled 상태 티켓 최대 10건, Zendesk 댓글 분석 + gemini-2.5-flash로 태국어 다음 행동 지시 자동 생성 |
+| 자동 Lost 처리 | ✅ | `followup-summary` Cron — 4일 이상 비활성 팔로업 티켓 자동 `lost_reason='no_response'`로 처리 |
 | 워커 팔로업 탭 | ✅ | WorkerDashboard "ติดตาม" 탭 — `WorkerFollowup.tsx`. 카드 레이아웃, 코멘트 입력 전용 플로우 (PATCH `action_comment`). AI 지시는 황색 강조 카드로 표시 |
 | 알림 뱃지 | ✅ | WorkerDashboard ติดตาม 탭 — 미읽은 알림 수 뱃지, 긴급(urgency:high) 시 헤더 배너 |
 | 워커 코멘트 자동 번역 | ✅ | 워커 태국어 코멘트 → Gemini로 한국어 자동 번역, `followup_actions.content`에 저장 (어드민 확인용) |
@@ -155,6 +158,16 @@ thebb, delphic, will, mikclinicthai, jyclinicthai, du, koreandiet, ourpthai, eve
 | 액션 이력 API | ✅ | `GET /api/zendesk/followup-actions?ticket_id=` / `POST` (어드민 Push) / `PATCH` (read 표시) |
 | 고객 정보 | ✅ | customer_name, customer_phone, interested_procedure, customer_age 컬럼 (zendesk_analyses)
 | 태국어 번역 컬럼 | ✅ | followup_reason_th, interested_procedure_th — GET 요청 시 누락분 Gemini로 자동 번역 후 DB 저장
+
+### 3.1i Client Web — RAG 케이스 검색 시스템
+
+| 기능 | 상태 | 설명 |
+|------|------|------|
+| 케이스 인덱싱 | ✅ | `/api/rag/index` — Zendesk 전체 케이스 → `case_index` + `case_conversations` 테이블에 벡터 임베딩 저장. 일 1회 Cron (02:00 UTC) |
+| Korean Diet 전용 인덱싱 | ✅ | `/api/rag/index-koreandiet` — Zendesk koreandiet 태그 티켓 29건 인덱싱. 일 1회 Cron (03:00 UTC) |
+| 벡터 검색 | ✅ | `/api/rag/search` — 태국어 질문 → `gemini-embedding-001` 임베딩 → pgvector 유사도 검색 (hospital_name 필터) |
+| 임베딩 모델 | ✅ | `gemini-embedding-001` (768 dims) — 구 `text-embedding-004`에서 마이그레이션 완료. `case_index.embedding_model` 컬럼으로 버전 추적 |
+| 컨텍스트 활용 | ✅ | AI 답변 추천(`suggest-reply`, `auto-reply`) 시 RAG 결과를 프롬프트 컨텍스트로 주입 |
 
 ### 3.2 Client Web — God Mode 관제 (`/admin/monitoring`)
 
@@ -191,7 +204,10 @@ thebb, delphic, will, mikclinicthai, jyclinicthai, du, koreandiet, ourpthai, eve
 | `followup_notifications` | 워커 인앱 알림 (user_id, action_id, ticket_id, title, body, channel, read_at) |
 | `chat_read_status` | 채팅 읽음 상태 추적 (user_id, task_id, last_read_at) |
 | `glossary` | 의료/비즈니스 용어 한↔태 번역 용어집 (korean, thai, category) |
-| `messaging_channels` | LINE/Facebook 채널 설정 (channel_type, channel_name, config jsonb, hospital_prefix) |
+| `messaging_channels` | LINE/Facebook 채널 설정 (channel_type, channel_name, config jsonb, hospital_prefix, **chatbot_enabled**) |
+| `channel_conversations` | 다이렉트 메시징 대화 (channel_id, customer_id, hospital_prefix, **chatbot_enabled**) |
+| `case_index` | RAG 케이스 벡터 인덱스 (ticket_id, search_summary, embedding vector(768), key_turns jsonb, hospital_name, procedure_category, customer_concern[], quality_score, embedding_model, status) |
+| `case_conversations` | RAG 원본 대화 보관 (ticket_id, conversation_full jsonb) |
 | `monthly_reports` | 병원별 월간 보고서 (hospital_tag, report_month, status: draft/generating/review/published, ad_csv_url, ad_parsed_data, content_plan, strategy) |
 | `sales_leads` | Sales 리드 추적 (ticket_id, customer_name, procedures, booking_status, customer_phone, customer_line, customer_instagram) |
 | `hospital_kb` | 병원 지식베이스 (hospital_prefix, title, content, category, created_at) |
@@ -290,12 +306,18 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | `/api/channels/messages` | GET | 대화별 메시지 조회 |
 | `/api/channels/reply` | POST | 채널 메시지 답변 전송 |
 | `/api/channels/suggest-reply` | POST | AI 답변 추천 (Gemini, 채널 유형별) |
+| `/api/channels/chatbot-toggle` | GET/PUT | 채널별 챗봇 ON/OFF 토글 (bbg_admin/staff 전용). GET: 채널 목록+상태 조회; PUT: chatbot_enabled 업데이트 |
 | `/api/messaging/config` | GET | 사용 가능 채널 목록 조회 |
 | `/api/messaging/generate` | POST | AI 기반 월간 보고서 초안 생성 (Gemini) |
 | `/api/messaging/upload-csv` | POST | 광고 성과 CSV 파일 업로드 및 파싱 |
+| `/api/messaging/auto-reply` | POST | Korean Diet AI 챗봇 자동 답변 (LINE webhook 트리거). 채널/대화 챗봇 토글 계층 체크 후 Gemini 답변 생성 |
+| `/api/messaging/suggest-reply` | POST | 채널 대화용 AI 답변 추천 (Gemini). hospital_procedures/promotions/info RAG 컨텍스트. Korean Diet는 sales agent 프롬프트 적용 (bbg_admin + worker + client + staff) |
 | `/api/monthly-report` | GET/POST/PATCH | 월간 보고서 CRUD |
 | `/api/sales-leads` | GET/POST/PATCH | Sales 리드 조회/생성/업데이트 |
 | `/api/hospital-kb` | GET/POST/PATCH/DELETE | 병원 지식베이스 CRUD (bbg_admin) |
+| `/api/rag/index` | GET | Zendesk 전체 케이스 RAG 인덱싱 Cron — gemini-embedding-001 768dim. (CRON_SECRET, 일 1회 02:00 UTC) |
+| `/api/rag/index-koreandiet` | GET | Korean Diet 전용 RAG 인덱싱 Cron — koreandiet 태그 필터. (CRON_SECRET, 일 1회 03:00 UTC) |
+| `/api/rag/search` | POST | RAG 벡터 유사도 검색 — 태국어 질문 → gemini-embedding-001 임베딩 → pgvector 검색 (hospital_name 필터 가능) |
 
 ---
 
@@ -347,7 +369,8 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | 5.0 | 모바일 반응형, TaskChat 번역 동적화 (locale prop), Ctrl+V 이미지 붙여넣기, 이미지 어노테이션 (ImageAnnotator), Desktop App·Extension 삭제 |
 | 6.0 | 팔로업 시스템 개편: AI 자동 체크 Cron (followup-check), Push/Drop, 타임라인 모달, 워커 알림 뱃지/긴급 배너, 워커 코멘트 태국어→한국어 자동 번역, 신규 테이블(followup_actions, followup_notifications, chat_read_status, glossary), zendesk_analyses 신규 컬럼 |
 | 7.0 | Zendesk 채팅 통합 UI: ZendeskChatLayout/TicketList/ChatPanel/AISuggestPanel/ZendeskSetup/QuickReplyChips. 상담원별 개인 토큰 인증(AES-256 암호화), Webhook 수신+HMAC 검증, Fallback Polling Cron(일 4회), followup-summary Cron(일 4회), Thai→Korean 번역 캐시(body_ko). 신규 테이블(zendesk_conversations, zendesk_agent_tokens, ai_reply_suggestions, zendesk_webhook_log). 신규 env vars(ZENDESK_WEBHOOK_SECRET, ZENDESK_TOKEN_ENCRYPTION_KEY). client role 추가(tickets-live/conversations/reply/ticket-update/suggest-reply/suggest-feedback) |
+| 8.0 | Korean Diet AI 챗봇 (auto-reply): LINE 메시지 자동 답변, RAG 컨텍스트(hospital_procedures/promotions/info), Anti-hallucination 가격 규칙. 채널/대화 챗봇 토글 계층(chatbot-toggle API, MessagingLayout 토글 바, MessagePanel 개별 토글). RAG 케이스 검색 시스템(case_index/case_conversations 테이블, gemini-embedding-001 768dim, Korean Diet 전용 인덱서 Cron). messaging/suggest-reply align(Korean Diet sales agent 프롬프트). followup-check 일정 변경(01:30 UTC) + gemini-2.5-flash 업그레이드. followup-summary auto-missing(4일 이상 비활성 → lost/no_response 자동 처리). 신규 SQL(chatbot_channel_toggle.sql, chatbot_toggle.sql, rag_case_index.sql) |
 
 ---
 
-**문서 버전:** 7.0 · Zendesk 채팅 통합 UI + AI 답변 추천 시스템 반영
+**문서 버전:** 8.0 · Korean Diet AI 챗봇 + RAG 케이스 검색 + 챗봇 토글 계층 반영

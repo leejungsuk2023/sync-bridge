@@ -452,10 +452,6 @@ export default function MessagePanel({
   const [aiChatbotEnabled, setAiChatbotEnabled] = useState(false);
   const [aiChatbotLoading, setAiChatbotLoading] = useState(false);
 
-  // ─── Channel-level chatbot toggle state ───────────────────────
-  const [channelChatbotEnabled, setChannelChatbotEnabled] = useState(false);
-  const [channelChatbotLoading, setChannelChatbotLoading] = useState(false);
-
   const messagesRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -489,28 +485,11 @@ export default function MessagePanel({
 
       const { data } = await supabase
         .from('channel_conversations')
-        .select('chatbot_enabled, channel_id')
+        .select('chatbot_enabled')
         .eq('id', conversationId)
         .single();
 
       setAiChatbotEnabled(data?.chatbot_enabled || false);
-
-      // Also fetch channel-level chatbot status
-      const channelId = data?.channel_id;
-      if (channelId) {
-        try {
-          const res = await fetch('/api/channels/chatbot-toggle', {
-            headers: { Authorization: `Bearer ${session.access_token}` },
-          });
-          const channelData = await res.json();
-          const channel = (channelData.channels || []).find((c: any) => c.id === channelId);
-          if (channel) {
-            setChannelChatbotEnabled(channel.chatbot_enabled || false);
-          }
-        } catch (err) {
-          console.error('[MessagePanel] Failed to fetch channel chatbot status:', err);
-        }
-      }
     };
     loadChatbotState();
   }, [conversationId, getSession]);
@@ -742,39 +721,6 @@ export default function MessagePanel({
     }
   };
 
-  // ─── Channel-level chatbot toggle ────────────────────────────
-
-  const handleChannelChatbotToggle = async () => {
-    if (!conversation?.channel_id || channelChatbotLoading) return;
-    setChannelChatbotLoading(true);
-    try {
-      const session = await getSession();
-      if (!session) return;
-      const newValue = !channelChatbotEnabled;
-      const res = await fetch('/api/channels/chatbot-toggle', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          channel_id: conversation.channel_id,
-          chatbot_enabled: newValue,
-        }),
-      });
-      if (res.ok) {
-        setChannelChatbotEnabled(newValue);
-        console.log(`[MessagePanel] Channel chatbot ${newValue ? 'enabled' : 'disabled'} for channel ${conversation.channel_id}`);
-      } else {
-        console.error('[MessagePanel] Failed to toggle channel chatbot:', res.status);
-      }
-    } catch (err) {
-      console.error('[MessagePanel] Failed to toggle channel chatbot:', err);
-    } finally {
-      setChannelChatbotLoading(false);
-    }
-  };
-
   // ─── AI chatbot toggle — update DB ───────────────────────────
 
   const handleChatbotToggle = async () => {
@@ -922,38 +868,19 @@ export default function MessagePanel({
             </div>
           </div>
 
-          {/* AI chatbot toggles — staff/bbg_admin only */}
+          {/* Individual AI chatbot toggle — staff/bbg_admin only */}
           {(userRole === 'staff' || userRole === 'bbg_admin') && (
             <div className="flex items-center gap-2">
-              {/* Channel-level toggle (global) */}
-              <button
-                type="button"
-                onClick={handleChannelChatbotToggle}
-                disabled={channelChatbotLoading}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors disabled:opacity-50 ${
-                  channelChatbotEnabled
-                    ? 'bg-green-500 text-white'
-                    : 'bg-gray-200 text-gray-600'
-                }`}
-                title={channelChatbotEnabled ? '전체 AI 챗봇 끄기' : '전체 AI 챗봇 켜기'}
-              >
-                <Bot className="w-3.5 h-3.5" />
-                전체 AI 챗봇
-              </button>
-
-              {/* Individual toggle - only enabled when channel toggle is OFF */}
               <button
                 type="button"
                 onClick={handleChatbotToggle}
-                disabled={aiChatbotLoading || channelChatbotEnabled}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                  channelChatbotEnabled
-                    ? 'bg-green-300 text-white cursor-not-allowed opacity-60'
-                    : aiChatbotEnabled
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-gray-200 text-gray-600'
+                disabled={aiChatbotLoading}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors disabled:opacity-50 ${
+                  aiChatbotEnabled
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-gray-200 text-gray-600'
                 }`}
-                title={channelChatbotEnabled ? '전체 AI 챗봇이 켜져 있어 개별 설정 불가' : aiChatbotEnabled ? '개별 AI 끄기' : '개별 AI 켜기'}
+                title={aiChatbotEnabled ? '개별 AI 끄기' : '개별 AI 켜기'}
               >
                 <Bot className="w-3.5 h-3.5" />
                 개별 AI

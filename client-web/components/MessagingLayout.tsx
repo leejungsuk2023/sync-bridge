@@ -2,10 +2,17 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { MessageSquare } from 'lucide-react';
+import { MessageSquare, Bot } from 'lucide-react';
 import ConversationList, { type Conversation } from './ConversationList';
 import MessagePanel from './MessagePanel';
 import AISuggestPanel from './AISuggestPanel';
+
+// ─── Channel chatbot toggle bar types ─────────────────────────────
+interface ChannelInfo {
+  id: string;
+  channel_type: 'line' | 'facebook' | string;
+  chatbot_enabled: boolean;
+}
 
 type ConversationFilter = 'mine' | 'all' | 'waiting';
 type ChannelFilter = 'all' | 'line' | 'facebook';
@@ -41,6 +48,99 @@ export default function MessagingLayout({
     const { data: { session } } = await supabase.auth.getSession();
     return session;
   }, []);
+
+  // ─── Channel-level chatbot toggle state ───────────────────────
+  const [channels, setChannels] = useState<ChannelInfo[]>([]);
+  const [lineToggleLoading, setLineToggleLoading] = useState(false);
+  const [facebookToggleLoading, setFacebookToggleLoading] = useState(false);
+
+  // Fetch all channels on mount (staff/bbg_admin only)
+  useEffect(() => {
+    if (userRole !== 'staff' && userRole !== 'bbg_admin') return;
+    const fetchChannels = async () => {
+      try {
+        const session = await getSession();
+        if (!session) return;
+        const res = await fetch('/api/channels/chatbot-toggle', {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (!res.ok) {
+          console.error('[MessagingLayout] Failed to fetch channels:', res.status);
+          return;
+        }
+        const data = await res.json();
+        setChannels(data.channels || []);
+      } catch (err) {
+        console.error('[MessagingLayout] Error fetching channels:', err);
+      }
+    };
+    fetchChannels();
+  }, [userRole, getSession]);
+
+  const lineChannels = channels.filter(c => c.channel_type === 'line');
+  const facebookChannels = channels.filter(c => c.channel_type === 'facebook');
+  const lineAllOn = lineChannels.length > 0 && lineChannels.every(c => c.chatbot_enabled);
+  const facebookAllOn = facebookChannels.length > 0 && facebookChannels.every(c => c.chatbot_enabled);
+
+  const handleLineToggle = async () => {
+    if (lineToggleLoading || lineChannels.length === 0) return;
+    setLineToggleLoading(true);
+    try {
+      const session = await getSession();
+      if (!session) return;
+      const newValue = !lineAllOn;
+      await Promise.all(
+        lineChannels.map(ch =>
+          fetch('/api/channels/chatbot-toggle', {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ channel_id: ch.id, chatbot_enabled: newValue }),
+          })
+        )
+      );
+      setChannels(prev =>
+        prev.map(c => c.channel_type === 'line' ? { ...c, chatbot_enabled: newValue } : c)
+      );
+      console.log(`[MessagingLayout] LINE chatbot ${newValue ? 'enabled' : 'disabled'} for all LINE channels`);
+    } catch (err) {
+      console.error('[MessagingLayout] Failed to toggle LINE chatbot:', err);
+    } finally {
+      setLineToggleLoading(false);
+    }
+  };
+
+  const handleFacebookToggle = async () => {
+    if (facebookToggleLoading || facebookChannels.length === 0) return;
+    setFacebookToggleLoading(true);
+    try {
+      const session = await getSession();
+      if (!session) return;
+      const newValue = !facebookAllOn;
+      await Promise.all(
+        facebookChannels.map(ch =>
+          fetch('/api/channels/chatbot-toggle', {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ channel_id: ch.id, chatbot_enabled: newValue }),
+          })
+        )
+      );
+      setChannels(prev =>
+        prev.map(c => c.channel_type === 'facebook' ? { ...c, chatbot_enabled: newValue } : c)
+      );
+      console.log(`[MessagingLayout] Facebook chatbot ${newValue ? 'enabled' : 'disabled'} for all Facebook channels`);
+    } catch (err) {
+      console.error('[MessagingLayout] Failed to toggle Facebook chatbot:', err);
+    } finally {
+      setFacebookToggleLoading(false);
+    }
+  };
 
   const fetchConversations = useCallback(async (pageNum: number = 1) => {
     try {
@@ -228,6 +328,64 @@ export default function MessagingLayout({
       className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden"
       style={{ height: 'calc(100vh - 220px)', minHeight: '500px' }}
     >
+      {/* ── Channel-level AI chatbot toggle bar (staff/bbg_admin only) ── */}
+      {(userRole === 'staff' || userRole === 'bbg_admin') && (lineChannels.length > 0 || facebookChannels.length > 0) && (
+        <div className="shrink-0 bg-slate-50 border-b border-slate-200 px-4 py-2 flex items-center gap-3">
+          <Bot className="w-4 h-4 text-slate-400 shrink-0" />
+          <span className="text-xs text-slate-500 font-medium mr-1">AI 챗봇:</span>
+
+          {/* LINE toggle */}
+          {lineChannels.length > 0 && (
+            <button
+              type="button"
+              onClick={handleLineToggle}
+              disabled={lineToggleLoading}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors disabled:opacity-50 ${
+                lineAllOn ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-600'
+              }`}
+              title={lineAllOn ? 'LINE AI 챗봇 끄기' : 'LINE AI 챗봇 켜기'}
+            >
+              {lineToggleLoading ? (
+                <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <span
+                  className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full text-white text-[9px] font-bold shrink-0"
+                  style={{ background: lineAllOn ? 'rgba(255,255,255,0.3)' : '#06C755' }}
+                >
+                  L
+                </span>
+              )}
+              LINE AI 챗봇
+            </button>
+          )}
+
+          {/* Facebook toggle */}
+          {facebookChannels.length > 0 && (
+            <button
+              type="button"
+              onClick={handleFacebookToggle}
+              disabled={facebookToggleLoading}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors disabled:opacity-50 ${
+                facebookAllOn ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-600'
+              }`}
+              title={facebookAllOn ? 'Facebook AI 챗봇 끄기' : 'Facebook AI 챗봇 켜기'}
+            >
+              {facebookToggleLoading ? (
+                <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <span
+                  className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full text-white text-[9px] font-bold shrink-0"
+                  style={{ background: facebookAllOn ? 'rgba(255,255,255,0.3)' : 'linear-gradient(135deg, #1877f2, #42a5f5)' }}
+                >
+                  f
+                </span>
+              )}
+              Facebook AI 챗봇
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="flex h-full">
         {/* Conversation List — always visible on desktop, toggleable on mobile */}
         <div className={`w-full md:w-72 md:shrink-0 md:block ${showPanel ? 'hidden' : 'block'}`}>

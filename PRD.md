@@ -88,7 +88,7 @@
 | AI 인사이트 | ✅ | 병원별 3종 인사이트: 병원전략, Sales팀 개선방향, 본사관리방향 (Gemini, 한국어, /api/zendesk/insights) |
 | 미분석 사유 표시 | ✅ | 분석 제외 사유 표시 (댓글 수 부족, 비활성 상태 등) |
 | 더보기 페이지네이션 | ✅ | 티켓 목록 더보기 방식 페이지네이션 (`limit` 파라미터) |
-| 자동 배치 실행 | ✅ | Vercel Cron — 매일 09:00 KST, 16:00 KST 자동 sync + analyze (zendesk/cron); 01:30 UTC 팔로업 자동 체크 (followup-check, gemini-2.5-flash); 일 4회 팔로업 요약 (followup-summary, 00/03/06/09 UTC). RAG 인덱싱: 02:00 UTC 전체, 03:00 UTC Korean Diet 전용 |
+| 자동 배치 실행 | ✅ | Vercel Cron — 매일 09:00 KST, 16:00 KST 자동 sync + analyze (zendesk/cron); 01:30 UTC 팔로업 자동 체크 (followup-check, gemini-2.5-flash); 일 4회 팔로업 요약 (followup-summary, 00/03/06/09 UTC). RAG 인덱싱: 02:00 UTC 전체, 03:00 UTC Korean Diet 전용. 처방 알림: 30분마다 (prescription-notify) |
 | 수동 배치 실행 | ✅ | 수동 동기화/분석 버튼 (API 직접 호출) |
 | 3탭 구성 | ✅ | Sales 성과 / 병원별 분석 / 팔로업 고객 탭 |
 
@@ -137,7 +137,9 @@ thebb, delphic, will, mikclinicthai, jyclinicthai, du, koreandiet, ourpthai, eve
 | 채널 설정 API | ✅ | `/api/messaging/config` — 채널 목록 조회 |
 | 보고서 생성 API | ✅ | `/api/messaging/generate` — AI 기반 보고서 초안 생성 |
 | CSV 업로드 API | ✅ | `/api/messaging/upload-csv` — 광고 성과 CSV 업로드 → 파싱 및 저장 |
-| Korean Diet AI 챗봇 | ✅ | `/api/messaging/auto-reply` — LINE 메시지 수신 후 Gemini 기반 자동 답변 생성. hospital_procedures/promotions/info RAG 컨텍스트 (.eq('hospital_name', 'Korean Diet')). 가격: 1box 99K/2box 149K/4box 249K KRW + THB 환산. Anti-hallucination 프롬프트 내장 |
+| Korean Diet AI 챗봇 | ✅ | `/api/messaging/auto-reply` — LINE 메시지 수신 후 Gemini 기반 자동 답변 생성. hospital_procedures/promotions/info RAG 컨텍스트 (.eq('hospital_name', 'Korean Diet')). 가격: 1box 99K/2box 149K/4box 249K KRW + THB 환산. Anti-hallucination 프롬프트 내장. 응답 포맷 JSON 변경: `{"reply": "...", "survey_name": "..."}` — survey_name 추출 시 customers 테이블 저장 |
+| 설문 성명 수집 | ✅ | auto-reply 판매 플로우 3.5단계: 고객이 건강설문 작성 후 챗봇이 성명 확인 요청 → `customers.survey_name` 저장 (처방 알림 매칭용) |
+| 처방 알림 자동화 | ✅ | `/api/messaging/prescription-notify` — Google Sheet 진단 결과 읽기 → LINE 자동 안내 발송. 30분마다 Vercel Cron 실행. 3단계 퍼지 매칭(survey_name→display_name→이름), 성공 시 시트 O열 "자동안내완료" 기록 |
 | 채널별 챗봇 토글 | ✅ | `/api/channels/chatbot-toggle` (GET/PUT, bbg_admin/staff 전용) — 채널 전체 ON/OFF. MessagingLayout 상단 토글 바 UI. 채널 ON이면 대화별 설정 무시 |
 
 ### 3.1h Client Web — 팔로업 고객 추적
@@ -204,6 +206,7 @@ thebb, delphic, will, mikclinicthai, jyclinicthai, du, koreandiet, ourpthai, eve
 | `followup_notifications` | 워커 인앱 알림 (user_id, action_id, ticket_id, title, body, channel, read_at) |
 | `chat_read_status` | 채팅 읽음 상태 추적 (user_id, task_id, last_read_at) |
 | `glossary` | 의료/비즈니스 용어 한↔태 번역 용어집 (korean, thai, category) |
+| `customers` | 다이렉트 메시징 고객 (line_user_id, facebook_user_id, display_name, phone, tags, **survey_name** — 건강설문 제출 시 사용한 성명, 처방 알림 매칭용) |
 | `messaging_channels` | LINE/Facebook 채널 설정 (channel_type, channel_name, config jsonb, hospital_prefix, **chatbot_enabled**) |
 | `channel_conversations` | 다이렉트 메시징 대화 (channel_id, customer_id, hospital_prefix, **chatbot_enabled**) |
 | `case_index` | RAG 케이스 벡터 인덱스 (ticket_id, search_summary, embedding vector(768), key_turns jsonb, hospital_name, procedure_category, customer_concern[], quality_score, embedding_model, status) |
@@ -310,7 +313,8 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | `/api/messaging/config` | GET | 사용 가능 채널 목록 조회 |
 | `/api/messaging/generate` | POST | AI 기반 월간 보고서 초안 생성 (Gemini) |
 | `/api/messaging/upload-csv` | POST | 광고 성과 CSV 파일 업로드 및 파싱 |
-| `/api/messaging/auto-reply` | POST | Korean Diet AI 챗봇 자동 답변 (LINE webhook 트리거). 채널/대화 챗봇 토글 계층 체크 후 Gemini 답변 생성 |
+| `/api/messaging/auto-reply` | POST | Korean Diet AI 챗봇 자동 답변 (LINE webhook 트리거). 채널/대화 챗봇 토글 계층 체크 후 Gemini 답변 생성. JSON 포맷 응답(`{"reply":"...","survey_name":"..."}`), survey_name 추출 시 customers 테이블 자동 저장 |
+| `/api/messaging/prescription-notify` | GET/POST | Google Sheet 진단 결과 읽기 → LINE 처방 자동 안내 발송 Cron (CRON_SECRET 인증, 30분마다). survey_name→display_name→이름 3단계 퍼지 매칭. 성공 시 시트 O열 "자동안내완료" 기록, 실패 시 "매칭불가" 기록. FB 채널 환자 스킵 |
 | `/api/messaging/suggest-reply` | POST | 채널 대화용 AI 답변 추천 (Gemini). hospital_procedures/promotions/info RAG 컨텍스트. Korean Diet는 sales agent 프롬프트 적용 (bbg_admin + worker + client + staff) |
 | `/api/monthly-report` | GET/POST/PATCH | 월간 보고서 CRUD |
 | `/api/sales-leads` | GET/POST/PATCH | Sales 리드 조회/생성/업데이트 |
@@ -370,7 +374,8 @@ Figma Make 기반 디자인 업그레이드 적용 (Linear/Notion 스타일).
 | 6.0 | 팔로업 시스템 개편: AI 자동 체크 Cron (followup-check), Push/Drop, 타임라인 모달, 워커 알림 뱃지/긴급 배너, 워커 코멘트 태국어→한국어 자동 번역, 신규 테이블(followup_actions, followup_notifications, chat_read_status, glossary), zendesk_analyses 신규 컬럼 |
 | 7.0 | Zendesk 채팅 통합 UI: ZendeskChatLayout/TicketList/ChatPanel/AISuggestPanel/ZendeskSetup/QuickReplyChips. 상담원별 개인 토큰 인증(AES-256 암호화), Webhook 수신+HMAC 검증, Fallback Polling Cron(일 4회), followup-summary Cron(일 4회), Thai→Korean 번역 캐시(body_ko). 신규 테이블(zendesk_conversations, zendesk_agent_tokens, ai_reply_suggestions, zendesk_webhook_log). 신규 env vars(ZENDESK_WEBHOOK_SECRET, ZENDESK_TOKEN_ENCRYPTION_KEY). client role 추가(tickets-live/conversations/reply/ticket-update/suggest-reply/suggest-feedback) |
 | 8.0 | Korean Diet AI 챗봇 (auto-reply): LINE 메시지 자동 답변, RAG 컨텍스트(hospital_procedures/promotions/info), Anti-hallucination 가격 규칙. 채널/대화 챗봇 토글 계층(chatbot-toggle API, MessagingLayout 토글 바, MessagePanel 개별 토글). RAG 케이스 검색 시스템(case_index/case_conversations 테이블, gemini-embedding-001 768dim, Korean Diet 전용 인덱서 Cron). messaging/suggest-reply align(Korean Diet sales agent 프롬프트). followup-check 일정 변경(01:30 UTC) + gemini-2.5-flash 업그레이드. followup-summary auto-missing(4일 이상 비활성 → lost/no_response 자동 처리). 신규 SQL(chatbot_channel_toggle.sql, chatbot_toggle.sql, rag_case_index.sql) |
+| 9.0 | 처방 알림 자동화: prescription-notify Cron(30분마다) — Google Sheet 진단 결과 읽기 → LINE 자동 안내 발송. 3단계 퍼지 매칭(survey_name→display_name→이름). auto-reply JSON 응답 포맷 변경(survey_name 추출 + customers 저장). 판매 플로우 3.5단계 추가(건강설문 성명 확인). 신규 SQL(survey_name.sql). 신규 env vars(GOOGLE_SERVICE_ACCOUNT_BASE64, GOOGLE_SHEET_ID). npm 의존성 추가(googleapis) |
 
 ---
 
-**문서 버전:** 8.0 · Korean Diet AI 챗봇 + RAG 케이스 검색 + 챗봇 토글 계층 반영
+**문서 버전:** 9.0 · 처방 알림 자동화 + 설문 성명 수집 (auto-reply JSON 포맷 변경) 반영

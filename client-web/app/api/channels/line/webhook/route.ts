@@ -310,6 +310,23 @@ export async function POST(req: NextRequest) {
           console.error('[LINE Webhook] Error triggering suggest-reply:', err);
         }
 
+        // ── Fire-and-forget: trigger auto-reply chatbot ────────────────────
+        try {
+          const baseUrl = new URL(req.url).origin;
+          fetch(`${baseUrl}/api/messaging/auto-reply`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              conversation_id: conversationId,
+              message_id: insertedMsg?.id,
+            }),
+          }).catch((err) => {
+            console.error('[LINE Webhook] Fire-and-forget auto-reply error:', err);
+          });
+        } catch (err) {
+          console.error('[LINE Webhook] Error triggering auto-reply:', err);
+        }
+
       } else if (event.type === 'follow') {
         // ── Follow event: create customer if not exists ───────────────────
         const { data: existingCustomer } = await supabaseAdmin

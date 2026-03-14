@@ -37,7 +37,7 @@ async function verifyUser(req: NextRequest): Promise<{ role: string; userId: str
     .select('role')
     .eq('id', user.id)
     .single();
-  if (!profile || !['bbg_admin', 'worker', 'client'].includes(profile.role)) return null;
+  if (!profile || !['bbg_admin', 'worker', 'client', 'staff'].includes(profile.role)) return null;
   return { role: profile.role, userId: user.id };
 }
 
@@ -107,6 +107,97 @@ export async function POST(req: NextRequest) {
       politeParticle = agentProfile.polite_particle;
     }
 
+    // 7. RAG: search for similar successful cases from case_index
+    let ragSection = '';
+    try {
+      const customerMessages = recentMessages
+        .filter((m: any) => m.sender_type === 'customer')
+        .slice(-5);
+      const ragQuery = customerMessages.map((m: any) => (m.body || '').slice(0, 300)).join(' ');
+
+      if (ragQuery.trim()) {
+        console.log(`[MessagingSuggestReply] RAG: building query embedding from ${customerMessages.length} customer messages`);
+
+        const GEMINI_KEY = process.env.GEMINI_API_KEY!;
+        const embeddingRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${GEMINI_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: 'models/gemini-embedding-001',
+              content: { parts: [{ text: ragQuery }] },
+              taskType: 'RETRIEVAL_QUERY',
+              outputDimensionality: 768,
+            }),
+          },
+        );
+
+        if (embeddingRes.ok) {
+          const embeddingJson = await embeddingRes.json();
+          const queryEmbedding: number[] = embeddingJson?.embedding?.values || [];
+          console.log(`[MessagingSuggestReply] RAG: got query embedding (dim=${queryEmbedding.length})`);
+
+          if (queryEmbedding.length > 0) {
+            const { data: cases } = await supabaseAdmin
+              .from('case_index')
+              .select('id, procedure_category, hospital_name, key_turns, embedding')
+              .eq('status', 'indexed');
+
+            const indexedCases = cases || [];
+            console.log(`[MessagingSuggestReply] RAG: comparing against ${indexedCases.length} indexed cases`);
+
+            function cosineSimilarity(a: number[], b: number[]): number {
+              if (a.length !== b.length || a.length === 0) return 0;
+              let dot = 0, normA = 0, normB = 0;
+              for (let i = 0; i < a.length; i++) {
+                dot += a[i] * b[i];
+                normA += a[i] * a[i];
+                normB += b[i] * b[i];
+              }
+              const denom = Math.sqrt(normA) * Math.sqrt(normB);
+              return denom === 0 ? 0 : dot / denom;
+            }
+
+            const scored = indexedCases
+              .map((c: any) => {
+                let caseEmbedding: number[] = [];
+                try {
+                  caseEmbedding = JSON.parse(c.embedding || '[]');
+                } catch {
+                  // skip unparseable
+                }
+                const similarity = cosineSimilarity(queryEmbedding, caseEmbedding);
+                return { ...c, similarity };
+              })
+              .filter((c: any) => c.similarity > 0.4)
+              .sort((a: any, b: any) => b.similarity - a.similarity)
+              .slice(0, 2);
+
+            console.log(`[MessagingSuggestReply] RAG: found ${scored.length} similar cases (threshold 0.4)`);
+
+            if (scored.length > 0) {
+              const caseSections = scored.map((c: any) => {
+                const similarityPct = Math.round(c.similarity * 100);
+                const turns: string = Array.isArray(c.key_turns)
+                  ? c.key_turns.map((t: any) => `${t.role || 'unknown'}: ${t.message || ''}`).join('\n')
+                  : String(c.key_turns || '');
+                return `### Case: ${c.procedure_category || 'General'} (${c.hospital_name || 'N/A'}) — Similarity: ${similarityPct}%\n${turns}`;
+              });
+
+              ragSection = `\n## 참고: 유사 성공 상담 사례\nBelow are key conversation turns from similar past consultations that resulted in successful bookings. Use these as reference for tone, approach, and handling customer concerns.\n\n${caseSections.join('\n\n')}\n`;
+            }
+          }
+        } else {
+          console.warn(`[MessagingSuggestReply] RAG: embedding API returned ${embeddingRes.status}`);
+        }
+      } else {
+        console.log('[MessagingSuggestReply] RAG: no customer messages to build query from, skipping');
+      }
+    } catch (ragErr: any) {
+      console.error('[MessagingSuggestReply] RAG: failed, proceeding without RAG context:', ragErr?.message || ragErr);
+    }
+
     // Build prompt
     const conversationText = recentMessages
       .map((m: any) => {
@@ -150,11 +241,12 @@ ${quickReplyText}
 
 ## Medical Glossary (Korean → Thai)
 ${glossaryText}
-
+${ragSection}
 ## Task
 Generate 2-3 suggested replies for the agent to send to the customer.
 Each suggestion should be appropriate for the conversation context.
 Vary the suggestions: one direct answer, one with follow-up question, one empathetic response.
+If similar successful cases are provided above, adapt their proven approaches to the current conversation context.
 
 ## Output Format
 Respond ONLY with valid JSON (no markdown, no code fences):

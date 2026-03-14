@@ -85,17 +85,18 @@ key_turns는 전환에 결정적이었던 3-5턴만. 단순 인사/확인 제외
 ${commentsText}`;
 }
 
-// Generate embedding via Gemini text-embedding-004
+// Generate embedding via Gemini gemini-embedding-001
 async function generateEmbedding(text: string): Promise<number[]> {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${process.env.GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${process.env.GEMINI_API_KEY}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'models/text-embedding-004',
+        model: 'models/gemini-embedding-001',
         content: { parts: [{ text }] },
         taskType: 'RETRIEVAL_DOCUMENT',
+        outputDimensionality: 768,
       }),
     }
   );
@@ -121,7 +122,7 @@ export async function GET(req: NextRequest) {
     generationConfig: {
       responseMimeType: 'application/json',
       responseSchema: ragIndexSchema,
-      maxOutputTokens: 2048,
+      maxOutputTokens: 8192,
     },
   });
 
@@ -239,7 +240,7 @@ export async function GET(req: NextRequest) {
                 procedure_category: procedure_category || null,
                 customer_concern: customer_concern || [],
                 status: 'indexed',
-                embedding_model: 'text-embedding-004',
+                embedding_model: 'gemini-embedding-001',
               },
               { onConflict: 'ticket_id' }
             );
@@ -263,7 +264,7 @@ export async function GET(req: NextRequest) {
                 search_summary: '',
                 key_turns: [],
                 status: 'failed',
-                embedding_model: 'text-embedding-004',
+                embedding_model: 'gemini-embedding-001',
               },
               { onConflict: 'ticket_id' }
             );

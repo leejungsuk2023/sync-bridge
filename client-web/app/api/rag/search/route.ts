@@ -99,17 +99,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Step 2: Embed the query with Gemini text-embedding-004
+    // Step 2: Embed the query with Gemini gemini-embedding-001
     console.log(`[RAG Search] Embedding query (length=${query.length})`);
     const embeddingRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${process.env.GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'models/text-embedding-004',
+          model: 'models/gemini-embedding-001',
           content: { parts: [{ text: query }] },
           taskType: 'RETRIEVAL_QUERY',
+          outputDimensionality: 768,
         }),
       },
     );

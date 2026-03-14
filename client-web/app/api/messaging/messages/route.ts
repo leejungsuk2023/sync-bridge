@@ -130,7 +130,7 @@ export async function GET(req: NextRequest) {
     const { data: conversation, error: convError } = await supabaseAdmin
       .from('channel_conversations')
       .select(
-        `id, channel_type, status, is_read, last_message_at, last_customer_message_at, last_agent_message_at, assigned_agent_id, hospital_prefix, created_at,
+        `id, channel_id, channel_type, status, is_read, last_message_at, last_customer_message_at, last_agent_message_at, assigned_agent_id, hospital_prefix, created_at,
          customers(display_name, avatar_url, line_user_id, facebook_user_id),
          messaging_channels(channel_name)`
       )

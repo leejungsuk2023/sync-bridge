@@ -213,7 +213,7 @@ export default function MessagingLayout({
 
   useEffect(() => {
     setLoading(true);
-    // Bump sortEpoch so conversation list re-sorts when filter/hospital/channel changes
+    setConversations([]); // Clear stale conversations when filter/hospital/channel changes
     setSortEpoch(e => e + 1);
     fetchConversations();
   }, [fetchConversations]);

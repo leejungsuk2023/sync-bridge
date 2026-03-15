@@ -328,7 +328,7 @@ export async function GET(req: NextRequest) {
     // Read all data from sheet
     const res = await sheets.spreadsheets.values.get({
       spreadsheetId: SHEET_ID,
-      range: 'Sheet1!A1:R1000',
+      range: 'Sheet1!A1:R5000',
     });
 
     const rows = res.data.values || [];

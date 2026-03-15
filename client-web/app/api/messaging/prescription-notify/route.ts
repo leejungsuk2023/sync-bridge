@@ -191,15 +191,25 @@ async function findLatestConversation(
   return null;
 }
 
-// Build the notification message
+// Build the notification message using payment info from DB
 function buildNotificationMessage(
   diagnosisInfo: { level: number; nameTh: string; emoji: string },
   patientName: string,
+  paymentKorea?: { bank: string; account_number: string; account_name: string },
+  paymentThailand?: { bank: string; account_number: string; account_name: string },
 ): string {
   const levelDesc =
     diagnosisInfo.level === 1
       ? 'Korean Diet ระดับ1 สีฟ้า🩵 (อ่อนโยน เหมาะสำหรับผู้ที่ไวต่อคาเฟอีน หรือมีโรคประจำตัว)'
       : 'Korean Diet ระดับ2 สีชมพู🩷 (สูตรเข้มข้น เหมาะสำหรับผู้ที่ต้องการผลลัพธ์ที่ชัดเจน)';
+
+  let paymentSection = '';
+  if (paymentKorea) {
+    paymentSection += `\n🇰🇷 โอนวอน:\nธนาคาร ${paymentKorea.bank}\nเลขที่บัญชี ${paymentKorea.account_number}\nชื่อบัญชี ${paymentKorea.account_name}`;
+  }
+  if (paymentThailand) {
+    paymentSection += `\n\n🇹🇭 โอนบาท:\nธนาคาร ${paymentThailand.bank}\nเลขที่บัญชี ${paymentThailand.account_number}\nชื่อบัญชี ${paymentThailand.account_name}`;
+  }
 
   return `สวัสดีค่ะ คุณ${patientName} 🙏🏻
 
@@ -214,16 +224,7 @@ function buildNotificationMessage(
 ✨ ทุกออเดอร์แถม Lirio Plus 2 กล่องฟรี!
 
 หากต้องการสั่งซื้อ กรุณาแจ้งจำนวนกล่องที่ต้องการ แล้วโอนเงินมาที่:
-
-🇰🇷 โอนวอน:
-ธนาคาร SC제일은행
-เลขที่บัญชี 202-20-231828
-ชื่อบัญชี 이정석
-
-🇹🇭 โอนบาท:
-ธนาคาร KBANK (กสิกรไทย)
-เลขที่บัญชี 182-8-33668-8
-ชื่อบัญชี SUWIPA CHUTASRIPANICH
+${paymentSection}
 
 หลังโอนแล้วส่งสลิป + ชื่อ + เบอร์ + ที่อยู่จัดส่งมาได้เลยนะคะ 😊`;
 }
@@ -327,6 +328,15 @@ export async function GET(req: NextRequest) {
       .not('survey_name', 'is', null);
     const surveyNames = (surveyCustomers || []).map(c => c.survey_name).filter(Boolean) as string[];
     console.log(`[PrescriptionNotify] Known survey_names: ${surveyNames.length}`);
+
+    // Fetch payment info from hospital_info (Korean Diet)
+    const { data: hospitalInfo } = await supabaseAdmin
+      .from('hospital_info')
+      .select('operating_hours')
+      .eq('hospital_prefix', 'koreandiet')
+      .maybeSingle();
+    const paymentKorea = (hospitalInfo?.operating_hours as any)?.payment_korea;
+    const paymentThailand = (hospitalInfo?.operating_hours as any)?.payment_thailand;
 
     const auth = getGoogleAuth();
     const sheets = google.sheets({ version: 'v4', auth });
@@ -435,7 +445,7 @@ export async function GET(req: NextRequest) {
         }
 
         // Build and send the notification message
-        const message = buildNotificationMessage(diagnosisInfo, candidate.name);
+        const message = buildNotificationMessage(diagnosisInfo, candidate.name, paymentKorea, paymentThailand);
 
         // Get LINE adapter and send
         const { getChannelAdapter } = await import('@/lib/channels/registry');

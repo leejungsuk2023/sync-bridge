@@ -55,8 +55,8 @@ export async function GET(req: NextRequest) {
     const perPage = Math.min(50, Math.max(1, parseInt(searchParams.get('per_page') || '20', 10)));
     const offset = (page - 1) * perPage;
 
-    if (!['mine', 'all', 'waiting'].includes(filter)) {
-      return withCors(NextResponse.json({ error: 'filter must be one of: mine, all, waiting' }, { status: 400 }));
+    if (!['mine', 'all', 'waiting', 'payment_confirmed'].includes(filter)) {
+      return withCors(NextResponse.json({ error: 'filter must be one of: mine, all, waiting, payment_confirmed' }, { status: 400 }));
     }
 
     // Build query joining conversations with customers and messaging_channels
@@ -69,8 +69,14 @@ export async function GET(req: NextRequest) {
          customers!inner(display_name, avatar_url, line_user_id, facebook_user_id),
          messaging_channels(channel_name)`,
         { count: 'exact' }
-      )
-      .neq('status', 'closed');
+      );
+
+    // Filter: payment_confirmed — show only payment confirmed conversations
+    if (filter === 'payment_confirmed') {
+      query = query.eq('status', 'payment_confirmed');
+    } else {
+      query = query.neq('status', 'closed').neq('status', 'payment_confirmed');
+    }
 
     // Filter: mine — assigned to current user
     if (filter === 'mine') {
@@ -92,6 +98,7 @@ export async function GET(req: NextRequest) {
 
     // For 'waiting' filter, column-to-column comparison requires JS filtering
     const needsJsFilter = filter === 'waiting';
+    // payment_confirmed is handled entirely in DB query (no JS filter needed)
     if (!needsJsFilter) {
       query = query.range(offset, offset + perPage - 1);
     }
@@ -139,7 +146,7 @@ export async function GET(req: NextRequest) {
       channel_name: c.messaging_channels?.channel_name ?? undefined,
     }));
 
-    console.log(`[Messaging] Returned ${flattened.length} conversations (filter: ${filter}, channel: ${channel}, hospital: ${hospital || 'all'}, page: ${page})`);
+    console.log(`[Messaging] Returned ${flattened.length} conversations (filter: ${filter}, channel: ${channel}, hospital: ${hospital || 'all'}, page: ${page}, total: ${total})`);
 
     return withCors(NextResponse.json({
       conversations: flattened,

@@ -12,7 +12,7 @@ export interface Conversation {
   channel_type: 'line' | 'facebook';
   channel_name?: string;
   hospital_prefix?: string;
-  status: 'new' | 'open' | 'pending' | 'solved' | 'closed';
+  status: 'new' | 'open' | 'pending' | 'solved' | 'closed' | 'payment_confirmed';
   subject?: string;
   last_message_preview?: string;
   last_message_at: string;
@@ -21,7 +21,7 @@ export interface Conversation {
   assigned_agent_id?: string;
 }
 
-type ConversationFilter = 'mine' | 'all' | 'waiting';
+type ConversationFilter = 'mine' | 'all' | 'waiting' | 'payment_confirmed';
 type ChannelFilter = 'all' | 'line' | 'facebook';
 
 interface ConversationListProps {
@@ -70,6 +70,7 @@ const TEXT = {
     mine: '내 대화',
     all: '전체',
     waiting: '대기',
+    paymentConfirmed: '입금완료',
     channelAll: '전체',
     noConversations: '대화가 없습니다',
     loading: '로딩 중...',
@@ -80,6 +81,7 @@ const TEXT = {
     statusPending: '대기 중',
     statusSolved: '해결됨',
     statusClosed: '종료',
+    statusPaymentConfirmed: '입금완료',
     loadMore: '더 보기',
     allHospitals: '전체 병원',
   },
@@ -88,6 +90,7 @@ const TEXT = {
     mine: 'ของฉัน',
     all: 'ทั้งหมด',
     waiting: 'รอตอบ',
+    paymentConfirmed: 'ชำระแล้ว',
     channelAll: 'ทั้งหมด',
     noConversations: 'ไม่พบการสนทนา',
     loading: 'กำลังโหลด...',
@@ -98,6 +101,7 @@ const TEXT = {
     statusPending: 'รอตอบ',
     statusSolved: 'แก้แล้ว',
     statusClosed: 'ปิดแล้ว',
+    statusPaymentConfirmed: 'ชำระแล้ว',
     loadMore: 'โหลดเพิ่ม',
     allHospitals: 'ทุกโรงพยาบาล',
   },
@@ -177,11 +181,12 @@ function formatRelativeTime(dateStr: string, locale: 'ko' | 'th' = 'th'): string
 function getStatusConfig(locale: 'ko' | 'th'): Record<string, { label: string; bg: string; text: string }> {
   const t = TEXT[locale];
   return {
-    new:     { label: t.statusNew,     bg: 'bg-blue-100',    text: 'text-blue-700' },
-    open:    { label: t.statusOpen,    bg: 'bg-emerald-100', text: 'text-emerald-700' },
-    pending: { label: t.statusPending, bg: 'bg-amber-100',   text: 'text-amber-700' },
-    solved:  { label: t.statusSolved,  bg: 'bg-slate-100',   text: 'text-slate-500' },
-    closed:  { label: t.statusClosed,  bg: 'bg-slate-100',   text: 'text-slate-400' },
+    new:               { label: t.statusNew,              bg: 'bg-blue-100',    text: 'text-blue-700' },
+    open:              { label: t.statusOpen,             bg: 'bg-emerald-100', text: 'text-emerald-700' },
+    pending:           { label: t.statusPending,          bg: 'bg-amber-100',   text: 'text-amber-700' },
+    solved:            { label: t.statusSolved,           bg: 'bg-slate-100',   text: 'text-slate-500' },
+    closed:            { label: t.statusClosed,           bg: 'bg-slate-100',   text: 'text-slate-400' },
+    payment_confirmed: { label: t.statusPaymentConfirmed, bg: 'bg-green-100',   text: 'text-green-700' },
   };
 }
 
@@ -191,6 +196,7 @@ function getFilterTabs(locale: 'ko' | 'th'): { key: ConversationFilter; label: s
     { key: 'mine', label: t.mine },
     { key: 'all', label: t.all },
     { key: 'waiting', label: t.waiting },
+    { key: 'payment_confirmed', label: t.paymentConfirmed },
   ];
 }
 

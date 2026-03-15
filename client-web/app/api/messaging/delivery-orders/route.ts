@@ -301,6 +301,12 @@ Return JSON:
           raw_extraction: parsed,
         }, { onConflict: 'conversation_id' });
 
+        // Mark conversation as payment confirmed
+        await supabaseAdmin
+          .from('channel_conversations')
+          .update({ status: 'payment_confirmed' })
+          .eq('id', conv.id);
+
         written++;
         console.log(`[DeliveryOrders] Written order for conv ${conv.id}: ${parsed.recipient_name} — ${productName} x${parsed.quantity}`);
 

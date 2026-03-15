@@ -14,7 +14,7 @@ interface ChannelInfo {
   chatbot_enabled: boolean;
 }
 
-type ConversationFilter = 'mine' | 'all' | 'waiting';
+type ConversationFilter = 'mine' | 'all' | 'waiting' | 'payment_confirmed';
 type ChannelFilter = 'all' | 'line' | 'facebook';
 
 export default function MessagingLayout({

@@ -55,6 +55,14 @@
     {
       "path": "/api/messaging/prescription-notify",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/messaging/delivery-orders",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/messaging/delivery-orders",
+      "schedule": "0 7 * * *"
     }
   ]
 }

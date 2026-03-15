@@ -80,6 +80,13 @@ export async function POST(req: NextRequest) {
       return withCors(NextResponse.json({ skipped: true, reason: 'no_messages' }));
     }
 
+    // Skip messages starting with "#" — these trigger LINE Business auto-replies
+    const latestMsg = recentMessages[recentMessages.length - 1];
+    if (latestMsg?.sender_type === 'customer' && latestMsg?.body?.trim().startsWith('#')) {
+      console.log(`[AutoReply] Skipping LINE keyword message: "${latestMsg.body.trim().substring(0, 30)}"`);
+      return withCors(NextResponse.json({ skipped: true, reason: 'line_keyword' }));
+    }
+
     // 3. Fetch customer info
     const { data: customer } = await supabaseAdmin
       .from('customers')

@@ -352,8 +352,8 @@ export async function GET(req: NextRequest) {
       // Skip if already notified (구매완료, 자동안내완료, or 상담완료)
       if (status.includes('구매완료') || status.includes('자동안내완료')) continue;
 
-      // Only process rows where status is 상담중 or empty — these haven't been handled yet
-      const shouldProcess = !status || status.includes('상담중');
+      // Process: empty, 상담중, or previously failed matching (retry with new survey_names)
+      const shouldProcess = !status || status.includes('상담중') || status.includes('매칭불가') || status.includes('메시지 보냈음');
       if (!shouldProcess) continue;
 
       candidates.push({

@@ -320,6 +320,14 @@ export async function GET(req: NextRequest) {
 
   // ── Phase 2: Google Sheet prescription notification ──
   try {
+    // Pre-fetch all known survey_names for efficient retry filtering
+    const { data: surveyCustomers } = await supabaseAdmin
+      .from('customers')
+      .select('survey_name')
+      .not('survey_name', 'is', null);
+    const surveyNames = (surveyCustomers || []).map(c => c.survey_name).filter(Boolean) as string[];
+    console.log(`[PrescriptionNotify] Known survey_names: ${surveyNames.length}`);
+
     const auth = getGoogleAuth();
     const sheets = google.sheets({ version: 'v4', auth });
 
@@ -352,9 +360,22 @@ export async function GET(req: NextRequest) {
       // Skip if already notified (구매완료, 자동안내완료, or 상담완료)
       if (status.includes('구매완료') || status.includes('자동안내완료')) continue;
 
-      // Process: empty, 상담중, or previously failed matching (retry with new survey_names)
-      const shouldProcess = !status || status.includes('상담중') || status.includes('매칭불가') || status.includes('메시지 보냈음');
-      if (!shouldProcess) continue;
+      // Process: empty or 상담중 (new rows), or retry failed rows only if name matches a known survey_name
+      const isNew = !status || status.includes('상담중');
+      const isRetry = status.includes('매칭불가') || status.includes('메시지 보냈음');
+      if (!isNew && !isRetry) continue;
+
+      // For retry rows, skip if no survey_names exist that could match
+      if (isRetry) {
+        if (!surveyNames || surveyNames.length === 0) continue;
+        const rowName = (row[1] || '').trim().toLowerCase();
+        const hasMatch = surveyNames.some(sn => {
+          const snLower = sn.toLowerCase();
+          return snLower.includes(rowName) || rowName.includes(snLower) ||
+            snLower.includes(rowName.split(/\s+/)[0]) || rowName.split(/\s+/)[0].length >= 2 && snLower.includes(rowName.split(/\s+/)[0]);
+        });
+        if (!hasMatch) continue;
+      }
 
       candidates.push({
         rowIndex: i,

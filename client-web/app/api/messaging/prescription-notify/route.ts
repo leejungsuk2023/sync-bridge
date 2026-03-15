@@ -141,25 +141,9 @@ async function findConversation(
     }
   }
 
-  // Step 3: Name match against display_name (last resort)
-  if (name) {
-    const firstName = name.split(/\s+/)[0];
-    if (firstName && firstName.length >= 2) {
-      const safeFirstName = sanitizeForFilter(firstName);
-      if (safeFirstName) {
-        const { data: nameMatch } = await supabaseAdmin
-          .from('customers')
-          .select('id, line_user_id, display_name, survey_name')
-          .ilike('display_name', `%${safeFirstName}%`)
-          .limit(10);
-
-        if (nameMatch && nameMatch.length > 0) {
-          const match = await findLatestConversation(nameMatch);
-          if (match) return match;
-        }
-      }
-    }
-  }
+  // Step 3 removed — display_name partial matching caused false positives
+  // (e.g., "Ta" matching "litar@cartoon"). Only survey_name and exact
+  // LINE display name matches are reliable.
 
   return null;
 }

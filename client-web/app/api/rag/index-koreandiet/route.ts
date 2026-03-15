@@ -135,7 +135,19 @@ export async function GET(req: NextRequest) {
   let skipped = 0;
 
   try {
-    // 1. Fetch already-indexed Korean Diet ticket IDs (non-failed)
+    // 1. Get Korean Diet LINE channel IDs
+    const { data: channels } = await supabaseAdmin
+      .from('messaging_channels')
+      .select('id')
+      .eq('channel_type', 'line')
+      .eq('hospital_prefix', 'koreandiet');
+
+    const channelIds = (channels || []).map(c => c.id);
+    if (channelIds.length === 0) {
+      return withCors(NextResponse.json({ message: 'No Korean Diet LINE channels found', indexed: 0 }));
+    }
+
+    // 2. Fetch already-indexed conversation IDs
     const { data: existingIndex } = await supabaseAdmin
       .from('case_index')
       .select('ticket_id')
@@ -143,74 +155,72 @@ export async function GET(req: NextRequest) {
       .neq('status', 'failed');
 
     const existingIds = new Set<number>((existingIndex || []).map((r: any) => r.ticket_id));
-    console.log(`[KoreanDiet RAG] Already indexed: ${existingIds.size} tickets`);
+    console.log(`[KoreanDiet RAG] Already indexed: ${existingIds.size} conversations`);
 
-    // 2. Fetch Korean Diet tickets (tags contain koreandiet_line or koreandiet_fb)
-    const [lineTickets, fbTickets] = await Promise.all([
-      supabaseAdmin
-        .from('zendesk_tickets')
-        .select('ticket_id, subject, comments, tags')
-        .contains('tags', ['koreandiet_line'])
-        .order('ticket_id', { ascending: true }),
-      supabaseAdmin
-        .from('zendesk_tickets')
-        .select('ticket_id, subject, comments, tags')
-        .contains('tags', ['koreandiet_fb'])
-        .order('ticket_id', { ascending: true }),
-    ]);
+    // 3. Fetch Korean Diet LINE conversations
+    const { data: conversations } = await supabaseAdmin
+      .from('channel_conversations')
+      .select('id, customer_id, last_message_at')
+      .in('channel_id', channelIds)
+      .eq('channel_type', 'line')
+      .order('last_message_at', { ascending: false })
+      .limit(100);
 
-    if (lineTickets.error) {
-      console.error('[KoreanDiet RAG] Failed to fetch line tickets:', lineTickets.error.message);
-    }
-    if (fbTickets.error) {
-      console.error('[KoreanDiet RAG] Failed to fetch fb tickets:', fbTickets.error.message);
+    // Helper: convert UUID to integer for ticket_id compatibility
+    function uuidToInt(uuid: string): number {
+      return parseInt(uuid.replace(/-/g, '').substring(0, 8), 16);
     }
 
-    // Deduplicate by ticket_id
-    const allTicketsMap = new Map<number, any>();
-    for (const t of [...(lineTickets.data || []), ...(fbTickets.data || [])]) {
-      allTicketsMap.set(t.ticket_id, t);
+    // 4. Filter and process conversations
+    const toProcess: Array<{ convId: string; ticketId: number }> = [];
+    for (const conv of conversations || []) {
+      const ticketId = uuidToInt(conv.id);
+      if (existingIds.has(ticketId)) continue;
+      toProcess.push({ convId: conv.id, ticketId });
     }
-    const allTickets = Array.from(allTicketsMap.values());
-    console.log(`[KoreanDiet RAG] Total Korean Diet tickets found: ${allTickets.length}`);
 
-    // 3. Filter out already indexed and short conversations
-    const toProcess = allTickets.filter((ticket) => {
-      if (existingIds.has(ticket.ticket_id)) return false;
-
-      const comments: any[] = ticket.comments || [];
-      if (comments.length < MIN_COMMENT_COUNT) return false;
-
-      const totalChars = comments.reduce((sum: number, c: any) => sum + (c.body?.length || 0), 0);
-      if (totalChars < MIN_TOTAL_CHARS) return false;
-
-      return true;
-    });
-
-    console.log(
-      `[KoreanDiet RAG] Tickets to process this run: ${Math.min(toProcess.length, MAX_TICKETS_PER_RUN)} (of ${toProcess.length} eligible)`
-    );
+    console.log(`[KoreanDiet RAG] Conversations to process: ${Math.min(toProcess.length, MAX_TICKETS_PER_RUN)} (of ${toProcess.length} eligible)`);
 
     const batch = toProcess.slice(0, MAX_TICKETS_PER_RUN);
 
-    // 4. Process each ticket
-    for (const ticket of batch) {
-      const ticketId: number = ticket.ticket_id;
-      const comments: any[] = ticket.comments || [];
+    for (const { convId, ticketId } of batch) {
+      // Fetch messages for this conversation
+      const { data: messages } = await supabaseAdmin
+        .from('channel_messages')
+        .select('sender_type, body, message_type, created_at')
+        .eq('conversation_id', convId)
+        .order('created_at', { ascending: true });
 
-      const commentsText = comments
-        .map((c: any) => `[${c.author_id ?? 'unknown'}]: ${c.body ?? ''}`)
-        .join('\n\n');
+      const msgs = messages || [];
 
-      if (!commentsText.trim()) {
-        console.log(`[KoreanDiet RAG] Ticket ${ticketId}: empty conversation, skipping`);
+      // Filter: minimum message count and character count
+      if (msgs.length < MIN_COMMENT_COUNT) {
+        skipped++;
+        continue;
+      }
+      const totalChars = msgs.reduce((sum, m) => sum + (m.body?.length || 0), 0);
+      if (totalChars < MIN_TOTAL_CHARS) {
         skipped++;
         continue;
       }
 
-      console.log(`[KoreanDiet RAG] Processing ticket ${ticketId} (${comments.length} comments)...`);
+      // Build conversation text
+      const commentsText = msgs
+        .map(m => {
+          const role = m.sender_type === 'customer' ? 'customer' : 'agent';
+          if (m.message_type === 'image') return `[${role}]: [ส่งรูปภาพ]`;
+          return `[${role}]: ${m.body || ''}`;
+        })
+        .join('\n\n');
 
-      // Check for existing failed entry (for cleanup before re-indexing)
+      if (!commentsText.trim()) {
+        skipped++;
+        continue;
+      }
+
+      console.log(`[KoreanDiet RAG] Processing conversation ${convId} (${msgs.length} messages)...`);
+
+      // Check for existing failed entry
       const { data: existingFailed } = await supabaseAdmin
         .from('case_index')
         .select('id')
@@ -219,7 +229,7 @@ export async function GET(req: NextRequest) {
         .limit(1);
 
       try {
-        // 4a. Gemini structured analysis
+        // Gemini structured analysis
         const prompt = buildKoreanDietPrompt(commentsText);
         const result = await model.generateContent(prompt);
         const text = result.response.text();
@@ -228,37 +238,35 @@ export async function GET(req: NextRequest) {
         const { search_summary, key_turns, customer_concern, procedure_category } = parsed;
 
         if (!search_summary || !Array.isArray(key_turns) || key_turns.length === 0) {
-          throw new Error('Gemini returned invalid structure: missing search_summary or key_turns');
+          throw new Error('Gemini returned invalid structure');
         }
 
-        // 4b. Generate embedding from search_summary
+        // Generate embedding
         const embedding = await generateEmbedding(search_summary);
 
-        // 4c. Upsert conversation
+        // Store full conversation
+        const conversationFull = msgs.map(m => ({
+          sender_type: m.sender_type,
+          body: m.body,
+          message_type: m.message_type,
+          created_at: m.created_at,
+        }));
+
         const { error: convError } = await supabaseAdmin
           .from('case_conversations')
           .upsert(
-            {
-              ticket_id: ticketId,
-              conversation_full: comments,
-            },
+            { ticket_id: ticketId, conversation_full: conversationFull },
             { onConflict: 'ticket_id' }
           );
 
-        if (convError) {
-          throw new Error(`case_conversations insert failed: ${convError.message}`);
-        }
+        if (convError) throw new Error(`case_conversations insert failed: ${convError.message}`);
 
-        // Remove any previous failed entry before inserting indexed
+        // Remove previous failed entry
         if (existingFailed && existingFailed.length > 0) {
-          await supabaseAdmin
-            .from('case_index')
-            .delete()
-            .eq('ticket_id', ticketId)
-            .eq('status', 'failed');
+          await supabaseAdmin.from('case_index').delete().eq('ticket_id', ticketId).eq('status', 'failed');
         }
 
-        // 4d. Upsert case_index
+        // Upsert case_index
         const { error: indexError } = await supabaseAdmin
           .from('case_index')
           .upsert(
@@ -276,37 +284,32 @@ export async function GET(req: NextRequest) {
             { onConflict: 'ticket_id' }
           );
 
-        if (indexError) {
-          throw new Error(`case_index insert failed: ${indexError.message}`);
-        }
+        if (indexError) throw new Error(`case_index insert failed: ${indexError.message}`);
 
         indexed++;
-        console.log(`[KoreanDiet RAG] Indexed ticket ${ticketId} (${procedure_category})`);
+        console.log(`[KoreanDiet RAG] Indexed conversation ${convId} → ticketId ${ticketId}`);
       } catch (err: any) {
         failed++;
-        console.error(`[KoreanDiet RAG] Failed ticket ${ticketId}:`, err.message);
+        console.error(`[KoreanDiet RAG] Failed conversation ${convId}:`, err.message);
 
-        // Mark as failed for retry awareness
-        await supabaseAdmin
-          .from('case_index')
-          .upsert(
-            {
-              ticket_id: ticketId,
-              search_summary: '',
-              key_turns: [],
-              hospital_name: 'Korean Diet',
-              status: 'failed',
-              embedding_model: 'gemini-embedding-001',
-            },
-            { onConflict: 'ticket_id' }
-          );
+        await supabaseAdmin.from('case_index').upsert(
+          {
+            ticket_id: ticketId,
+            search_summary: '',
+            key_turns: [],
+            hospital_name: 'Korean Diet',
+            status: 'failed',
+            embedding_model: 'gemini-embedding-001',
+          },
+          { onConflict: 'ticket_id' }
+        );
       }
     }
 
     const remaining = toProcess.length - batch.length;
     console.log(
       `[KoreanDiet RAG] Done — indexed: ${indexed}, failed: ${failed}, skipped: ${skipped}` +
-        (remaining > 0 ? `, remaining (run again): ${remaining}` : ', all eligible tickets processed')
+        (remaining > 0 ? `, remaining: ${remaining}` : ', all eligible processed')
     );
   } catch (err: any) {
     console.error('[KoreanDiet RAG] Fatal error:', err.message);

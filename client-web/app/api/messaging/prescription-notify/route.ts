@@ -241,8 +241,84 @@ export async function GET(req: NextRequest) {
   let notified = 0;
   let skipped = 0;
   let matchFailed = 0;
+  let surveyPushSent = 0;
   const errors: string[] = [];
 
+  // ── Phase 1: Push survey name request to customers who haven't provided it ──
+  try {
+    const SURVEY_PROMPT_MARKER = 'กรุณาแจ้งชื่อ-นามสกุลที่ใช้กรอกในแบบประเมิน';
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+    // Find LINE conversations where customer has no survey_name, last message > 1 hour ago
+    const { data: candidates } = await supabaseAdmin
+      .from('channel_conversations')
+      .select('id, customer_id, channel_id')
+      .eq('channel_type', 'line')
+      .lt('last_message_at', oneHourAgo)
+      .limit(20);
+
+    for (const conv of candidates || []) {
+      try {
+        // Check if customer already has survey_name
+        const { data: cust } = await supabaseAdmin
+          .from('customers')
+          .select('id, survey_name, line_user_id')
+          .eq('id', conv.customer_id)
+          .single();
+
+        if (!cust || cust.survey_name || !cust.line_user_id) continue;
+
+        // Check if we already sent the survey prompt in this conversation
+        const { data: existingPrompt } = await supabaseAdmin
+          .from('channel_messages')
+          .select('id')
+          .eq('conversation_id', conv.id)
+          .eq('sender_type', 'bot')
+          .ilike('body', `%${SURVEY_PROMPT_MARKER}%`)
+          .limit(1);
+
+        if (existingPrompt && existingPrompt.length > 0) continue;
+
+        // Send push message
+        const { getChannelAdapter } = await import('@/lib/channels/registry');
+        const adapter = await getChannelAdapter('line', conv.channel_id);
+
+        const pushMessage = 'สวัสดีค่ะ 🙏🏻 หากกรอกแบบประเมินสุขภาพเรียบร้อยแล้ว กรุณาแจ้งชื่อ-นามสกุลที่ใช้กรอกในแบบประเมินด้วยนะคะ เพื่อจะได้ตรวจสอบผลจากคุณหมอได้ถูกต้องค่ะ 😊';
+
+        await adapter.sendTextMessage(cust.line_user_id, pushMessage);
+
+        // Store in channel_messages
+        const now = new Date().toISOString();
+        await supabaseAdmin.from('channel_messages').insert({
+          conversation_id: conv.id,
+          sender_type: 'bot',
+          body: pushMessage,
+          message_type: 'text',
+          created_at: now,
+        });
+
+        await supabaseAdmin
+          .from('channel_conversations')
+          .update({ last_message_at: now, last_agent_message_at: now })
+          .eq('id', conv.id);
+
+        surveyPushSent++;
+        console.log(`[PrescriptionNotify] Survey push sent to customer ${conv.customer_id}`);
+      } catch (pushErr: unknown) {
+        const msg = pushErr instanceof Error ? pushErr.message : String(pushErr);
+        console.error(`[PrescriptionNotify] Survey push error for conv ${conv.id}:`, msg);
+      }
+    }
+
+    if (surveyPushSent > 0) {
+      console.log(`[PrescriptionNotify] Phase 1 done — survey pushes sent: ${surveyPushSent}`);
+    }
+  } catch (phase1Err: unknown) {
+    const msg = phase1Err instanceof Error ? phase1Err.message : String(phase1Err);
+    console.error('[PrescriptionNotify] Phase 1 error:', msg);
+  }
+
+  // ── Phase 2: Google Sheet prescription notification ──
   try {
     const auth = getGoogleAuth();
     const sheets = google.sheets({ version: 'v4', auth });
@@ -410,13 +486,14 @@ export async function GET(req: NextRequest) {
   }
 
   console.log(
-    `[PrescriptionNotify] Done — notified: ${notified}, skipped: ${skipped}, matchFailed: ${matchFailed}`,
+    `[PrescriptionNotify] Done — notified: ${notified}, skipped: ${skipped}, matchFailed: ${matchFailed}, surveyPush: ${surveyPushSent}`,
   );
   return withCors(
     NextResponse.json({
       notified,
       skipped,
       match_failed: matchFailed,
+      survey_push_sent: surveyPushSent,
       errors: errors.length > 0 ? errors : undefined,
     }),
   );

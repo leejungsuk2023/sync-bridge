@@ -293,9 +293,9 @@ export async function POST(req: NextRequest) {
           `[LINE Webhook] Message from ${channelUserId} (customer ${customerId}) saved as msg ${insertedMsg?.id} in conv ${conversationId}`
         );
 
-        // ── Fire-and-forget: trigger AI suggestion ────────────────────────
-        try {
-          const baseUrl = new URL(req.url).origin;
+        // ── Trigger AI suggestion + auto-reply (await to prevent Vercel runtime drop) ──
+        const baseUrl = new URL(req.url).origin;
+        await Promise.allSettled([
           fetch(`${baseUrl}/api/messaging/suggest-reply`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -303,16 +303,11 @@ export async function POST(req: NextRequest) {
               conversation_id: conversationId,
               message_id: insertedMsg?.id,
             }),
-          }).catch((err) => {
-            console.error('[LINE Webhook] Fire-and-forget suggest-reply error:', err);
-          });
-        } catch (err) {
-          console.error('[LINE Webhook] Error triggering suggest-reply:', err);
-        }
-
-        // ── Fire-and-forget: trigger auto-reply chatbot ────────────────────
-        try {
-          const baseUrl = new URL(req.url).origin;
+          }).then(res => {
+            console.log(`[LINE Webhook] suggest-reply triggered: ${res.status}`);
+          }).catch(err => {
+            console.error('[LINE Webhook] suggest-reply error:', err.message);
+          }),
           fetch(`${baseUrl}/api/messaging/auto-reply`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -320,12 +315,12 @@ export async function POST(req: NextRequest) {
               conversation_id: conversationId,
               message_id: insertedMsg?.id,
             }),
-          }).catch((err) => {
-            console.error('[LINE Webhook] Fire-and-forget auto-reply error:', err);
-          });
-        } catch (err) {
-          console.error('[LINE Webhook] Error triggering auto-reply:', err);
-        }
+          }).then(res => {
+            console.log(`[LINE Webhook] auto-reply triggered: ${res.status}`);
+          }).catch(err => {
+            console.error('[LINE Webhook] auto-reply error:', err.message);
+          }),
+        ]);
 
       } else if (event.type === 'follow') {
         // ── Follow event: create customer if not exists ───────────────────

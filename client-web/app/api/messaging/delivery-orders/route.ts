@@ -72,8 +72,9 @@ export async function GET(req: NextRequest) {
       return withCors(NextResponse.json({ message: 'No Korean Diet LINE channels', written: 0 }));
     }
 
-    // 2. Get conversations with recent activity (last 48h)
-    const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    // 2. Get conversations with recent activity (last 7 days)
+    // 48h was too short — payment slips may be sent days before cron runs
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const { data: conversations } = await supabaseAdmin
       .from('channel_conversations')
       .select('id, customer_id')
@@ -118,6 +119,13 @@ export async function GET(req: NextRequest) {
         const customerImages = msgs.filter(
           (m: any) => m.message_type === 'image' && m.media_url && m.sender_type === 'customer'
         );
+
+        // Use the timestamp of the first customer image (payment slip) as the payment date.
+        // This is the ground truth — when the customer actually sent the slip in our system.
+        const firstImageDate = customerImages[0]?.created_at
+          ? new Date(customerImages[0].created_at).toISOString().split('T')[0]
+          : new Date().toISOString().split('T')[0];
+
         if (customerImages.length === 0) {
           skippedCount++;
           continue;
@@ -253,7 +261,10 @@ Return JSON:
         const productCode = parsed.product_level === 2 ? '06917' : '06916';
         const productName = parsed.product_level === 2 ? '다이어트환-핑크' : '다이어트환-블루';
         const optionName = parsed.product_level === 2 ? `핑크${parsed.quantity || 1}` : `블루${parsed.quantity || 1}`;
-        const paymentDate = parsed.payment_date || new Date().toISOString().split('T')[0];
+        // ALWAYS use the actual image send timestamp (channel_messages.created_at), never trust
+        // Gemini's date extraction — Gemini hallucinated the date in the 제니 incident (2026-03-11
+        // slip was recorded as 2026-03-15 because Gemini used the current date instead).
+        const paymentDate = firstImageDate;
         const surveyName = parsed.survey_name || customer?.survey_name || '';
 
         // Append to Google Sheet

@@ -166,9 +166,9 @@ export async function GET(req: NextRequest) {
       .order('last_message_at', { ascending: false })
       .limit(100);
 
-    // Helper: convert UUID to integer for ticket_id compatibility
+    // Helper: convert UUID to integer for ticket_id compatibility (max 2,147,483,647)
     function uuidToInt(uuid: string): number {
-      return parseInt(uuid.replace(/-/g, '').substring(0, 8), 16);
+      return parseInt(uuid.replace(/-/g, '').substring(0, 8), 16) % 2147483647;
     }
 
     // 4. Filter and process conversations

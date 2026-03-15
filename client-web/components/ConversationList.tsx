@@ -266,8 +266,8 @@ export default function ConversationList({
       const sorted = [...filteredConversations].sort((a, b) => {
         if (!a.is_read && b.is_read) return -1;
         if (a.is_read && !b.is_read) return 1;
-        const dateA = a.last_customer_message_at || a.last_message_at;
-        const dateB = b.last_customer_message_at || b.last_message_at;
+        const dateA = a.last_message_at;
+        const dateB = b.last_message_at;
         return new Date(dateB).getTime() - new Date(dateA).getTime();
       });
       stableOrderRef.current = sorted.map((c) => c.id);
@@ -412,7 +412,7 @@ export default function ConversationList({
             {sortedConversations.map((conv) => {
               const isSelected = conv.id === selectedConversationId;
               const statusConf = STATUS_CONFIG[conv.status] || STATUS_CONFIG.open;
-              const timeStr = conv.last_customer_message_at || conv.last_message_at;
+              const timeStr = conv.last_message_at;
 
               return (
                 <button

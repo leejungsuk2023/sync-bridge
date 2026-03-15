@@ -457,6 +457,19 @@ Only extract survey_name when the customer clearly states their full name in res
       }
     }
 
+    // 8b. One-time survey name prompt — append if survey_name not yet collected
+    const SURVEY_PROMPT_MARKER = 'กรุณาแจ้งชื่อ-นามสกุลที่ใช้กรอกในแบบประเมิน';
+    if (!customer?.survey_name && !extractedSurveyName) {
+      // Check if we already asked (search conversation history for the marker)
+      const alreadyAsked = recentMessages.some(
+        (m: any) => m.sender_type === 'bot' && m.body?.includes(SURVEY_PROMPT_MARKER)
+      );
+      if (!alreadyAsked) {
+        replyText += '\n\nกรอกแบบประเมินเรียบร้อยแล้วใช่ไหมคะ? กรุณาแจ้งชื่อ-นามสกุลที่ใช้กรอกในแบบประเมินด้วยนะคะ เพื่อจะได้ตรวจสอบผลได้ถูกต้องค่ะ 🙏🏻';
+        console.log(`[AutoReply] Appended one-time survey name prompt for customer ${conversation.customer_id}`);
+      }
+    }
+
     // 9. Send the reply via LINE (or other channel)
     const { getChannelAdapter } = await import('@/lib/channels/registry');
 

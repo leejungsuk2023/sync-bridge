@@ -83,11 +83,10 @@ export async function GET(req: NextRequest) {
       .order('last_message_at', { ascending: false })
       .limit(50);
 
-    // 3. Filter out already processed
+    // 3. Filter out already processed (written or manually skipped)
     const { data: existingExtractions } = await supabaseAdmin
       .from('delivery_order_extractions')
-      .select('conversation_id')
-      .eq('status', 'written');
+      .select('conversation_id');
     const processedConvIds = new Set((existingExtractions || []).map((e: { conversation_id: string }) => e.conversation_id));
 
     // 4. Setup Gemini

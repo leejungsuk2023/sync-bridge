@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
     // 2. Fetch recent messages (last 10)
     const { data: messages } = await supabaseAdmin
       .from('channel_messages')
-      .select('sender_type, body, message_type, created_at')
+      .select('sender_type, body, message_type, media_url, created_at')
       .eq('conversation_id', conversation_id)
       .order('created_at', { ascending: false })
       .limit(10);
@@ -221,7 +221,13 @@ export async function POST(req: NextRequest) {
 
     // 7. Build Gemini prompt
     const conversationText = recentMessages
-      .map((m: any) => `[${m.sender_type === 'customer' ? 'Customer' : 'Agent'}] ${(m.body || '').slice(0, 500)}`)
+      .map((m: any) => {
+        const role = m.sender_type === 'customer' ? 'Customer' : 'Agent';
+        if (m.message_type === 'image') {
+          return `[${role}] [ส่งรูปภาพ — ดูรูปด้านล่าง] ${m.body || ''}`;
+        }
+        return `[${role}] ${(m.body || '').slice(0, 500)}`;
+      })
       .join('\n');
 
     const customerInfo = customer
@@ -326,6 +332,7 @@ export async function POST(req: NextRequest) {
 - Every order includes Lirio Plus 2 boxes free
 - If customer asks for a quantity not in the price tiers (e.g., 3 boxes, 5 boxes), say "ขอเช็คราคาให้สักครู่นะคะ" — do NOT invent a price
 - Guide customers to fill the health assessment form
+- When customer sends a photo/image, ALWAYS analyze it carefully before responding. Describe what you see (e.g., payment slip, health assessment screenshot, product photo, before/after photo) and respond appropriately. NEVER ignore an image.
 - Confirm orders with exact price calculations
 - Be proactive about closing the sale
 - Answer dosage, ingredient, and usage questions directly from product data below
@@ -365,8 +372,46 @@ Only extract survey_name when the customer clearly states their full name in res
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
+    // Check if there are any image messages from the customer
+    const imageMessages = recentMessages.filter(
+      (m: any) => m.message_type === 'image' && m.media_url && m.sender_type === 'customer'
+    );
+
     const startTime = Date.now();
-    const result = await model.generateContent(prompt);
+    let result;
+    if (imageMessages.length > 0) {
+      // Build multimodal content parts
+      const parts: any[] = [{ text: prompt }];
+
+      // Download and add each image (max 3 most recent to avoid token bloat)
+      const recentImages = imageMessages.slice(-3);
+      for (const img of recentImages) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000);
+          const imgResponse = await fetch(img.media_url, { signal: controller.signal });
+          clearTimeout(timeoutId);
+          if (imgResponse.ok) {
+            const buffer = await imgResponse.arrayBuffer();
+            const base64 = Buffer.from(buffer).toString('base64');
+            const contentType = imgResponse.headers.get('content-type') || 'image/jpeg';
+            parts.push({
+              inlineData: {
+                mimeType: contentType,
+                data: base64,
+              },
+            });
+            console.log(`[AutoReply] Added image to prompt: ${img.media_url.substring(0, 80)}...`);
+          }
+        } catch (imgErr: any) {
+          console.error(`[AutoReply] Failed to fetch image: ${imgErr.message}`);
+        }
+      }
+
+      result = await model.generateContent(parts);
+    } else {
+      result = await model.generateContent(prompt);
+    }
     const rawText = result.response.text().trim();
     const responseTimeMs = Date.now() - startTime;
 
